@@ -241,6 +241,10 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.client.SyncServerlessClient.team"><code class="docutils literal notranslate"><span class="pre">SyncServerlessClient.team</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.client.VolumesNamespace"><code class="docutils literal notranslate"><span class="pre">VolumesNamespace</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.client.VolumesNamespace.create"><code class="docutils literal notranslate"><span class="pre">VolumesNamespace.create()</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.api.html#module-fal.api.deploy">fal.api.deploy module</a><ul>
@@ -299,6 +303,10 @@
 <li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.secrets.unset_secret"><code class="docutils literal notranslate"><span class="pre">unset_secret()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="fal.api.html#module-fal.api.volumes">fal.api.volumes module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.volumes.create_volume"><code class="docutils literal notranslate"><span class="pre">create_volume()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="fal.api.html#module-fal.api">Module contents</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.AppsNamespace"><code class="docutils literal notranslate"><span class="pre">AppsNamespace</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.AppsNamespace.gpus"><code class="docutils literal notranslate"><span class="pre">AppsNamespace.gpus()</span></code></a></li>
@@ -333,6 +341,10 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.SyncServerlessClient.host"><code class="docutils literal notranslate"><span class="pre">SyncServerlessClient.host</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.SyncServerlessClient.profile"><code class="docutils literal notranslate"><span class="pre">SyncServerlessClient.profile</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.SyncServerlessClient.team"><code class="docutils literal notranslate"><span class="pre">SyncServerlessClient.team</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.VolumesNamespace"><code class="docutils literal notranslate"><span class="pre">VolumesNamespace</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.VolumesNamespace.create"><code class="docutils literal notranslate"><span class="pre">VolumesNamespace.create()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -571,6 +583,10 @@
 <li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.teams.add_parser"><code class="docutils literal notranslate"><span class="pre">add_parser()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.volumes">fal.cli.volumes module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.volumes.add_parser"><code class="docutils literal notranslate"><span class="pre">add_parser()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli">Module contents</a></li>
 </ul>
 </li>
@@ -731,12 +747,60 @@
 <li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.gpu.catch_gpu_exceptions"><code class="docutils literal notranslate"><span class="pre">catch_gpu_exceptions</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="fal.exceptions.html#module-fal.exceptions.volumes">fal.exceptions.volumes module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeAccountNotEligibleError"><code class="docutils literal notranslate"><span class="pre">VolumeAccountNotEligibleError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeAccountNotEligibleError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeAccountNotEligibleError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeAlreadyExistsError"><code class="docutils literal notranslate"><span class="pre">VolumeAlreadyExistsError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeAlreadyExistsError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeAlreadyExistsError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeControlPlaneUnavailableError"><code class="docutils literal notranslate"><span class="pre">VolumeControlPlaneUnavailableError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeControlPlaneUnavailableError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeControlPlaneUnavailableError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeException"><code class="docutils literal notranslate"><span class="pre">VolumeException</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeException.message"><code class="docutils literal notranslate"><span class="pre">VolumeException.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeException.reason"><code class="docutils literal notranslate"><span class="pre">VolumeException.reason</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeException.http_status"><code class="docutils literal notranslate"><span class="pre">VolumeException.http_status</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeException.grpc_status"><code class="docutils literal notranslate"><span class="pre">VolumeException.grpc_status</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeException.volume_name"><code class="docutils literal notranslate"><span class="pre">VolumeException.volume_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeException.mount_path"><code class="docutils literal notranslate"><span class="pre">VolumeException.mount_path</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id0"><code class="docutils literal notranslate"><span class="pre">VolumeException.grpc_status</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id1"><code class="docutils literal notranslate"><span class="pre">VolumeException.http_status</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id2"><code class="docutils literal notranslate"><span class="pre">VolumeException.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id3"><code class="docutils literal notranslate"><span class="pre">VolumeException.mount_path</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id4"><code class="docutils literal notranslate"><span class="pre">VolumeException.reason</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id5"><code class="docutils literal notranslate"><span class="pre">VolumeException.volume_name</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeInvalidMountPathError"><code class="docutils literal notranslate"><span class="pre">VolumeInvalidMountPathError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeInvalidMountPathError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeInvalidMountPathError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeInvalidNameError"><code class="docutils literal notranslate"><span class="pre">VolumeInvalidNameError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeInvalidNameError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeInvalidNameError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeNotFoundError"><code class="docutils literal notranslate"><span class="pre">VolumeNotFoundError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeNotFoundError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeNotFoundError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeUnresolvableError"><code class="docutils literal notranslate"><span class="pre">VolumeUnresolvableError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.VolumeUnresolvableError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeUnresolvableError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.volume_error_from_grpc"><code class="docutils literal notranslate"><span class="pre">volume_error_from_grpc()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.volumes.volume_error_from_reason"><code class="docutils literal notranslate"><span class="pre">volume_error_from_reason()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="fal.exceptions.html#module-fal.exceptions">Module contents</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.AppException"><code class="docutils literal notranslate"><span class="pre">AppException</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.AppException.message"><code class="docutils literal notranslate"><span class="pre">AppException.message</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.AppException.status_code"><code class="docutils literal notranslate"><span class="pre">AppException.status_code</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id0"><code class="docutils literal notranslate"><span class="pre">AppException.message</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id1"><code class="docutils literal notranslate"><span class="pre">AppException.status_code</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id6"><code class="docutils literal notranslate"><span class="pre">AppException.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id7"><code class="docutils literal notranslate"><span class="pre">AppException.status_code</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.AppFileUploadException"><code class="docutils literal notranslate"><span class="pre">AppFileUploadException</span></code></a><ul>
@@ -755,11 +819,11 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.FieldException.status_code"><code class="docutils literal notranslate"><span class="pre">FieldException.status_code</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.FieldException.type"><code class="docutils literal notranslate"><span class="pre">FieldException.type</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.FieldException.billable_units"><code class="docutils literal notranslate"><span class="pre">FieldException.billable_units</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id2"><code class="docutils literal notranslate"><span class="pre">FieldException.field</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id3"><code class="docutils literal notranslate"><span class="pre">FieldException.message</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id4"><code class="docutils literal notranslate"><span class="pre">FieldException.status_code</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id8"><code class="docutils literal notranslate"><span class="pre">FieldException.field</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id9"><code class="docutils literal notranslate"><span class="pre">FieldException.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id10"><code class="docutils literal notranslate"><span class="pre">FieldException.status_code</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.FieldException.to_pydantic_format"><code class="docutils literal notranslate"><span class="pre">FieldException.to_pydantic_format()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id5"><code class="docutils literal notranslate"><span class="pre">FieldException.type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id11"><code class="docutils literal notranslate"><span class="pre">FieldException.type</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.FileTooLargeError"><code class="docutils literal notranslate"><span class="pre">FileTooLargeError</span></code></a><ul>
@@ -777,6 +841,56 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.UnauthenticatedException"><code class="docutils literal notranslate"><span class="pre">UnauthenticatedException</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeAccountNotEligibleError"><code class="docutils literal notranslate"><span class="pre">VolumeAccountNotEligibleError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeAccountNotEligibleError.message"><code class="docutils literal notranslate"><span class="pre">VolumeAccountNotEligibleError.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeAccountNotEligibleError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeAccountNotEligibleError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeAlreadyExistsError"><code class="docutils literal notranslate"><span class="pre">VolumeAlreadyExistsError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeAlreadyExistsError.message"><code class="docutils literal notranslate"><span class="pre">VolumeAlreadyExistsError.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeAlreadyExistsError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeAlreadyExistsError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeControlPlaneUnavailableError"><code class="docutils literal notranslate"><span class="pre">VolumeControlPlaneUnavailableError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeControlPlaneUnavailableError.message"><code class="docutils literal notranslate"><span class="pre">VolumeControlPlaneUnavailableError.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeControlPlaneUnavailableError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeControlPlaneUnavailableError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeException"><code class="docutils literal notranslate"><span class="pre">VolumeException</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeException.message"><code class="docutils literal notranslate"><span class="pre">VolumeException.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeException.reason"><code class="docutils literal notranslate"><span class="pre">VolumeException.reason</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeException.http_status"><code class="docutils literal notranslate"><span class="pre">VolumeException.http_status</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeException.grpc_status"><code class="docutils literal notranslate"><span class="pre">VolumeException.grpc_status</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeException.volume_name"><code class="docutils literal notranslate"><span class="pre">VolumeException.volume_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeException.mount_path"><code class="docutils literal notranslate"><span class="pre">VolumeException.mount_path</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id12"><code class="docutils literal notranslate"><span class="pre">VolumeException.grpc_status</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id13"><code class="docutils literal notranslate"><span class="pre">VolumeException.http_status</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id14"><code class="docutils literal notranslate"><span class="pre">VolumeException.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id15"><code class="docutils literal notranslate"><span class="pre">VolumeException.mount_path</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id16"><code class="docutils literal notranslate"><span class="pre">VolumeException.reason</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#id17"><code class="docutils literal notranslate"><span class="pre">VolumeException.volume_name</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeInvalidMountPathError"><code class="docutils literal notranslate"><span class="pre">VolumeInvalidMountPathError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeInvalidMountPathError.message"><code class="docutils literal notranslate"><span class="pre">VolumeInvalidMountPathError.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeInvalidMountPathError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeInvalidMountPathError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeInvalidNameError"><code class="docutils literal notranslate"><span class="pre">VolumeInvalidNameError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeInvalidNameError.message"><code class="docutils literal notranslate"><span class="pre">VolumeInvalidNameError.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeInvalidNameError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeInvalidNameError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeNotFoundError"><code class="docutils literal notranslate"><span class="pre">VolumeNotFoundError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeNotFoundError.message"><code class="docutils literal notranslate"><span class="pre">VolumeNotFoundError.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeNotFoundError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeNotFoundError.reason</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeUnresolvableError"><code class="docutils literal notranslate"><span class="pre">VolumeUnresolvableError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeUnresolvableError.message"><code class="docutils literal notranslate"><span class="pre">VolumeUnresolvableError.message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.VolumeUnresolvableError.reason"><code class="docutils literal notranslate"><span class="pre">VolumeUnresolvableError.reason</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html#fal.exceptions.catch_gpu_exceptions"><code class="docutils literal notranslate"><span class="pre">catch_gpu_exceptions</span></code></a></li>
 </ul>
 </li>
@@ -2076,6 +2190,16 @@ based on the user model.</p>
 </dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="fal.app.App.volumes">
+<span class="sig-name descname"><span class="pre">volumes</span></span><a class="headerlink" href="#fal.app.App.volumes" title="Link to this definition">¶</a></dt>
+<dd><p>Named volumes to mount, keyed by mount path. Each volume must
+already exist (<cite>fal volumes create &lt;name&gt;</cite>); <cite>fal.Volume</cite> is only a
+reference. A mount path is a single top-level directory. Cannot
+be combined with <cite>data_mounts</cite>; mount a volume at <cite>/data</cite> instead.
+Example: <cite>{“/models”: fal.Volume(“my-models”)}</cite></p>
+</dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="id0">
 <span class="sig-name descname"><span class="pre">app_auth</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Literal</span></code><span class="pre">[</span><code class="docutils literal notranslate"><span class="pre">'public'</span></code><span class="pre">,</span> <code class="docutils literal notranslate"><span class="pre">'private'</span></code><span class="pre">,</span> <code class="docutils literal notranslate"><span class="pre">'shared'</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id0" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -2338,6 +2462,11 @@ based on the user model.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.app.App.termination_grace_period_seconds">
 <span class="sig-name descname"><span class="pre">termination_grace_period_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.app.App.termination_grace_period_seconds" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id26">
+<span class="sig-name descname"><span class="pre">volumes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <a class="reference internal" href="#fal.volumes.Volume" title="fal.volumes.Volume"><code class="xref py py-class docutils literal notranslate"><span class="pre">Volume</span></code></a> <span class="pre">|</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id26" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -2951,7 +3080,7 @@ parses the Dockerfile - it doesn’t access the filesystem.</p>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>List of src paths (e.g., [“src/”, “requirements.txt”, “<a href="#id26"><span class="problematic" id="id27">*</span></a>.py”]) that can be
+<dd class="field-even"><p>List of src paths (e.g., [“src/”, “requirements.txt”, “<a href="#id27"><span class="problematic" id="id28">*</span></a>.py”]) that can be
 passed to FileSync.sync_files(). Returns empty list if no COPY/ADD commands
 found.</p>
 </dd>
@@ -4054,7 +4183,7 @@ run/register path.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.register">
-<span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">function</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environments</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">application_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auth_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">health_check_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">serialization_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cloudpickle'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_requirements</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deployment_strategy</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">private_logs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_retry_conditions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retry_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">termination_grace_period_seconds</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">secrets</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_mounts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">entrypoint</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">build_environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attach_to_deployment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.register" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">function</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environments</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">application_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auth_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">health_check_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">serialization_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cloudpickle'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_requirements</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deployment_strategy</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">private_logs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_retry_conditions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retry_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">termination_grace_period_seconds</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">secrets</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_mounts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volumes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">entrypoint</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">build_environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attach_to_deployment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.register" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Iterator</span></code>[<a class="reference internal" href="#fal.sdk.RegisterApplicationResult" title="fal.sdk.RegisterApplicationResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">RegisterApplicationResult</span></code></a>]</span></p>
@@ -4084,7 +4213,7 @@ run/register path.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.run">
-<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">function</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environments</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">health_check_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">serialization_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cloudpickle'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_requirements</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">setup_function</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">application_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auth_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">secrets</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_mounts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">entrypoint</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">build_environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.run" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">function</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environments</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">health_check_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">serialization_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cloudpickle'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_requirements</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">setup_function</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">application_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auth_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">secrets</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_mounts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volumes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">entrypoint</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">build_environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.run" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Iterator</span></code>[<a class="reference internal" href="#fal.sdk.HostedRunResult" title="fal.sdk.HostedRunResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">HostedRunResult</span></code></a>[<code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code>(<code class="docutils literal notranslate"><span class="pre">ResultT</span></code>)]]</span></p>
@@ -5189,6 +5318,70 @@ retry, which rewinds the body and resends it from the start.</p>
 </dd></dl>
 
 </section>
+<section id="module-fal.volumes">
+<span id="fal-volumes-module"></span><h2>fal.volumes module<a class="headerlink" href="#module-fal.volumes" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.volumes.Volume">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.volumes.</span></span><span class="sig-name descname"><span class="pre">Volume</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.volumes.Volume" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A reference to an existing fal volume by name.</p>
+<p>This does not create storage. Create the volume first with
+<code class="docutils literal notranslate"><span class="pre">fal.create_volume</span></code> or <code class="docutils literal notranslate"><span class="pre">fal</span> <span class="pre">volumes</span> <span class="pre">create</span> <span class="pre">&lt;name&gt;</span></code>. The name is
+stored in its canonical (lowercase) form.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.volumes.Volume.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.volumes.Volume.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.volumes.canonical_volume_name">
+<span class="sig-prename descclassname"><span class="pre">fal.volumes.</span></span><span class="sig-name descname"><span class="pre">canonical_volume_name</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.volumes.canonical_volume_name" title="Link to this definition">¶</a></dt>
+<dd><p>Validate a volume name and return its canonical (lowercase) form.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.volumes.create_volume">
+<span class="sig-prename descclassname"><span class="pre">fal.volumes.</span></span><span class="sig-name descname"><span class="pre">create_volume</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">team</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">api_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">profile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.volumes.create_volume" title="Link to this definition">¶</a></dt>
+<dd><p>Create a volume and return its canonical (lowercase) name.</p>
+<p>Raises a typed <code class="docutils literal notranslate"><span class="pre">fal.exceptions.VolumeException</span></code> subclass when the server
+rejects the request with a known reason.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.volumes.normalize_volumes">
+<span class="sig-prename descclassname"><span class="pre">fal.volumes.</span></span><span class="sig-name descname"><span class="pre">normalize_volumes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">volumes</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.volumes.normalize_volumes" title="Link to this definition">¶</a></dt>
+<dd><p>Validate a <code class="docutils literal notranslate"><span class="pre">{mount_path:</span> <span class="pre">volume}</span></code> mapping and return it as
+<code class="docutils literal notranslate"><span class="pre">{mount_path:</span> <span class="pre">canonical_name}</span></code>, the form sent to the server.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.volumes.validate_mount_path">
+<span class="sig-prename descclassname"><span class="pre">fal.volumes.</span></span><span class="sig-name descname"><span class="pre">validate_mount_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.volumes.validate_mount_path" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
 <section id="module-fal.workflows">
 <span id="fal-workflows-module"></span><h2>fal.workflows module<a class="headerlink" href="#module-fal.workflows" title="Link to this heading">¶</a></h2>
 <dl class="py class">
@@ -5865,28 +6058,38 @@ based on the user model.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id28">
-<span class="sig-name descname"><span class="pre">app_auth</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Literal</span></code><span class="pre">[</span><code class="docutils literal notranslate"><span class="pre">'public'</span></code><span class="pre">,</span> <code class="docutils literal notranslate"><span class="pre">'private'</span></code><span class="pre">,</span> <code class="docutils literal notranslate"><span class="pre">'shared'</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id28" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dt class="sig sig-object py" id="fal.App.volumes">
+<span class="sig-name descname"><span class="pre">volumes</span></span><a class="headerlink" href="#fal.App.volumes" title="Link to this definition">¶</a></dt>
+<dd><p>Named volumes to mount, keyed by mount path. Each volume must
+already exist (<cite>fal volumes create &lt;name&gt;</cite>); <cite>fal.Volume</cite> is only a
+reference. A mount path is a single top-level directory. Cannot
+be combined with <cite>data_mounts</cite>; mount a volume at <cite>/data</cite> instead.
+Example: <cite>{“/models”: fal.Volume(“my-models”)}</cite></p>
+</dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id29">
-<span class="sig-name descname"><span class="pre">app_files</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></em><a class="headerlink" href="#id29" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">app_auth</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Literal</span></code><span class="pre">[</span><code class="docutils literal notranslate"><span class="pre">'public'</span></code><span class="pre">,</span> <code class="docutils literal notranslate"><span class="pre">'private'</span></code><span class="pre">,</span> <code class="docutils literal notranslate"><span class="pre">'shared'</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id29" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id30">
-<span class="sig-name descname"><span class="pre">app_files_context_dir</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id30" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">app_files</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></em><a class="headerlink" href="#id30" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id31">
-<span class="sig-name descname"><span class="pre">app_files_ignore</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['\\.pyc$',</span> <span class="pre">'__pycache__/',</span> <span class="pre">'\\.git/',</span> <span class="pre">'\\.DS_Store$']</span></em><a class="headerlink" href="#id31" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">app_files_context_dir</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id31" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id32">
-<span class="sig-name descname"><span class="pre">app_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id32" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">app_files_ignore</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['\\.pyc$',</span> <span class="pre">'__pycache__/',</span> <span class="pre">'\\.git/',</span> <span class="pre">'\\.DS_Store$']</span></em><a class="headerlink" href="#id32" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id33">
+<span class="sig-name descname"><span class="pre">app_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id33" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -5910,13 +6113,13 @@ based on the user model.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id33">
-<span class="sig-name descname"><span class="pre">concurrency_buffer</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id33" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id34">
+<span class="sig-name descname"><span class="pre">concurrency_buffer</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id34" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id34">
-<span class="sig-name descname"><span class="pre">concurrency_buffer_perc</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id34" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id35">
+<span class="sig-name descname"><span class="pre">concurrency_buffer_perc</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id35" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py property">
@@ -5925,8 +6128,8 @@ based on the user model.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id35">
-<span class="sig-name descname"><span class="pre">data_mounts</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id35" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id36">
+<span class="sig-name descname"><span class="pre">data_mounts</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id36" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -5972,13 +6175,13 @@ based on the user model.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id36">
-<span class="sig-name descname"><span class="pre">host_kwargs</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'_scheduler':</span> <span class="pre">'nomad',</span> <span class="pre">'_scheduler_options':</span> <span class="pre">{'storage_region':</span> <span class="pre">'us-east'},</span> <span class="pre">'keep_alive':</span> <span class="pre">60,</span> <span class="pre">'resolver':</span> <span class="pre">'uv'}</span></em><a class="headerlink" href="#id36" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id37">
+<span class="sig-name descname"><span class="pre">host_kwargs</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'_scheduler':</span> <span class="pre">'nomad',</span> <span class="pre">'_scheduler_options':</span> <span class="pre">{'storage_region':</span> <span class="pre">'us-east'},</span> <span class="pre">'keep_alive':</span> <span class="pre">60,</span> <span class="pre">'resolver':</span> <span class="pre">'uv'}</span></em><a class="headerlink" href="#id37" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id37">
-<span class="sig-name descname"><span class="pre">image</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><a class="reference internal" href="#fal.container.ContainerImage" title="fal.container.ContainerImage"><code class="xref py py-class docutils literal notranslate"><span class="pre">ContainerImage</span></code></a><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id37" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id38">
+<span class="sig-name descname"><span class="pre">image</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><a class="reference internal" href="#fal.container.ContainerImage" title="fal.container.ContainerImage"><code class="xref py py-class docutils literal notranslate"><span class="pre">ContainerImage</span></code></a><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id38" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -5987,8 +6190,8 @@ based on the user model.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id38">
-<span class="sig-name descname"><span class="pre">kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id38" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id39">
+<span class="sig-name descname"><span class="pre">kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id39" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -6002,38 +6205,38 @@ based on the user model.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id39">
-<span class="sig-name descname"><span class="pre">local_python_modules</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></em><a class="headerlink" href="#id39" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="id40">
-<span class="sig-name descname"><span class="pre">machine_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> <span class="pre">|</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'S'</span></em><a class="headerlink" href="#id40" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">local_python_modules</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></em><a class="headerlink" href="#id40" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id41">
-<span class="sig-name descname"><span class="pre">max_concurrency</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id41" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">machine_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> <span class="pre">|</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'S'</span></em><a class="headerlink" href="#id41" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id42">
-<span class="sig-name descname"><span class="pre">max_multiplexing</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id42" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">max_concurrency</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id42" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id43">
-<span class="sig-name descname"><span class="pre">metrics_port</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id43" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">max_multiplexing</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id43" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id44">
-<span class="sig-name descname"><span class="pre">min_concurrency</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id44" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">metrics_port</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id44" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id45">
-<span class="sig-name descname"><span class="pre">num_gpus</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id45" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">min_concurrency</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id45" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id46">
+<span class="sig-name descname"><span class="pre">num_gpus</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id46" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -6048,28 +6251,28 @@ based on the user model.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id46">
-<span class="sig-name descname"><span class="pre">regions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id46" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="id47">
-<span class="sig-name descname"><span class="pre">request_start_timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id47" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">regions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id47" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id48">
-<span class="sig-name descname"><span class="pre">request_timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id48" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">request_start_timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id48" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id49">
-<span class="sig-name descname"><span class="pre">requirements</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span> <span class="pre">|</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></em><a class="headerlink" href="#id49" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">request_timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id49" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id50">
-<span class="sig-name descname"><span class="pre">requirements_context_dir</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id50" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">requirements</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span> <span class="pre">|</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></em><a class="headerlink" href="#id50" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id51">
+<span class="sig-name descname"><span class="pre">requirements_context_dir</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id51" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -6083,13 +6286,13 @@ based on the user model.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id51">
-<span class="sig-name descname"><span class="pre">scaling_delay</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id51" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id52">
+<span class="sig-name descname"><span class="pre">scaling_delay</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id52" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id52">
-<span class="sig-name descname"><span class="pre">secrets</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id52" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id53">
+<span class="sig-name descname"><span class="pre">secrets</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id53" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -6114,8 +6317,8 @@ based on the user model.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id53">
-<span class="sig-name descname"><span class="pre">startup_timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id53" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id54">
+<span class="sig-name descname"><span class="pre">startup_timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id54" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -6127,6 +6330,11 @@ based on the user model.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.App.termination_grace_period_seconds">
 <span class="sig-name descname"><span class="pre">termination_grace_period_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.App.termination_grace_period_seconds" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id55">
+<span class="sig-name descname"><span class="pre">volumes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <a class="reference internal" href="#fal.volumes.Volume" title="fal.volumes.Volume"><code class="xref py py-class docutils literal notranslate"><span class="pre">Volume</span></code></a> <span class="pre">|</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id55" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -6282,7 +6490,7 @@ parses the Dockerfile - it doesn’t access the filesystem.</p>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>List of src paths (e.g., [“src/”, “requirements.txt”, “<a href="#id54"><span class="problematic" id="id55">*</span></a>.py”]) that can be
+<dd class="field-even"><p>List of src paths (e.g., [“src/”, “requirements.txt”, “<a href="#id56"><span class="problematic" id="id57">*</span></a>.py”]) that can be
 passed to FileSync.sync_files(). Returns empty list if no COPY/ADD commands
 found.</p>
 </dd>
@@ -6383,6 +6591,21 @@ found.</p>
 
 </dd></dl>
 
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.Volume">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.</span></span><span class="sig-name descname"><span class="pre">Volume</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.Volume" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A reference to an existing fal volume by name.</p>
+<p>This does not create storage. Create the volume first with
+<code class="docutils literal notranslate"><span class="pre">fal.create_volume</span></code> or <code class="docutils literal notranslate"><span class="pre">fal</span> <span class="pre">volumes</span> <span class="pre">create</span> <span class="pre">&lt;name&gt;</span></code>. The name is
+stored in its canonical (lowercase) form.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.Volume.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.Volume.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="fal.cached">
 <span class="sig-prename descclassname"><span class="pre">fal.</span></span><span class="sig-name descname"><span class="pre">cached</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cached" title="Link to this definition">¶</a></dt>
@@ -6390,6 +6613,19 @@ found.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[<code class="xref py py-class docutils literal notranslate"><span class="pre">ParamSpec</span></code>(<code class="docutils literal notranslate"><span class="pre">ArgsT</span></code>)], <code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code>(<code class="docutils literal notranslate"><span class="pre">ReturnT</span></code>, covariant=True)]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.create_volume">
+<span class="sig-prename descclassname"><span class="pre">fal.</span></span><span class="sig-name descname"><span class="pre">create_volume</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">team</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">api_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">profile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.create_volume" title="Link to this definition">¶</a></dt>
+<dd><p>Create a volume and return its canonical (lowercase) name.</p>
+<p>Raises a typed <code class="docutils literal notranslate"><span class="pre">fal.exceptions.VolumeException</span></code> subclass when the server
+rejects the request with a known reason.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
 </dd>
 </dl>
 </dd></dl>

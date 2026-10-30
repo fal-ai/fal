@@ -50,6 +50,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#module-fal.api.run">fal.api.run module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#module-fal.api.runners">fal.api.runners module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#module-fal.api.secrets">fal.api.secrets module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#module-fal.api.volumes">fal.api.volumes module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#module-fal.api">Module contents</a></li>
 </ul>
 </li>
@@ -83,6 +84,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.runners">fal.cli.runners module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.secrets">fal.cli.secrets module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.teams">fal.cli.teams module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.volumes">fal.cli.volumes module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli">Module contents</a></li>
 </ul>
 </li>
@@ -106,6 +108,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#submodules">Submodules</a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#module-fal.exceptions.auth">fal.exceptions.auth module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#module-fal.exceptions.gpu">fal.exceptions.gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#module-fal.exceptions.volumes">fal.exceptions.volumes module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#module-fal.exceptions">Module contents</a></li>
 </ul>
 </li>
@@ -177,6 +180,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.image"><code class="docutils literal notranslate"><span class="pre">App.image</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.secrets"><code class="docutils literal notranslate"><span class="pre">App.secrets</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.data_mounts"><code class="docutils literal notranslate"><span class="pre">App.data_mounts</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.volumes"><code class="docutils literal notranslate"><span class="pre">App.volumes</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#id0"><code class="docutils literal notranslate"><span class="pre">App.app_auth</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#id1"><code class="docutils literal notranslate"><span class="pre">App.app_files</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#id2"><code class="docutils literal notranslate"><span class="pre">App.app_files_context_dir</span></code></a></li>
@@ -222,6 +226,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#id25"><code class="docutils literal notranslate"><span class="pre">App.startup_timeout</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.teardown"><code class="docutils literal notranslate"><span class="pre">App.teardown()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.termination_grace_period_seconds"><code class="docutils literal notranslate"><span class="pre">App.termination_grace_period_seconds</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id26"><code class="docutils literal notranslate"><span class="pre">App.volumes</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.app.AppClient"><code class="docutils literal notranslate"><span class="pre">AppClient</span></code></a><ul>
@@ -778,6 +783,17 @@
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.utils.load_function_from"><code class="docutils literal notranslate"><span class="pre">load_function_from()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.volumes">fal.volumes module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.volumes.Volume"><code class="docutils literal notranslate"><span class="pre">Volume</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.volumes.Volume.name"><code class="docutils literal notranslate"><span class="pre">Volume.name</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.volumes.canonical_volume_name"><code class="docutils literal notranslate"><span class="pre">canonical_volume_name()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.volumes.create_volume"><code class="docutils literal notranslate"><span class="pre">create_volume()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.volumes.normalize_volumes"><code class="docutils literal notranslate"><span class="pre">normalize_volumes()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.volumes.validate_mount_path"><code class="docutils literal notranslate"><span class="pre">validate_mount_path()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.workflows">fal.workflows module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.AttributeLeaf"><code class="docutils literal notranslate"><span class="pre">AttributeLeaf</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.AttributeLeaf.attribute"><code class="docutils literal notranslate"><span class="pre">AttributeLeaf.attribute</span></code></a></li>
@@ -888,51 +904,53 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.image"><code class="docutils literal notranslate"><span class="pre">App.image</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.secrets"><code class="docutils literal notranslate"><span class="pre">App.secrets</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.data_mounts"><code class="docutils literal notranslate"><span class="pre">App.data_mounts</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id28"><code class="docutils literal notranslate"><span class="pre">App.app_auth</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id29"><code class="docutils literal notranslate"><span class="pre">App.app_files</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id30"><code class="docutils literal notranslate"><span class="pre">App.app_files_context_dir</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id31"><code class="docutils literal notranslate"><span class="pre">App.app_files_ignore</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id32"><code class="docutils literal notranslate"><span class="pre">App.app_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.volumes"><code class="docutils literal notranslate"><span class="pre">App.volumes</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id29"><code class="docutils literal notranslate"><span class="pre">App.app_auth</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id30"><code class="docutils literal notranslate"><span class="pre">App.app_files</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id31"><code class="docutils literal notranslate"><span class="pre">App.app_files_context_dir</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id32"><code class="docutils literal notranslate"><span class="pre">App.app_files_ignore</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id33"><code class="docutils literal notranslate"><span class="pre">App.app_name</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.build_metadata"><code class="docutils literal notranslate"><span class="pre">App.build_metadata()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.collect_routes"><code class="docutils literal notranslate"><span class="pre">App.collect_routes()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id33"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id34"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer_perc</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id34"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id35"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer_perc</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.current_request"><code class="docutils literal notranslate"><span class="pre">App.current_request</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id35"><code class="docutils literal notranslate"><span class="pre">App.data_mounts</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id36"><code class="docutils literal notranslate"><span class="pre">App.data_mounts</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.get_billing_components"><code class="docutils literal notranslate"><span class="pre">App.get_billing_components()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.get_endpoints"><code class="docutils literal notranslate"><span class="pre">App.get_endpoints()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.get_health_check_config"><code class="docutils literal notranslate"><span class="pre">App.get_health_check_config()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.handle_exit"><code class="docutils literal notranslate"><span class="pre">App.handle_exit()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.health"><code class="docutils literal notranslate"><span class="pre">App.health()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id36"><code class="docutils literal notranslate"><span class="pre">App.host_kwargs</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id37"><code class="docutils literal notranslate"><span class="pre">App.image</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id37"><code class="docutils literal notranslate"><span class="pre">App.host_kwargs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id38"><code class="docutils literal notranslate"><span class="pre">App.image</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.isolate_channel"><code class="docutils literal notranslate"><span class="pre">App.isolate_channel</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id38"><code class="docutils literal notranslate"><span class="pre">App.kind</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id39"><code class="docutils literal notranslate"><span class="pre">App.kind</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.lifespan"><code class="docutils literal notranslate"><span class="pre">App.lifespan()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.local_file_path"><code class="docutils literal notranslate"><span class="pre">App.local_file_path</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id39"><code class="docutils literal notranslate"><span class="pre">App.local_python_modules</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id40"><code class="docutils literal notranslate"><span class="pre">App.machine_type</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id41"><code class="docutils literal notranslate"><span class="pre">App.max_concurrency</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id42"><code class="docutils literal notranslate"><span class="pre">App.max_multiplexing</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id43"><code class="docutils literal notranslate"><span class="pre">App.metrics_port</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id44"><code class="docutils literal notranslate"><span class="pre">App.min_concurrency</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id45"><code class="docutils literal notranslate"><span class="pre">App.num_gpus</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id40"><code class="docutils literal notranslate"><span class="pre">App.local_python_modules</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id41"><code class="docutils literal notranslate"><span class="pre">App.machine_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id42"><code class="docutils literal notranslate"><span class="pre">App.max_concurrency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id43"><code class="docutils literal notranslate"><span class="pre">App.max_multiplexing</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id44"><code class="docutils literal notranslate"><span class="pre">App.metrics_port</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id45"><code class="docutils literal notranslate"><span class="pre">App.min_concurrency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id46"><code class="docutils literal notranslate"><span class="pre">App.num_gpus</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.provide_hints"><code class="docutils literal notranslate"><span class="pre">App.provide_hints()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id46"><code class="docutils literal notranslate"><span class="pre">App.regions</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id47"><code class="docutils literal notranslate"><span class="pre">App.request_start_timeout</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id48"><code class="docutils literal notranslate"><span class="pre">App.request_timeout</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id49"><code class="docutils literal notranslate"><span class="pre">App.requirements</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id50"><code class="docutils literal notranslate"><span class="pre">App.requirements_context_dir</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id47"><code class="docutils literal notranslate"><span class="pre">App.regions</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id48"><code class="docutils literal notranslate"><span class="pre">App.request_start_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id49"><code class="docutils literal notranslate"><span class="pre">App.request_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id50"><code class="docutils literal notranslate"><span class="pre">App.requirements</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id51"><code class="docutils literal notranslate"><span class="pre">App.requirements_context_dir</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.retry_config"><code class="docutils literal notranslate"><span class="pre">App.retry_config</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.run_local"><code class="docutils literal notranslate"><span class="pre">App.run_local()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id51"><code class="docutils literal notranslate"><span class="pre">App.scaling_delay</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id52"><code class="docutils literal notranslate"><span class="pre">App.secrets</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id52"><code class="docutils literal notranslate"><span class="pre">App.scaling_delay</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id53"><code class="docutils literal notranslate"><span class="pre">App.secrets</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.setup"><code class="docutils literal notranslate"><span class="pre">App.setup()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.skip_retry_conditions"><code class="docutils literal notranslate"><span class="pre">App.skip_retry_conditions</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.spawn"><code class="docutils literal notranslate"><span class="pre">App.spawn()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id53"><code class="docutils literal notranslate"><span class="pre">App.startup_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id54"><code class="docutils literal notranslate"><span class="pre">App.startup_timeout</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.teardown"><code class="docutils literal notranslate"><span class="pre">App.teardown()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.termination_grace_period_seconds"><code class="docutils literal notranslate"><span class="pre">App.termination_grace_period_seconds</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id55"><code class="docutils literal notranslate"><span class="pre">App.volumes</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.BillingComponents"><code class="docutils literal notranslate"><span class="pre">BillingComponents</span></code></a><ul>
@@ -981,7 +999,12 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.HealthCheck.timeout_seconds"><code class="docutils literal notranslate"><span class="pre">HealthCheck.timeout_seconds</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.Volume"><code class="docutils literal notranslate"><span class="pre">Volume</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.Volume.name"><code class="docutils literal notranslate"><span class="pre">Volume.name</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.cached"><code class="docutils literal notranslate"><span class="pre">cached()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.create_volume"><code class="docutils literal notranslate"><span class="pre">create_volume()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.endpoint"><code class="docutils literal notranslate"><span class="pre">endpoint()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.function"><code class="docutils literal notranslate"><span class="pre">function()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.realtime"><code class="docutils literal notranslate"><span class="pre">realtime()</span></code></a></li>

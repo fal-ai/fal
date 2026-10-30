@@ -20,6 +20,14 @@ fal.exceptions.gpu module
    :undoc-members:
    :show-inheritance:
 
+fal.exceptions.volumes module
+-----------------------------
+
+.. automodule:: fal.exceptions.volumes
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 

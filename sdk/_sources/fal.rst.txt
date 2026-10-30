@@ -148,6 +148,14 @@ fal.utils module
    :undoc-members:
    :show-inheritance:
 
+fal.volumes module
+------------------
+
+.. automodule:: fal.volumes
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.workflows module
 --------------------
 

@@ -76,6 +76,14 @@ fal.api.secrets module
    :undoc-members:
    :show-inheritance:
 
+fal.api.volumes module
+----------------------
+
+.. automodule:: fal.api.volumes
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 

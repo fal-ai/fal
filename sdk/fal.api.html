@@ -1293,6 +1293,7 @@ client.deploy(“path/to/myfile.py::MyApp”)</p>
 <li><p>client.runners.* - corresponds to <cite>fal runners …</cite></p></li>
 <li><p>client.keys.*    - corresponds to <cite>fal keys …</cite></p></li>
 <li><p>client.secrets.* - corresponds to <cite>fal secrets …</cite></p></li>
+<li><p>client.volumes.* - corresponds to <cite>fal volumes …</cite></p></li>
 <li><p>client.deploy()  - corresponds to <cite>fal deploy …</cite></p></li>
 </ul>
 </dd>
@@ -1356,6 +1357,29 @@ strategy=”rolling”,</p>
 <dt class="sig sig-object py" id="fal.api.client.SyncServerlessClient.team">
 <span class="sig-name descname"><span class="pre">team</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.api.client.SyncServerlessClient.team" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.client.VolumesNamespace">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.client.</span></span><span class="sig-name descname"><span class="pre">VolumesNamespace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.VolumesNamespace" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Namespace for volume management. Corresponds to <cite>fal volumes …</cite> CLI commands.</p>
+<p>Accessed via <cite>client.volumes</cite>.</p>
+<p class="rubric">Example</p>
+<p>from fal.api import SyncServerlessClient</p>
+<p>client = SyncServerlessClient()
+name = client.volumes.create(“my-volume”)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.VolumesNamespace.create">
+<span class="sig-name descname"><span class="pre">create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.VolumesNamespace.create" title="Link to this definition">¶</a></dt>
+<dd><p>Create a volume and return its canonical (lowercase) name.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 
@@ -1637,6 +1661,19 @@ type with non-GPU plans at count 0, which we filter out.</p>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-fal.api.volumes">
+<span id="fal-api-volumes-module"></span><h2>fal.api.volumes module<a class="headerlink" href="#module-fal.api.volumes" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.volumes.create_volume">
+<span class="sig-prename descclassname"><span class="pre">fal.api.volumes.</span></span><span class="sig-name descname"><span class="pre">create_volume</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.volumes.create_volume" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
 </dd>
 </dl>
 </dd></dl>
@@ -2004,6 +2041,7 @@ client.deploy(“path/to/myfile.py::MyApp”)</p>
 <li><p>client.runners.* - corresponds to <cite>fal runners …</cite></p></li>
 <li><p>client.keys.*    - corresponds to <cite>fal keys …</cite></p></li>
 <li><p>client.secrets.* - corresponds to <cite>fal secrets …</cite></p></li>
+<li><p>client.volumes.* - corresponds to <cite>fal volumes …</cite></p></li>
 <li><p>client.deploy()  - corresponds to <cite>fal deploy …</cite></p></li>
 </ul>
 </dd>
@@ -2067,6 +2105,29 @@ strategy=”rolling”,</p>
 <dt class="sig sig-object py" id="fal.api.SyncServerlessClient.team">
 <span class="sig-name descname"><span class="pre">team</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.api.SyncServerlessClient.team" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.VolumesNamespace">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.</span></span><span class="sig-name descname"><span class="pre">VolumesNamespace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.VolumesNamespace" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Namespace for volume management. Corresponds to <cite>fal volumes …</cite> CLI commands.</p>
+<p>Accessed via <cite>client.volumes</cite>.</p>
+<p class="rubric">Example</p>
+<p>from fal.api import SyncServerlessClient</p>
+<p>client = SyncServerlessClient()
+name = client.volumes.create(“my-volume”)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.VolumesNamespace.create">
+<span class="sig-name descname"><span class="pre">create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.VolumesNamespace.create" title="Link to this definition">¶</a></dt>
+<dd><p>Create a volume and return its canonical (lowercase) name.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 

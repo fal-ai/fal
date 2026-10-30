@@ -172,6 +172,14 @@ fal.cli.teams module
    :undoc-members:
    :show-inheritance:
 
+fal.cli.volumes module
+----------------------
+
+.. automodule:: fal.cli.volumes
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 
