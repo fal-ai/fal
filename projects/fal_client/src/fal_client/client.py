@@ -1152,6 +1152,42 @@ INGRESS_ERROR_CODES = [502, 503, 504]
 # The backup transport caps connect further on the mapped domains; server-supplied
 # hosts keep the 30s below.
 QUEUE_POLL_TIMEOUT = httpx.Timeout(120.0, connect=30.0)
+
+
+@dataclass(frozen=True)
+class PollBackoff:
+    """Exponential backoff between queue status checks. All times are in seconds.
+
+    The delay starts at ``initial`` and grows by ``multiplier`` after each
+    unfinished check, capped at ``maximum``. Each delay is varied by
+    ``+/- jitter`` and capped again.
+    Requires ``0 < initial <= maximum < inf``, ``multiplier >= 1`` and ``0 <= jitter <= 1``.
+    """
+
+    initial: float = 0.25
+    multiplier: float = 1.05
+    maximum: float = 10.0
+    jitter: float = 0.2
+
+    def __post_init__(self) -> None:
+        if not 0 < self.initial <= self.maximum < math.inf:
+            raise ValueError("PollBackoff requires 0 < initial <= maximum < inf")
+        if not self.multiplier >= 1:
+            raise ValueError("PollBackoff requires multiplier >= 1")
+        if not 0 <= self.jitter <= 1:
+            raise ValueError("PollBackoff requires 0 <= jitter <= 1")
+
+    def delays(self) -> Iterator[float]:
+        base = self.initial
+        while True:
+            factor = random.uniform(1 - self.jitter, 1 + self.jitter)
+            yield min(self.maximum, base * factor)
+            base = min(self.maximum, base * self.multiplier)
+
+
+DEFAULT_POLL_BACKOFF = PollBackoff()
+# Deprecated: polling no longer uses a fixed interval. Kept at its historical
+# value so existing imports keep working.
 DEFAULT_QUEUE_POLL_INTERVAL = 0.1
 
 
@@ -1572,23 +1608,44 @@ class SyncRequestHandle(_BaseRequestHandle):
         return self._parse_status(response.json())
 
     def iter_events(
-        self, *, with_logs: bool = False, interval: float = DEFAULT_QUEUE_POLL_INTERVAL
+        self,
+        *,
+        with_logs: bool = False,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ) -> Iterator[Status]:
-        """Continuously poll for the status of the request and yield it at each interval till
-        the request is completed. If `with_logs` is True, logs will be included in the response.
+        """Poll until completed, including logs if `with_logs` is True.
+
+        `interval` fixes the delay in seconds between checks. Otherwise the delay
+        follows `backoff`, which defaults to `PollBackoff()` and resets when
+        the status changes.
         """
 
+        polling_backoff = backoff or DEFAULT_POLL_BACKOFF
+        delays = polling_backoff.delays()
+        previous_status_type: type[Status] | None = None
         while True:
             status = self.status(with_logs=with_logs)
             yield status
             if isinstance(status, Completed):
                 break
 
-            time.sleep(interval)
+            # Don't let a long queue wait slow completion detection once running.
+            # Completed exits above without another sleep.
+            if interval is None and type(status) is not previous_status_type:
+                delays = polling_backoff.delays()
+            previous_status_type = type(status)
+            delay = interval if interval is not None else next(delays)
+            time.sleep(delay)
 
-    def get(self, *, interval: float = DEFAULT_QUEUE_POLL_INTERVAL) -> AnyJSON:
-        """Wait till the request is completed and return the result of the inference call."""
-        for _ in self.iter_events(with_logs=False, interval=interval):
+    def get(
+        self,
+        *,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
+    ) -> AnyJSON:
+        """Wait for the result. See `iter_events` for `interval` and `backoff`."""
+        for _ in self.iter_events(with_logs=False, interval=interval, backoff=backoff):
             continue
 
         response = _maybe_retry_request(
@@ -1649,23 +1706,46 @@ class AsyncRequestHandle(_BaseRequestHandle):
         return self._parse_status(response.json())
 
     async def iter_events(
-        self, *, with_logs: bool = False, interval: float = DEFAULT_QUEUE_POLL_INTERVAL
+        self,
+        *,
+        with_logs: bool = False,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ) -> AsyncIterator[Status]:
-        """Continuously poll for the status of the request and yield it at each interval till
-        the request is completed. If `with_logs` is True, logs will be included in the response.
+        """Poll until completed, including logs if `with_logs` is True.
+
+        `interval` fixes the delay in seconds between checks. Otherwise the delay
+        follows `backoff`, which defaults to `PollBackoff()` and resets when
+        the status changes.
         """
 
+        polling_backoff = backoff or DEFAULT_POLL_BACKOFF
+        delays = polling_backoff.delays()
+        previous_status_type: type[Status] | None = None
         while True:
             status = await self.status(with_logs=with_logs)
             yield status
             if isinstance(status, Completed):
                 break
 
-            await asyncio.sleep(interval)
+            # Don't let a long queue wait slow completion detection once running.
+            # Completed exits above without another sleep.
+            if interval is None and type(status) is not previous_status_type:
+                delays = polling_backoff.delays()
+            previous_status_type = type(status)
+            delay = interval if interval is not None else next(delays)
+            await asyncio.sleep(delay)
 
-    async def get(self, *, interval: float = DEFAULT_QUEUE_POLL_INTERVAL) -> AnyJSON:
-        """Wait till the request is completed and return the result."""
-        async for _ in self.iter_events(with_logs=False, interval=interval):
+    async def get(
+        self,
+        *,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
+    ) -> AnyJSON:
+        """Wait for the result. See `iter_events` for `interval` and `backoff`."""
+        async for _ in self.iter_events(
+            with_logs=False, interval=interval, backoff=backoff
+        ):
             continue
 
         response = await _async_maybe_retry_request(
@@ -1884,7 +1964,8 @@ class AsyncClient:
         path: str = "",
         hint: str | None = None,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
         on_enqueue: Optional[Callable[[str], None | Awaitable[None]]] = None,
         on_queue_update: Optional[Callable[[Status], None | Awaitable[None]]] = None,
         priority: Optional[Priority] = None,
@@ -1896,7 +1977,10 @@ class AsyncClient:
         """Subscribe to an application and wait for the result.
 
         Args:
-            interval: Polling interval in seconds while waiting for request updates.
+            interval: Fixed delay in seconds between status checks. If omitted,
+                the delay follows `backoff`.
+            backoff: Exponential backoff between status checks. Defaults to
+                `PollBackoff()`. Ignored when `interval` is set.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
@@ -1937,13 +2021,13 @@ class AsyncClient:
 
             if on_queue_update is not None:
                 async for event in handle.iter_events(
-                    with_logs=with_logs, interval=interval
+                    with_logs=with_logs, interval=interval, backoff=backoff
                 ):
                     result = on_queue_update(event)
                     if inspect.isawaitable(result):
                         await result
 
-            return await handle.get(interval=interval)
+            return await handle.get(interval=interval, backoff=backoff)
 
         if client_timeout is None:
             return await _do_subscribe()
@@ -2432,7 +2516,8 @@ class SyncClient:
         path: str = "",
         hint: str | None = None,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
         on_enqueue: Optional[Callable[[str], None]] = None,
         on_queue_update: Optional[Callable[[Status], None]] = None,
         priority: Optional[Priority] = None,
@@ -2444,7 +2529,10 @@ class SyncClient:
         """Subscribe to an application and wait for the result.
 
         Args:
-            interval: Polling interval in seconds while waiting for request updates.
+            interval: Fixed delay in seconds between status checks. If omitted,
+                the delay follows `backoff`.
+            backoff: Exponential backoff between status checks. Defaults to
+                `PollBackoff()`. Ignored when `interval` is set.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
@@ -2482,10 +2570,12 @@ class SyncClient:
                 on_enqueue(handle.request_id)
 
             if on_queue_update is not None:
-                for event in handle.iter_events(with_logs=with_logs, interval=interval):
+                for event in handle.iter_events(
+                    with_logs=with_logs, interval=interval, backoff=backoff
+                ):
                     on_queue_update(event)
 
-            return handle.get(interval=interval)
+            return handle.get(interval=interval, backoff=backoff)
 
         if client_timeout is None:
             return _do_subscribe()

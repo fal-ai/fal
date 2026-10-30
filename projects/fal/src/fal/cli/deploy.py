@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import urllib.parse
 
 from fal.api.client import SyncServerlessClient
 
@@ -155,41 +154,18 @@ def _apps_command_hint(
 _UTILITY_ENDPOINT_SUFFIXES = {"cancel", "health", "object_info"}
 
 
-def _deployed_app_urls(url: str) -> tuple[str | None, str | None]:
-    """Return the app overview and, for non-utility routes, its Playground URL."""
-    parsed = urllib.parse.urlsplit(url)
-    path_segments = parsed.path.split("/")
-    if (
-        parsed.scheme not in {"http", "https"}
-        or not parsed.netloc
-        or path_segments[:2] != ["", "models"]
-    ):
-        return None, url
+def _deployed_app_urls(route: str, url: str) -> tuple[str | None, str | None]:
+    """Return the app overview and, for non-utility routes, the Playground URL.
 
-    endpoint_segments = path_segments[2:]
-    if endpoint_segments and endpoint_segments[-1] == "":
-        endpoint_segments = endpoint_segments[:-1]
-    if len(endpoint_segments) < 2 or any(not segment for segment in endpoint_segments):
-        return None, url
-
-    decoded_segments = [urllib.parse.unquote(segment) for segment in endpoint_segments]
-    owner, app_name = decoded_segments[:2]
-    app_path = (
-        f"/dashboard/apps/{urllib.parse.quote(owner, safe='')}"
-        f"/{urllib.parse.quote(app_name, safe='')}"
-    )
-    overview_url = urllib.parse.urlunsplit(
-        (parsed.scheme, parsed.netloc, app_path, "", "")
-    )
-    if len(decoded_segments) > 2 and decoded_segments[-1] in _UTILITY_ENDPOINT_SUFFIXES:
-        return overview_url, None
-
-    formatted_endpoint = "/".join(decoded_segments)
-    query = f"endpoint={urllib.parse.quote(formatted_endpoint, safe='')}"
-    playground_url = urllib.parse.urlunsplit(
-        (parsed.scheme, parsed.netloc, f"{app_path}/testing/playground", query, "")
-    )
-    return overview_url, playground_url
+    The backend sends `<app overview>/testing/playground?endpoint=` with the
+    route appended, so the Playground URL is printed unchanged.
+    """
+    path = url.partition("?")[0]
+    overview_url, marker, _ = path.rpartition("/testing/playground")
+    overview = overview_url if marker else None
+    if route.rsplit("/", 1)[-1] in _UTILITY_ENDPOINT_SUFFIXES:
+        return overview, None
+    return overview, url
 
 
 def _render_deploy_result(
@@ -278,8 +254,8 @@ def _render_deploy_result(
         if URL_OUTPUT != "none":
             app_overview_url = None
             playground_started = False
-            for url in res.urls.get("playground", {}).values():
-                overview_url, playground_url = _deployed_app_urls(url)
+            for route, url in res.urls.get("playground", {}).items():
+                overview_url, playground_url = _deployed_app_urls(route, url)
                 if app_overview_url is None:
                     app_overview_url = overview_url
                 if playground_url is not None:
