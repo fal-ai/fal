@@ -31,6 +31,13 @@ from fal.toolkit.image.image import (
 )
 from fal.toolkit.kv import KVStore
 from fal.toolkit.pydantic import FalBaseModel, Field, Hidden
+from fal.toolkit.schemas import (
+    AudioMedia,
+    GenerationOutput,
+    ImageMedia,
+    Media,
+    VideoMedia,
+)
 from fal.toolkit.utils import (
     FAL_MODEL_WEIGHTS_DIR,
     FAL_PERSISTENT_DIR,
@@ -46,12 +53,15 @@ __all__ = [
     # Classes
     "Audio",
     "AudioField",
+    "AudioMedia",
     "CompressedFile",
     "FalBaseModel",
     "File",
     "FileField",
+    "GenerationOutput",
     "Image",
     "ImageField",
+    "ImageMedia",
     "ImageSizeConstraints",
     "ImageSizeField",
     "ImageSizeInput",
@@ -59,8 +69,10 @@ __all__ = [
     "ImageValidationOptions",
     "to_xfal",
     "KVStore",
+    "Media",
     "Video",
     "VideoField",
+    "VideoMedia",
     "VideoNormalizationConfig",
     "VideoValidationConfig",
     "VideoValidationOptions",
