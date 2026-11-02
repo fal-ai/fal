@@ -1848,7 +1848,8 @@ class AsyncClient:
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts. Does not apply once the application begins processing.
             tags: Tags to attach to the request, as a key to value mapping. Sent
-                as one packed X-Fal-Tags header; invalid or over-limit tags raise.
+                as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+                as do reserved values ('*' and values wrapped in parentheses).
         """
 
         client = await self._client
@@ -1908,7 +1909,8 @@ class AsyncClient:
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
             tags: Tags to attach to the request, as a key to value mapping. Sent
-                as one packed X-Fal-Tags header; invalid or over-limit tags raise.
+                as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+                as do reserved values ('*' and values wrapped in parentheses).
         """
 
         client = await self._client
@@ -2407,7 +2409,8 @@ class SyncClient:
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts. Does not apply once the application begins processing.
             tags: Tags to attach to the request, as a key to value mapping. Sent
-                as one packed X-Fal-Tags header; invalid or over-limit tags raise.
+                as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+                as do reserved values ('*' and values wrapped in parentheses).
         """
 
         url = RUN_URL_FORMAT + application
@@ -2462,7 +2465,8 @@ class SyncClient:
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
             tags: Tags to attach to the request, as a key to value mapping. Sent
-                as one packed X-Fal-Tags header; invalid or over-limit tags raise.
+                as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+                as do reserved values ('*' and values wrapped in parentheses).
         """
 
         url = QUEUE_URL_FORMAT + application
