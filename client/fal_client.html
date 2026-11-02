@@ -293,7 +293,8 @@ primary and backup domains are still capped at 5 seconds.</p></li>
 <li><p><strong>start_timeout</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Server-side request timeout in seconds. Limits total time spent
 waiting before processing starts. Does not apply once the application begins processing.</p></li>
 <li><p><strong>tags</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Tags to attach to the request, as a key to value mapping. Sent
-as one packed X-Fal-Tags header; invalid or over-limit tags raise.</p></li>
+as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+as do reserved values (‘*’ and values wrapped in parentheses).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -341,7 +342,8 @@ default), unlike run(), whose default read timeout is unbounded.</p>
 waiting before processing starts (includes queue wait, retries, and
 routing). Does not apply once the application begins processing.</p></li>
 <li><p><strong>tags</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Tags to attach to the request, as a key to value mapping. Sent
-as one packed X-Fal-Tags header; invalid or over-limit tags raise.</p></li>
+as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+as do reserved values (‘*’ and values wrapped in parentheses).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1088,7 +1090,8 @@ primary and backup domains are still capped at 5 seconds.</p></li>
 <li><p><strong>start_timeout</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Server-side request timeout in seconds. Limits total time spent
 waiting before processing starts. Does not apply once the application begins processing.</p></li>
 <li><p><strong>tags</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Tags to attach to the request, as a key to value mapping. Sent
-as one packed X-Fal-Tags header; invalid or over-limit tags raise.</p></li>
+as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+as do reserved values (‘*’ and values wrapped in parentheses).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1134,7 +1137,8 @@ default), unlike run(), whose default read timeout is unbounded.</p>
 waiting before processing starts (includes queue wait, retries, and
 routing). Does not apply once the application begins processing.</p></li>
 <li><p><strong>tags</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Tags to attach to the request, as a key to value mapping. Sent
-as one packed X-Fal-Tags header; invalid or over-limit tags raise.</p></li>
+as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+as do reserved values (‘*’ and values wrapped in parentheses).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1415,7 +1419,8 @@ primary and backup domains are still capped at 5 seconds.</p></li>
 <li><p><strong>start_timeout</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Server-side request timeout in seconds. Limits total time spent
 waiting before processing starts. Does not apply once the application begins processing.</p></li>
 <li><p><strong>tags</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Tags to attach to the request, as a key to value mapping. Sent
-as one packed X-Fal-Tags header; invalid or over-limit tags raise.</p></li>
+as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+as do reserved values (‘*’ and values wrapped in parentheses).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1463,7 +1468,8 @@ default), unlike run(), whose default read timeout is unbounded.</p>
 waiting before processing starts (includes queue wait, retries, and
 routing). Does not apply once the application begins processing.</p></li>
 <li><p><strong>tags</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Tags to attach to the request, as a key to value mapping. Sent
-as one packed X-Fal-Tags header; invalid or over-limit tags raise.</p></li>
+as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+as do reserved values (‘*’ and values wrapped in parentheses).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1990,7 +1996,8 @@ primary and backup domains are still capped at 5 seconds.</p></li>
 <li><p><strong>start_timeout</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Server-side request timeout in seconds. Limits total time spent
 waiting before processing starts. Does not apply once the application begins processing.</p></li>
 <li><p><strong>tags</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Tags to attach to the request, as a key to value mapping. Sent
-as one packed X-Fal-Tags header; invalid or over-limit tags raise.</p></li>
+as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+as do reserved values (‘*’ and values wrapped in parentheses).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -2036,7 +2043,8 @@ default), unlike run(), whose default read timeout is unbounded.</p>
 waiting before processing starts (includes queue wait, retries, and
 routing). Does not apply once the application begins processing.</p></li>
 <li><p><strong>tags</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Tags to attach to the request, as a key to value mapping. Sent
-as one packed X-Fal-Tags header; invalid or over-limit tags raise.</p></li>
+as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+as do reserved values (‘*’ and values wrapped in parentheses).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -2319,7 +2327,8 @@ primary and backup domains are still capped at 5 seconds.</p></li>
 <li><p><strong>start_timeout</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Server-side request timeout in seconds. Limits total time spent
 waiting before processing starts. Does not apply once the application begins processing.</p></li>
 <li><p><strong>tags</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Tags to attach to the request, as a key to value mapping. Sent
-as one packed X-Fal-Tags header; invalid or over-limit tags raise.</p></li>
+as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+as do reserved values (‘*’ and values wrapped in parentheses).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -2343,7 +2352,8 @@ primary and backup domains are still capped at 5 seconds.</p></li>
 <li><p><strong>start_timeout</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Server-side request timeout in seconds. Limits total time spent
 waiting before processing starts. Does not apply once the application begins processing.</p></li>
 <li><p><strong>tags</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Tags to attach to the request, as a key to value mapping. Sent
-as one packed X-Fal-Tags header; invalid or over-limit tags raise.</p></li>
+as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+as do reserved values (‘*’ and values wrapped in parentheses).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -2418,7 +2428,8 @@ default), unlike run(), whose default read timeout is unbounded.</p>
 waiting before processing starts (includes queue wait, retries, and
 routing). Does not apply once the application begins processing.</p></li>
 <li><p><strong>tags</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Tags to attach to the request, as a key to value mapping. Sent
-as one packed X-Fal-Tags header; invalid or over-limit tags raise.</p></li>
+as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+as do reserved values (‘*’ and values wrapped in parentheses).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -2442,7 +2453,8 @@ default), unlike run(), whose default read timeout is unbounded.</p>
 waiting before processing starts (includes queue wait, retries, and
 routing). Does not apply once the application begins processing.</p></li>
 <li><p><strong>tags</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Tags to attach to the request, as a key to value mapping. Sent
-as one packed X-Fal-Tags header; invalid or over-limit tags raise.</p></li>
+as one packed X-Fal-Tags header; invalid or over-limit tags raise,
+as do reserved values (‘*’ and values wrapped in parentheses).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
