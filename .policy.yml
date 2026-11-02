@@ -1,0 +1,30 @@
+approval_defaults:
+  options:
+    invalidate_on_push: false
+    ignore_edited_comments: true
+    # Only GitHub review approvals count; comments can be edited by other writers.
+    methods:
+      github_review: true
+      comments: []
+
+policy:
+  approval:
+    - or:
+        - team author with one approval
+        - two team approvals
+
+approval_rules:
+  - name: team author with one approval
+    if:
+      has_author_in:
+        teams:
+          - fal-ai/human-reviewers
+          - fal-ai/trusted-bots
+    requires:
+      count: 1
+      teams: ['fal-ai/human-reviewers']
+
+  - name: two team approvals
+    requires:
+      count: 2
+      teams: ['fal-ai/human-reviewers']
