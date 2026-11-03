@@ -635,16 +635,16 @@ def realtime(
         path: The WebSocket path the endpoint is served on.
         buffering: For unary endpoints (one input, one output), the most
             unprocessed inputs kept per connection. When a new input arrives
-            and the buffer is full, the oldest input is dropped, so the
+            and the input buffer is full, the oldest input is dropped, so the
             function always works on recent inputs. ``None`` keeps every
             input. In all modes it also sizes the outgoing queue at twice
             this value (2 when unset). When that queue is full, outputs are
             sent directly and can arrive out of order.
         session_timeout: Seconds to wait for the next client message before
             the session ends. ``None`` waits indefinitely.
-        max_batch_size: For unary endpoints, the most queued inputs passed to
-            the function in one call. An input type with a ``can_batch``
-            method can stop a batch early.
+        max_batch_size: For unary endpoints, the most inputs from the input
+            buffer passed to the function in one call. An input type with a
+            ``can_batch`` method can stop a batch early.
     """
 
     def marker_fn(original_func: EndpointT) -> EndpointT:
