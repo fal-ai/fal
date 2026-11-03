@@ -608,10 +608,19 @@ class TestAioiceOrderlyTeardown:
     The shim cancels and awaits those check tasks before ``close()`` closes the
     transports, so every retransmit timer is cancelled first.
 
-    If a future aioice teaches ``close()`` to cancel check tasks itself, the
-    unpatched test below flips (canary for an upstream fix) and the shim's source
-    guard makes ``install_orderly_ice_teardown`` decline to wrap.
+    aioice>=0.12.1 cancels check tasks in ``close()`` itself, so the shim's source
+    guard declines to wrap it. These tests key off that same guard, which pins the
+    guard's verdict to the behaviour of the installed aioice.
     """
+
+    @staticmethod
+    def _upstream_close_is_orderly() -> bool:
+        pytest.importorskip("aioice")
+        from aioice import ice
+
+        from fal.wma._aioice_teardown import _close_already_cancels_check_tasks
+
+        return _close_already_cancels_check_tasks(ice.Connection.close)
 
     @staticmethod
     async def _build_leaked_connection(loop, stun):
@@ -652,7 +661,9 @@ class TestAioiceOrderlyTeardown:
         await asyncio.sleep(0.02)  # first send happens, retry timer scheduled
         return conn
 
-    def _run_close_scenario(self, install_shim: bool) -> tuple[list[str], bool]:
+    def _run_close_scenario(
+        self, install_shim: bool
+    ) -> tuple[list[str], bool, bool | None]:
         pytest.importorskip("aioice")
         pytest.importorskip("aioice")
         from aioice import ice, stun
@@ -661,18 +672,19 @@ class TestAioiceOrderlyTeardown:
         original_rto = stun.RETRY_RTO
         stun.RETRY_RTO = 0.05  # fire the retry quickly
 
-        async def scenario() -> tuple[list[str], bool]:
+        async def scenario() -> tuple[list[str], bool, bool | None]:
             loop = asyncio.get_running_loop()
             errors: list[str] = []
             loop.set_exception_handler(
                 lambda _l, ctx: errors.append(type(ctx.get("exception")).__name__)
             )
+            installed = None
             if install_shim:
                 from fal.wma._aioice_teardown import (
                     install_orderly_ice_teardown,
                 )
 
-                assert install_orderly_ice_teardown() is True
+                installed = install_orderly_ice_teardown()
 
             conn = await self._build_leaked_connection(loop, stun)
             await conn.close()
@@ -682,7 +694,7 @@ class TestAioiceOrderlyTeardown:
             # Selector transport logs AttributeError on retry; Windows'
             # Proactor transport can silently discard the same stale send.
             pending = any(not pair.task.done() for pair in conn._check_list)
-            return errors, pending
+            return errors, pending, installed
 
         try:
             return asyncio.run(scenario())
@@ -690,19 +702,27 @@ class TestAioiceOrderlyTeardown:
             ice.Connection.close = original_close
             stun.RETRY_RTO = original_rto
 
-    def test_stock_close_emits_the_retry_race(self):
-        """Canary: unpatched aioice still leaks the orphaned-retry error."""
-        errors, pending = self._run_close_scenario(install_shim=False)
-        assert pending, (
-            "aioice teardown behaviour changed — a possible upstream fix; "
-            "revisit the orderly-teardown shim and its source guard. "
-            f"got: {errors}"
-        )
-        assert errors in ([], ["AttributeError"])
+    def test_stock_close_matches_the_source_guard(self):
+        """Canary: stock close() leaks the check task exactly when the source
+        guard says aioice does not cancel check tasks itself."""
+        upstream_orderly = self._upstream_close_is_orderly()
+        errors, pending, _ = self._run_close_scenario(install_shim=False)
+        if upstream_orderly:
+            assert not pending, "source guard says close() is orderly, but it leaks"
+            assert errors == [], f"orderly close should be silent; got: {errors}"
+        else:
+            assert pending, (
+                "aioice teardown behaviour changed without the source guard "
+                f"noticing; revisit the orderly-teardown shim. got: {errors}"
+            )
+            assert errors in ([], ["AttributeError"])
 
     def test_shim_makes_close_orderly(self):
-        """With the shim installed, orderly teardown emits no loop errors."""
-        errors, pending = self._run_close_scenario(install_shim=True)
+        """With the shim installed (or skipped as redundant), teardown is
+        orderly and emits no loop errors."""
+        upstream_orderly = self._upstream_close_is_orderly()
+        errors, pending, installed = self._run_close_scenario(install_shim=True)
+        assert installed is not upstream_orderly
         assert not pending, "orderly teardown must await the cancelled checks"
         assert errors == [], f"orderly teardown should be silent; got: {errors}"
 
@@ -713,12 +733,14 @@ class TestAioiceOrderlyTeardown:
 
         from fal.wma._aioice_teardown import install_orderly_ice_teardown
 
+        expected = not self._upstream_close_is_orderly()
         original_close = ice.Connection.close
         try:
-            assert install_orderly_ice_teardown() is True
+            assert install_orderly_ice_teardown() is expected
             wrapped = ice.Connection.close
+            assert (wrapped is original_close) is not expected
             # A second install must not re-wrap (no stacking).
-            assert install_orderly_ice_teardown() is True
+            assert install_orderly_ice_teardown() is expected
             assert ice.Connection.close is wrapped
         finally:
             ice.Connection.close = original_close
