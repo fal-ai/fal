@@ -10,8 +10,7 @@ from fal.container import ContainerImage
 from fal.toolkit.llm import LLMApp
 
 DOCKERFILE = """
-FROM vllm/vllm-openai:v0.11.0
-ENTRYPOINT []
+FROM vllm/vllm-openai:v0.32.0
 """
 
 

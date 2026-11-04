@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 import pytest
 import uvicorn
+from fastapi import Request
 
 from fal.toolkit.llm import LLMApp
 
@@ -143,3 +144,10 @@ def test_health_and_engine_stats(served):
     app._proc.kill()
     app._proc.wait()
     assert httpx.get(f"{url}/health").status_code == 503
+
+
+def test_endpoint_annotations_are_not_strings():
+    # `from __future__ import annotations` would make FastAPI read `request` as
+    # a query parameter once the module is pickled by value.
+    assert LLMApp.chat_completions.__annotations__["request"] is Request
+    assert LLMApp.completions.__annotations__["request"] is Request

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import hashlib
 import json
@@ -10,12 +8,13 @@ import sys
 import threading
 import time
 from collections import deque
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Deque, Dict, List, Optional
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from fal.app import App, endpoint
+from fal.toolkit.compilation import get_gpu_type
 from fal.toolkit.llm._cache import apply_engine_cache_env
 from fal.toolkit.llm._preread import DEFAULT_WORKERS, preread_weights
 
@@ -45,7 +44,7 @@ def _engine_version(engine: str) -> str:
         return "unknown"
 
 
-def _parse_stream_usage(tail: bytes) -> dict[str, Any] | None:
+def _parse_stream_usage(tail: bytes) -> Optional[Dict[str, Any]]:
     for raw in reversed(tail.decode("utf-8", errors="replace").splitlines()):
         line = raw.strip()
         if line.startswith("data:") and '"usage"' in line:
@@ -79,16 +78,16 @@ class LLMApp(App):
 
     engine: ClassVar[str] = "vllm"
     model: ClassVar[str] = ""
-    served_model_name: ClassVar[str | None] = None
-    engine_args: ClassVar[list[str]] = []
-    engine_env: ClassVar[dict[str, str]] = {}
+    served_model_name: ClassVar[Optional[str]] = None
+    engine_args: ClassVar[List[str]] = []
+    engine_env: ClassVar[Dict[str, str]] = {}
     engine_port: ClassVar[int] = 8000
     engine_startup_timeout_s: ClassVar[float] = 3300.0
 
     # Persistent caches under /data (None disables, a string overrides the
     # auto namespace of engine, version and GPU type).
     persistent_caches: ClassVar[bool] = True
-    cache_namespace: ClassVar[str | None] = None
+    cache_namespace: ClassVar[Optional[str]] = None
     # Parallel safetensors pre-read; 0 disables.
     preread_workers: ClassVar[int] = DEFAULT_WORKERS
     # Ask the engine for a final usage chunk on streams so token counts are
@@ -100,7 +99,7 @@ class LLMApp(App):
 
     keep_alive = 300
 
-    def engine_command(self, model_path: str) -> list[str]:
+    def engine_command(self, model_path: str) -> List[str]:
         name = self._served_name()
         if self.engine == "vllm":
             head = ["vllm", "serve", model_path]
@@ -125,7 +124,7 @@ class LLMApp(App):
             *self.engine_args,
         ]
 
-    def record_usage(self, path: str, usage: dict[str, Any]) -> None:
+    def record_usage(self, path: str, usage: Dict[str, Any]) -> None:
         """Called with the engine's token ``usage`` for every completed request."""
         for key in ("prompt_tokens", "completion_tokens"):
             self._usage_totals[key] = self._usage_totals.get(key, 0) + int(
@@ -133,7 +132,7 @@ class LLMApp(App):
             )
         self._usage_totals["requests"] = self._usage_totals.get("requests", 0) + 1
 
-    def provide_hints(self) -> list[str]:
+    def provide_hints(self) -> List[str]:
         if not self.prefix_hints:
             raise NotImplementedError
         return list(getattr(self, "_recent_prefixes", ()))
@@ -149,10 +148,10 @@ class LLMApp(App):
         if not self.model:
             raise ValueError("LLMApp subclasses must set `model`")
         t0 = time.monotonic()
-        self._boot: dict[str, float] = {}
-        self._usage_totals: dict[str, int] = {}
-        self._recent_prefixes: deque[str] = deque(maxlen=8)
-        self._engine_log_tail: deque[str] = deque(maxlen=50)
+        self._boot: Dict[str, float] = {}
+        self._usage_totals: Dict[str, int] = {}
+        self._recent_prefixes: Deque[str] = deque(maxlen=8)
+        self._engine_log_tail: Deque[str] = deque(maxlen=50)
 
         if self.persistent_caches:
             namespace = self.cache_namespace or "-".join(
@@ -183,10 +182,10 @@ class LLMApp(App):
         )
         print(f"[llm-app] boot report: {self._boot}")
 
+    # Runners do not have `fal` installed: it is pickled by value, so only
+    # module-level imports resolve. Keep fal imports out of method bodies.
     @staticmethod
     def _gpu_type() -> str:
-        from fal.toolkit.compilation import get_gpu_type  # noqa: PLC0415
-
         return get_gpu_type()
 
     def _resolve_model(self) -> str:
@@ -246,9 +245,9 @@ class LLMApp(App):
             except subprocess.TimeoutExpired:
                 proc.kill()
 
-    async def _engine_stats(self) -> dict[str, float]:
+    async def _engine_stats(self) -> Dict[str, float]:
         text = (await self._client.get("/metrics", timeout=5.0)).text
-        stats: dict[str, float] = {}
+        stats: Dict[str, float] = {}
         for line in text.splitlines():
             if line.startswith(_METRIC_PREFIXES):
                 m = _METRIC_RE.match(line)
@@ -256,7 +255,7 @@ class LLMApp(App):
                     stats[m.group(1)] = stats.get(m.group(1), 0.0) + float(m.group(2))
         return stats
 
-    async def health(self) -> dict[str, Any]:  # type: ignore[override]
+    async def health(self) -> Dict[str, Any]:  # type: ignore[override]
         if self._proc.poll() is not None:
             raise HTTPException(503, f"{self.engine} exited ({self._proc.returncode})")
         try:
@@ -309,7 +308,7 @@ class LLMApp(App):
     async def completions(self, request: Request) -> Response:
         return await self._proxy(request, "/v1/completions")
 
-    def _note_prefix(self, payload: dict[str, Any]) -> None:
+    def _note_prefix(self, payload: Dict[str, Any]) -> None:
         if not self.prefix_hints:
             return
         text = json.dumps(payload.get("messages") or payload.get("prompt") or "")
@@ -321,7 +320,7 @@ class LLMApp(App):
 
     async def _proxy(self, request: Request, path: str) -> Response:
         try:
-            payload: dict[str, Any] = await request.json()
+            payload: Dict[str, Any] = await request.json()
         except ValueError:
             return JSONResponse({"error": "invalid JSON body"}, status_code=400)
         if not isinstance(payload, dict):
@@ -363,7 +362,7 @@ class LLMApp(App):
         return StreamingResponse(relay(), media_type="text/event-stream")
 
     async def _proxy_unary(
-        self, request: Request, path: str, payload: dict[str, Any]
+        self, request: Request, path: str, payload: Dict[str, Any]
     ) -> Response:
         task = asyncio.ensure_future(self._client.post(path, json=payload))
         watcher = asyncio.ensure_future(_wait_for_disconnect(request))
