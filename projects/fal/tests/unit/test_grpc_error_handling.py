@@ -9,6 +9,15 @@ from fal.api.api import (
     _format_unavailable_error,
     _handle_grpc_error,
 )
+from fal.exceptions import (
+    VolumeAccountNotEligibleError,
+    VolumeAlreadyExistsError,
+    VolumeControlPlaneUnavailableError,
+    VolumeInvalidMountPathError,
+    VolumeInvalidNameError,
+    VolumeNotFoundError,
+    VolumeUnresolvableError,
+)
 
 
 class _FakeRpcError(grpc.RpcError):
@@ -284,3 +293,71 @@ class TestFormatUnavailableError:
         error = _FakeRpcError(grpc.StatusCode.UNAVAILABLE, "Socket closed", None)
         msg = _format_unavailable_error(error)
         assert "debug:" not in msg
+
+
+class TestHandleGrpcErrorVolumes:
+    def _call_decorated(self, error):
+        @_handle_grpc_error()
+        def failing_func():
+            raise error
+
+        failing_func()
+
+    @pytest.mark.parametrize(
+        ("reason", "code", "expected"),
+        [
+            (
+                "VOLUME_INVALID_NAME",
+                grpc.StatusCode.INVALID_ARGUMENT,
+                VolumeInvalidNameError,
+            ),
+            (
+                "VOLUME_INVALID_MOUNT_PATH",
+                grpc.StatusCode.INVALID_ARGUMENT,
+                VolumeInvalidMountPathError,
+            ),
+            ("VOLUME_NOT_FOUND", grpc.StatusCode.NOT_FOUND, VolumeNotFoundError),
+            (
+                "VOLUME_UNRESOLVABLE",
+                grpc.StatusCode.FAILED_PRECONDITION,
+                VolumeUnresolvableError,
+            ),
+            (
+                "VOLUME_ALREADY_EXISTS",
+                grpc.StatusCode.ALREADY_EXISTS,
+                VolumeAlreadyExistsError,
+            ),
+            (
+                "VOLUME_ACCOUNT_NOT_ELIGIBLE",
+                grpc.StatusCode.FAILED_PRECONDITION,
+                VolumeAccountNotEligibleError,
+            ),
+            (
+                "VOLUME_CONTROL_PLANE_UNAVAILABLE",
+                grpc.StatusCode.UNAVAILABLE,
+                VolumeControlPlaneUnavailableError,
+            ),
+        ],
+    )
+    def test_known_reason_maps_to_typed_error(self, reason, code, expected):
+        error = _FakeRpcError(code, f"{reason}: Volume 'x' rejected")
+        with pytest.raises(expected) as exc_info:
+            self._call_decorated(error)
+        exc = exc_info.value
+        assert exc.reason == reason
+        assert exc.message == "Volume 'x' rejected"
+        assert exc.grpc_status is code
+        assert exc.http_status is None
+        assert str(exc) == "Volume 'x' rejected"
+
+    def test_unknown_volume_reason_keeps_generic_error(self):
+        error = _FakeRpcError(
+            grpc.StatusCode.FAILED_PRECONDITION, "VOLUME_SOMETHING_NEW: details"
+        )
+        with pytest.raises(FalServerlessError, match="VOLUME_SOMETHING_NEW: details"):
+            self._call_decorated(error)
+
+    def test_unknown_volume_reason_with_unavailable_code_stays_unavailable(self):
+        error = _FakeRpcError(grpc.StatusCode.UNAVAILABLE, "VOLUME_NEW: details", None)
+        with pytest.raises(FalServerlessError, match="^Could not reach fal host"):
+            self._call_decorated(error)

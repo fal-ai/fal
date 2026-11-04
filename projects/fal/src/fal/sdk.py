@@ -735,6 +735,13 @@ def _from_grpc_build_environment_result(
     )
 
 
+def _volume_mounts(volumes: dict[str, str] | None) -> list[isolate_proto.VolumeMount]:
+    return [
+        isolate_proto.VolumeMount(volume_name=name, mount_path=mount_path)
+        for mount_path, name in (volumes or {}).items()
+    ]
+
+
 @from_grpc.register(isolate_proto.HostedRunStatus)
 def _from_grpc_hosted_run_status(
     message: isolate_proto.HostedRunStatus,
@@ -1047,6 +1054,7 @@ class FalServerlessConnection:
         termination_grace_period_seconds: int | None = None,
         secrets: list[str] | None = None,
         data_mounts: list[str] | None = None,
+        volumes: dict[str, str] | None = None,
         entrypoint: str | None = None,
         build_environment: bool | None = None,
         attach_to_deployment: bool | None = None,
@@ -1164,6 +1172,7 @@ class FalServerlessConnection:
                 else None
             ),
             data_mounts=data_mounts or [],
+            volumes=_volume_mounts(volumes),
         )
         if entrypoint is not None:
             request.entrypoint = entrypoint
@@ -1279,6 +1288,7 @@ class FalServerlessConnection:
         environment_name: str | None = None,
         secrets: list[str] | None = None,
         data_mounts: list[str] | None = None,
+        volumes: dict[str, str] | None = None,
         entrypoint: str | None = None,
         build_environment: bool | None = None,
     ) -> Iterator[HostedRunResult[ResultT]]:
@@ -1353,6 +1363,7 @@ class FalServerlessConnection:
                 else None
             ),
             data_mounts=data_mounts or [],
+            volumes=_volume_mounts(volumes),
             health_check_config=wrapped_health_check_config,
         )
         if entrypoint is not None:

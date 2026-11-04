@@ -587,6 +587,7 @@ def mock_parse_pyproject_toml():
                 "termination_grace_period_seconds": 30,
                 "secrets": ["OPENAI_API_KEY", "HF_TOKEN"],
                 "data_mounts": ["/data", "/data/.cache"],
+                "volumes": {"/models": "My-Models"},
                 "health_check": {
                     "path": "/health",
                     "method": "get",
@@ -657,29 +658,26 @@ def mock_args(
     return args
 
 
-@pytest.mark.parametrize("app_alias", ["image-app", "image-app--staging", "health"])
+@pytest.mark.parametrize(
+    "app_path", ["team-owner/image-app", "team-owner/health", "testing/playground-app"]
+)
 def test_deploy_output_links_testable_routes_to_the_owning_app_playground(
-    monkeypatch, app_alias
+    monkeypatch, app_path
 ):
     monkeypatch.setattr("fal.flags.URL_OUTPUT", "playground")
     origin = "https://shark.fal.dev"
-    app_model_path = f"{origin}/models/team-owner/{app_alias}"
+    app_playground = f"{origin}/dashboard/apps/{app_path}/testing/playground?endpoint="
     result = SimpleNamespace(
         revision="rev",
         app_name="image-app",
         auth_mode="private",
         urls={
             "playground": {
-                "/": f"{app_model_path}/",
-                "/v2/generate": f"{app_model_path}/v2/generate",
-                "/stream": f"{app_model_path}/stream",
-                "/ws": f"{app_model_path}/ws",
-                "/realtime": f"{app_model_path}/realtime",
-                "/sse": f"{app_model_path}/sse",
-                "/health": f"{app_model_path}/health",
-                "/v2/generate/cancel": f"{app_model_path}/v2/generate/cancel",
-                "/stream/cancel": f"{app_model_path}/stream/cancel",
-                "/object_info": f"{app_model_path}/object_info",
+                "/": f"{app_playground}/",
+                "/v2/generate": f"{app_playground}/v2/generate",
+                "/health": f"{app_playground}/health",
+                "/v2/generate/cancel": f"{app_playground}/v2/generate/cancel",
+                "/object_info": f"{app_playground}/object_info",
             },
             "sync": {},
             "async": {},
@@ -698,17 +696,10 @@ def test_deploy_output_links_testable_routes_to_the_owning_app_playground(
         for line in args.console.export_text().splitlines()
         if line.strip().startswith("https://")
     ]
-    app_playground = (
-        f"{origin}/dashboard/apps/team-owner/{app_alias}/testing/playground"
-    )
     assert rendered_urls == [
-        f"{app_playground}?endpoint=team-owner%2F{app_alias}",
-        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fv2%2Fgenerate",
-        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fstream",
-        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fws",
-        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Frealtime",
-        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fsse",
-        f"{origin}/dashboard/apps/team-owner/{app_alias}",
+        f"{app_playground}/",
+        f"{app_playground}/v2/generate",
+        f"{origin}/dashboard/apps/{app_path}",
     ]
 
 
@@ -720,7 +711,8 @@ def test_deploy_output_keeps_utility_only_apps_discoverable(monkeypatch):
         auth_mode="private",
         urls={
             "playground": {
-                "/health": "https://fal.ai/models/team-owner/image-app/health",
+                "/health": "https://fal.ai/dashboard/apps/team-owner/image-app"
+                "/testing/playground?endpoint=/health",
             },
         },
     )
@@ -1674,6 +1666,7 @@ def test_get_app_data_from_toml_with_advanced_runtime_options(
         "termination_grace_period_seconds": 30,
         "secrets": ["OPENAI_API_KEY", "HF_TOKEN"],
         "data_mounts": ["/data", "/data/.cache"],
+        "volumes": {"/models": "my-models"},
         "health_check_config": ApplicationHealthCheckConfig(
             path="/health",
             start_period_seconds=30,
@@ -1836,6 +1829,10 @@ def test_get_app_data_from_toml_rejects_app_files_context_dir_without_app_files(
         ("_scheduler_options", "nomad", "_scheduler_options must be a table"),
         ("secrets", "OPENAI_API_KEY", "secrets must be a list of strings."),
         ("data_mounts", ["/data", 1], "data_mounts must be a list of strings."),
+        ("volumes", ["/models"], "volumes must be a table of mount path"),
+        ("volumes", {"/models": 1}, "must be a fal.Volume or a volume name"),
+        ("volumes", {"/models/sub": "x"}, "Invalid volume mount path"),
+        ("volumes", {"/models": "bad name"}, "Invalid volume name"),
         (
             "skip_retry_conditions",
             ["client_error"],

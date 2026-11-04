@@ -25,6 +25,7 @@ from . import environments as environments_api
 from . import keys as keys_api
 from . import runners as runners_api
 from . import secrets as secrets_api
+from . import volumes as volumes_api
 
 
 class AppsNamespace:
@@ -369,6 +370,26 @@ class SecretsNamespace:
         )
 
 
+class VolumesNamespace:
+    """Namespace for volume management. Corresponds to `fal volumes ...` CLI commands.
+
+    Accessed via `client.volumes`.
+
+    Example:
+        from fal.api import SyncServerlessClient
+
+        client = SyncServerlessClient()
+        name = client.volumes.create("my-volume")
+    """
+
+    def __init__(self, client: SyncServerlessClient):
+        self.client = client
+
+    def create(self, name: str) -> str:
+        """Create a volume and return its canonical (lowercase) name."""
+        return volumes_api.create_volume(self.client, name)
+
+
 class _EnvironmentsNamespace:
     def __init__(self, client: SyncServerlessClient):
         self.client = client
@@ -417,6 +438,7 @@ class SyncServerlessClient:
         - client.runners.* - corresponds to `fal runners ...`
         - client.keys.*    - corresponds to `fal keys ...`
         - client.secrets.* - corresponds to `fal secrets ...`
+        - client.volumes.* - corresponds to `fal volumes ...`
         - client.deploy()  - corresponds to `fal deploy ...`
     """
 
@@ -430,6 +452,7 @@ class SyncServerlessClient:
         self.runners = RunnersNamespace(self)
         self.keys = KeysNamespace(self)
         self.secrets = SecretsNamespace(self)
+        self.volumes = VolumesNamespace(self)
         self.environments = _EnvironmentsNamespace(self)
 
     def deploy(self, *args, **kwargs):

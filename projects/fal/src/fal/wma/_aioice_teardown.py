@@ -4,8 +4,7 @@ Make :meth:`aioice.ice.Connection.close` cancel — and *await* — its in-fligh
 ICE connectivity-check tasks before it closes the underlying UDP transports, so
 no orphaned STUN retransmission timer can fire against an already-closed socket.
 
-Root cause (aioice==0.10.2, and upstream ``main`` as of 2026-07-27 — no released
-or unreleased fix exists)
+Root cause (aioice<0.12.1; 0.12.1 fixes it upstream but requires Python>=3.11)
 -------------------------------------------------------------------------------
 ``Connection.close()`` tears a connection down by signalling ``ICE_FAILED`` and
 then closing each ``StunProtocol``'s datagram transport. It never cancels the
@@ -41,8 +40,8 @@ Design constraints honoured
   error" behaviour: we only await tasks we are actively cancelling during
   teardown, which is exactly what ``connect()`` already does with them.
 - Idempotent: installing twice is a no-op.
-- Version-guarded and self-disabling: if a future ``aioice`` teaches ``close()``
-  to cancel check tasks itself, the source guard below detects it and declines
+- Version-guarded and self-disabling: when ``close()`` already cancels check
+  tasks itself (aioice>=0.12.1), the source guard below detects it and declines
   to wrap, so we never double-cancel. ``tests/unit/wma/test_wma_helpers.py`` pins both
   the unpatched race and the patched fix, and will flag such an upstream change.
 """
@@ -61,10 +60,10 @@ _MARKER = "_fal_wma_orderly_teardown"
 def _close_already_cancels_check_tasks(close_fn: object) -> bool:
     """True if this ``Connection.close`` already cancels check-list tasks.
 
-    Used as a self-disabling upstream-fix guard: if a newer aioice teaches
+    Used as a self-disabling upstream-fix guard: once aioice teaches
     ``close()`` to tear down ``CandidatePair.task`` itself, we must not wrap it
     (that would double-cancel). Best-effort — if the source can't be read we
-    assume the unpatched shape (the only shape that has ever shipped).
+    assume the unpatched shape.
     """
     try:
         src = inspect.getsource(close_fn)  # type: ignore[arg-type]

@@ -15,6 +15,16 @@ from .gpu import (
     GPUOutOfMemoryException,
     catch_gpu_exceptions,
 )
+from .volumes import (
+    VolumeAccountNotEligibleError,
+    VolumeAlreadyExistsError,
+    VolumeControlPlaneUnavailableError,
+    VolumeException,
+    VolumeInvalidMountPathError,
+    VolumeInvalidNameError,
+    VolumeNotFoundError,
+    VolumeUnresolvableError,
+)
 
 __all__ = [
     "FalServerlessException",
@@ -28,4 +38,12 @@ __all__ = [
     "CUDAOutOfMemoryException",
     "UnauthenticatedException",
     "catch_gpu_exceptions",
+    "VolumeException",
+    "VolumeInvalidNameError",
+    "VolumeInvalidMountPathError",
+    "VolumeNotFoundError",
+    "VolumeUnresolvableError",
+    "VolumeAlreadyExistsError",
+    "VolumeAccountNotEligibleError",
+    "VolumeControlPlaneUnavailableError",
 ]

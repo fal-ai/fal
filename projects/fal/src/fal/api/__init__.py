@@ -5,6 +5,7 @@ from .client import (  # noqa: F401
     RunnersNamespace,
     SecretsNamespace,
     SyncServerlessClient,
+    VolumesNamespace,
 )
 
 __all__ = [
@@ -13,4 +14,5 @@ __all__ = [
     "RunnersNamespace",
     "KeysNamespace",
     "SecretsNamespace",
+    "VolumesNamespace",
 ]

@@ -24,6 +24,7 @@ from . import (
     runners,
     secrets,
     teams,
+    volumes,
 )
 from .debug import debugtools, get_debug_parser
 from .parser import FalParser, FalParserExit
@@ -67,6 +68,7 @@ def _get_main_parser() -> argparse.ArgumentParser:
         runners,
         teams,
         files,
+        volumes,
         completion,
     ]:
         cmd.add_parser(subparsers, parents)

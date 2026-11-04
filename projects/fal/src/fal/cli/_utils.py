@@ -15,6 +15,7 @@ from fal.sdk import (
     RetryConditionLiteral,
     validate_retry_config_dict,
 )
+from fal.volumes import normalize_volumes
 
 VALID_REGIONS = {
     "us-west",
@@ -152,6 +153,7 @@ def get_app_data_from_toml(
     )
     secrets = app_data.pop("secrets", None)
     data_mounts = app_data.pop("data_mounts", None)
+    volumes = app_data.pop("volumes", None)
     health_check = app_data.pop("health_check", None)
 
     if regions is not None:
@@ -196,6 +198,8 @@ def get_app_data_from_toml(
         _validate_str_list("secrets", secrets)
     if data_mounts is not None:
         _validate_str_list("data_mounts", data_mounts)
+    if volumes is not None:
+        volumes = _validate_volumes(volumes)
     health_check_config = None
     if health_check is not None:
         health_check_config = _build_health_check_config_from_toml(
@@ -252,6 +256,8 @@ def get_app_data_from_toml(
         options.host["secrets"] = secrets
     if data_mounts is not None:
         options.host["data_mounts"] = data_mounts
+    if volumes is not None:
+        options.host["volumes"] = volumes
     if health_check_config is not None:
         options.host["health_check_config"] = health_check_config
     if exposed_port is not None:
@@ -353,6 +359,12 @@ def _validate_requirements(requirements: Any) -> None:
 def _validate_str_list(field_name: str, value: Any) -> None:
     if not (isinstance(value, list) and all(isinstance(item, str) for item in value)):
         raise ValueError(f"{field_name} must be a list of strings.")
+
+
+def _validate_volumes(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise ValueError("volumes must be a table of mount path to volume name.")
+    return normalize_volumes(value)
 
 
 def _validate_int(field_name: str, value: Any) -> None:
