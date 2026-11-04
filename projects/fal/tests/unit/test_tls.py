@@ -1,4 +1,5 @@
 import ssl
+from pathlib import Path
 from unittest.mock import patch
 
 import certifi
@@ -9,6 +10,7 @@ import fal
 from fal._tls import CERTIFI_REQUIREMENT, create_ssl_context
 from fal.api.api import FalServerlessHost, Options, function
 from fal.app import wrap_app
+from fal.sdk import RemoteCredentials
 
 
 def test_ssl_context_uses_only_certifi_roots(monkeypatch):
@@ -45,6 +47,17 @@ def test_ssl_context_honors_ca_file_and_directory(monkeypatch, tmp_path):
     assert context.get_ca_certs(binary_form=True)
     assert context.verify_mode == ssl.CERT_REQUIRED
     assert context.check_hostname
+
+
+def test_remote_grpc_credentials_use_certifi_roots(monkeypatch):
+    monkeypatch.delenv("GRPC_DEFAULT_SSL_ROOTS_FILE_PATH", raising=False)
+
+    with patch("fal.sdk.grpc.ssl_channel_credentials") as ssl_channel_credentials:
+        RemoteCredentials().to_grpc()
+
+    ssl_channel_credentials.assert_called_once_with(
+        root_certificates=Path(certifi.where()).read_bytes()
+    )
 
 
 def test_function_runner_receives_certifi_without_mutating_requirements():

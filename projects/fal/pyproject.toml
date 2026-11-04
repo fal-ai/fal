@@ -56,7 +56,7 @@ dependencies = [
     "types-dateparser>=1.2.0,<2",
     "tuspy==1.1.0",
     "msgpack>=1.0.7,<2",
-    "websockets>=12.0",
+    "websockets>=13.0",
     "pillow>=13.0,<14; python_version >= '3.11'",
     "pillow>=10.2.0,<13; python_version < '3.11'",
     "pyjwt[crypto]>=2.8.0,<3",

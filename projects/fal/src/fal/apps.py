@@ -364,10 +364,9 @@ def _connect(
 
     creds = get_credentials()
 
-    # websockets 12 requires ssl_context; newer versions retain it as an alias.
     with client.connect(
         url,
-        ssl_context=create_ssl_context() if url.lower().startswith("wss://") else None,
+        ssl=create_ssl_context() if url.lower().startswith("wss://") else None,
         additional_headers=creds.to_headers(),
         open_timeout=90,
     ) as ws:
@@ -501,7 +500,7 @@ def ws(app_id: str, *, path: str = "") -> Iterator[_WSConnection]:
 
     with client.connect(
         url,
-        ssl_context=create_ssl_context() if url.lower().startswith("wss://") else None,
+        ssl=create_ssl_context() if url.lower().startswith("wss://") else None,
         additional_headers=creds.to_headers(),
         open_timeout=90,
     ) as ws:
