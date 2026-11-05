@@ -346,7 +346,7 @@ class LLMApp(App):
     the engine enough requests. The presets also apply measured vLLM recipes
     on RTX PRO 6000 and H100 (see ``RECIPES``): sequence caps, FP8 KV cache
     and EAGLE3 for Qwen3-8B, and settings for gpt-oss-120b and DeepSeek V4
-    Flash. A recipe may
+    Flash (run it on 2 GPUs: 1.9x the tokens per GPU-hour of 4). A recipe may
     raise the engine's cap above ``max_multiplexing``. A recipe can also
     serve a pre-quantized checkpoint (``checkpoint_for``): the default for
     Qwen3-8B on RTX PRO 6000 is ``Qwen/Qwen3-8B-FP8``. Clients keep using
@@ -901,6 +901,10 @@ class LLMApp(App):
         cmd = self.engine_command(model_path)
         env = {**os.environ, **self.engine_env}
         env.setdefault("VLLM_NO_USAGE_STATS", "1")
+        # vLLM's own 600s engine-ready limit is too short for a cold data
+        # parallel boot (kernel JIT and warmup); the startup budget governs.
+        remaining = self._deadline - time.monotonic()
+        env.setdefault("VLLM_ENGINE_READY_TIMEOUT_S", str(max(int(remaining), 600)))
         print(f"[llm-app] starting: {' '.join(cmd)}")
         proc = subprocess.Popen(
             cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
