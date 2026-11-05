@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator
 import httpx
 
 from fal import flags
+from fal._tls import create_ssl_context
 from fal._user_agent import USER_AGENT
 from fal.sdk import Credentials, get_credentials
 
@@ -364,7 +365,10 @@ def _connect(
     creds = get_credentials()
 
     with client.connect(
-        url, additional_headers=creds.to_headers(), open_timeout=90
+        url,
+        ssl=create_ssl_context() if url.lower().startswith("wss://") else None,
+        additional_headers=creds.to_headers(),
+        open_timeout=90,
     ) as ws:
         yield _RealtimeConnection(
             ws, _encode_message=encode_message, _decode_message=decode_message
@@ -495,6 +499,9 @@ def ws(app_id: str, *, path: str = "") -> Iterator[_WSConnection]:
     creds = get_credentials()
 
     with client.connect(
-        url, additional_headers=creds.to_headers(), open_timeout=90
+        url,
+        ssl=create_ssl_context() if url.lower().startswith("wss://") else None,
+        additional_headers=creds.to_headers(),
+        open_timeout=90,
     ) as ws:
         yield _WSConnection(ws)

@@ -18,7 +18,9 @@ def test_build_device_login_url():
     assert "user_code=ABCD-EFGH" in decoded
 
 
-def test_build_jwk_client_uses_certifi_ssl_context():
+def test_build_jwk_client_uses_certifi_ssl_context(monkeypatch):
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    monkeypatch.delenv("SSL_CERT_DIR", raising=False)
     build_jwk_client.cache_clear()
 
     try:
@@ -29,8 +31,7 @@ def test_build_jwk_client_uses_certifi_ssl_context():
 
             build_jwk_client()
 
-        create_default_context.assert_called_once_with()
-        ssl_context.load_verify_locations.assert_called_once_with(cafile="certifi.pem")
+        create_default_context.assert_called_once_with(cafile="certifi.pem")
         py_jwk_client.assert_called_once_with(
             "https://auth.fal.ai/.well-known/jwks.json",
             cache_keys=True,
