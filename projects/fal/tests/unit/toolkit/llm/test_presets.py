@@ -641,6 +641,23 @@ def test_default_run_keeps_bf16_recipe_flags_and_adds_no_online_quant():
     assert flags["--speculative-config"] == json.dumps(EAGLE3_QWEN3_8B)
 
 
+@pytest.mark.parametrize(
+    "config,model_id,profile",
+    [
+        ({**QWEN3_8B, "quantization_config": FP8_QUANT}, "Qwen/Qwen3-8B", "throughput"),
+        ({**QWEN3_8B, "quantization_config": FP8_QUANT}, "Qwen/Qwen3-8B", "latency"),
+        (GPT_OSS_120B, "openai/gpt-oss-120b", "throughput"),
+    ],
+)
+def test_fp8_and_gpt_oss_keep_cap_256_and_default_memory(config, model_id, profile):
+    # Cap 512 and memory 0.95 measured no gain with FP8 weights (4,111 vs
+    # 4,206 tok/s at 256 streams) and cost single stream (168 vs 208 tok/s);
+    # they are neutral on gpt-oss. Only the NVFP4 profile keeps them.
+    flags = _flags(_rtx("vllm", config, model_id=model_id, profile=profile))
+    assert flags["--max-num-seqs"] == "256"
+    assert "--gpu-memory-utilization" not in flags
+
+
 def test_max_throughput_on_rtx_qwen3_8b():
     assert (
         _presets.checkpoint_for(
