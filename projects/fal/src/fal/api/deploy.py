@@ -93,6 +93,12 @@ class DeploymentResult:
 
 
 @dataclass
+class BuildResult:
+    revision: str
+    app_name: str | None
+
+
+@dataclass
 class PreparedDeployment:
     host: FalServerlessHost
     loaded: LoadedFunction
@@ -409,6 +415,110 @@ def _execute_loaded_deployment(
         urls=urls,
         log_url=result.service_urls.log,
         auth_mode=loaded.app_auth or "private",
+    )
+
+
+def _execute_loaded_build(
+    *,
+    host: FalServerlessHost,
+    loaded: LoadedFunction,
+    app_data: AppData,
+    environment_name: str | None = None,
+    result_handler: ResultHandler | None = None,
+    build_result_handler: ResultHandler | None = None,
+    prepare_options_handler: ProgressCallback | None = None,
+) -> BuildResult:
+    from fal.api import FalServerlessError
+
+    build_result_handler = (
+        result_handler if build_result_handler is None else build_result_handler
+    )
+
+    isolated_function = replace(
+        loaded.function,
+        options=host.prepare_options(
+            loaded.function.options,
+            func=loaded.function.func,
+            on_progress=prepare_options_handler,
+        ),
+    )
+
+    host.build_environment(
+        isolated_function.options,
+        application_name=loaded.app_name,
+        environment_name=environment_name,
+        result_handler=build_result_handler,
+    )
+
+    isolated_function.fetch_metadata(build_environment=False)
+
+    metadata = dict(isolated_function.build_metadata())
+    if app_data.message is not None:
+        metadata["message"] = app_data.message
+    if app_data.annotations:
+        metadata["annotations"] = dict(app_data.annotations)
+
+    # Registering without an application_name stores the revision and leaves
+    # every alias pointing where it already pointed.
+    result = host.register(
+        func=isolated_function.func,
+        options=isolated_function.options,
+        application_name=None,
+        source_code=loaded.source_code,
+        metadata=metadata,
+        deployment_strategy=app_data.deployment_strategy or "rolling",
+        scale=app_data.reset_scale,
+        environment_name=environment_name,
+        result_handler=result_handler,
+        entrypoint=isolated_function.run_entrypoint,
+        build_environment=False,
+    )
+
+    if not result or not result.result:
+        raise FalServerlessError(
+            "Build failed: The server did not confirm the revision. "
+            "This may indicate a network issue or server error. "
+            "Please try again."
+        )
+
+    return BuildResult(
+        revision=result.result.application_id,
+        app_name=loaded.app_name,
+    )
+
+
+def build(
+    client: SyncServerlessClient,
+    app_ref: str | tuple[str | None, str | None] | None = None,
+    *,
+    app_name: str | None = None,
+    force_env_build: bool = False,
+    environment_name: str | None = None,
+    message: str | None = None,
+    annotations: dict[str, str] | None = None,
+    result_handler: ResultHandler | None = None,
+    build_result_handler: ResultHandler | None = None,
+) -> BuildResult:
+    resolved_app_ref, app_data = _resolve_deployment_reference(
+        app_ref,
+        app_name=app_name,
+        message=message,
+        annotations=annotations,
+    )
+    prepared = _prepare_deployment_from_reference(
+        client,
+        resolved_app_ref,
+        app_data,
+        force_env_build=force_env_build,
+        environment_name=environment_name,
+    )
+    return _execute_loaded_build(
+        host=prepared.host,
+        loaded=prepared.loaded,
+        app_data=prepared.app_data,
+        environment_name=prepared.environment_name,
+        result_handler=result_handler,
+        build_result_handler=build_result_handler,
     )
 
 
