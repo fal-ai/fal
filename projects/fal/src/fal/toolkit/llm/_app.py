@@ -33,6 +33,29 @@ _METRIC_PREFIXES = (
 )
 _METRIC_RE = re.compile(r"^([^\s{]+)(?:\{[^}]*\})?\s+([0-9.eE+-]+|nan|NaN)$")
 _STREAM_TAIL_BYTES = 8192
+# Engine log lines that mark a boot phase, as (substring, phase). Each phase
+# records its first occurrence; a needle that never matches just leaves the
+# phase out of the report.
+_BOOT_MILESTONES: Dict[str, tuple] = {
+    "vllm": (
+        ("Loading weights took", "weights_loaded"),
+        ("Model loading took", "model_loaded"),
+        ("Capturing CUDA graph", "cuda_graph_begin"),
+        ("Graph capturing finished", "cuda_graph_end"),
+        ("GPU KV cache size", "kv_cache_allocated"),
+        ("Application startup complete", "server_ready"),
+    ),
+    "sglang": (
+        ("Load weight end", "weights_loaded"),
+        ("Capture cuda graph begin", "cuda_graph_begin"),
+        ("Capture cuda graph end", "cuda_graph_end"),
+        ("The server is fired up", "server_ready"),
+    ),
+}
+# Progress bars redraw with \r; log at most one redraw per interval.
+_PROGRESS_LOG_INTERVAL_S = 30.0
+_LINE_SPLIT = re.compile(rb"(\r\n|\n|\r)")
+_MAX_LINE_BYTES = 1 << 20
 
 
 def _engine_version(engine: str) -> str:
@@ -54,6 +77,14 @@ def _parse_stream_usage(tail: bytes) -> Optional[Dict[str, Any]]:
                 return None
             return usage if isinstance(usage, dict) else None
     return None
+
+
+def _has_files(*dirs: str) -> bool:
+    for d in dirs:
+        for _, _, files in os.walk(d):
+            if files:
+                return True
+    return False
 
 
 async def _wait_for_disconnect(request: Request) -> None:
@@ -148,7 +179,8 @@ class LLMApp(App):
         if not self.model:
             raise ValueError("LLMApp subclasses must set `model`")
         t0 = time.monotonic()
-        self._boot: Dict[str, float] = {}
+        self._setup_start = t0
+        self._boot: Dict[str, Any] = {}
         self._usage_totals: Dict[str, int] = {}
         self._recent_prefixes: Deque[str] = deque(maxlen=8)
         self._engine_log_tail: Deque[str] = deque(maxlen=50)
@@ -157,7 +189,12 @@ class LLMApp(App):
             namespace = self.cache_namespace or "-".join(
                 (self.engine, _engine_version(self.engine), self._gpu_type())
             )
-            apply_engine_cache_env(namespace)
+            cache_env = apply_engine_cache_env(namespace)
+            # Warm means a previous runner left compiled artifacts behind; the
+            # boot report then shows what the cache saved.
+            self._boot["compile_cache_warm"] = _has_files(
+                *(v for k, v in cache_env.items() if not k.startswith("HF_"))
+            )
 
         model_path = self._resolve_model()
         self._boot["resolve_s"] = time.monotonic() - t0
@@ -180,7 +217,8 @@ class LLMApp(App):
             timeout=httpx.Timeout(connect=30.0, read=3600.0, write=300.0, pool=60.0),
             limits=httpx.Limits(max_connections=512, max_keepalive_connections=128),
         )
-        print(f"[llm-app] boot report: {self._boot}")
+        # Copy: the log pump thread may still add late milestones.
+        print(f"[llm-app] boot report: {dict(self._boot)}")
 
     # Runners do not have `fal` installed: it is pickled by value, so only
     # module-level imports resolve. Keep fal imports out of method bodies.
@@ -206,16 +244,47 @@ class LLMApp(App):
             cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
         )
 
-        def pump() -> None:
-            assert proc.stdout is not None
-            for raw in iter(proc.stdout.readline, b""):
-                line = raw.decode("utf-8", errors="replace").rstrip()
-                if line:
-                    self._engine_log_tail.append(line)
-                    print(f"[{self.engine}] {line}")
-
-        threading.Thread(target=pump, daemon=True).start()
+        threading.Thread(
+            target=self._pump_engine_logs, args=(proc,), daemon=True
+        ).start()
         return proc
+
+    def _pump_engine_logs(self, proc: subprocess.Popen) -> None:
+        assert proc.stdout is not None
+        milestones = _BOOT_MILESTONES.get(self.engine, ())
+        last_progress = float("-inf")
+
+        def handle(raw: bytes, progress: bool) -> None:
+            nonlocal last_progress
+            line = raw[:_MAX_LINE_BYTES].decode("utf-8", errors="replace").rstrip()
+            if not line:
+                return
+            # Milestone times are seconds since setup start.
+            for needle, phase in milestones:
+                key = f"{phase}_s"
+                if needle in line and key not in self._boot:
+                    self._boot[key] = time.monotonic() - self._setup_start
+            if progress:
+                now = time.monotonic()
+                if now - last_progress < _PROGRESS_LOG_INTERVAL_S:
+                    return
+                last_progress = now
+            self._engine_log_tail.append(line)
+            print(f"[{self.engine}] {line}")
+
+        buf = b""
+        for chunk in iter(lambda: proc.stdout.read1(65536), b""):  # type: ignore[union-attr]
+            buf += chunk
+            # Hold back a trailing \r: it may be the first half of \r\n.
+            held = buf.endswith(b"\r")
+            parts = _LINE_SPLIT.split(buf[:-1] if held else buf)
+            buf = parts.pop() + (b"\r" if held else b"")
+            for raw, sep in zip(parts[::2], parts[1::2]):
+                handle(raw, sep == b"\r")
+            if len(buf) > _MAX_LINE_BYTES:
+                handle(buf, False)
+                buf = b""
+        handle(buf, False)
 
     def _wait_ready(self, base_url: str) -> None:
         import httpx  # noqa: PLC0415
@@ -290,7 +359,7 @@ class LLMApp(App):
                 "engine": self.engine,
                 "stats": stats,
                 "usage_totals": self._usage_totals,
-                "boot": self._boot,
+                "boot": dict(self._boot),
             }
         )
 

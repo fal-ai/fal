@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import socket
+import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 import httpx
@@ -13,6 +15,7 @@ import uvicorn
 from fastapi import Request
 
 from fal.toolkit.llm import LLMApp
+from fal.toolkit.llm._app import _has_files
 
 FAKE = str(Path(__file__).parent / "fake_engine.py")
 
@@ -139,11 +142,93 @@ def test_health_and_engine_stats(served):
     s = httpx.get(f"{url}/engine-stats").json()
     assert s["stats"]["vllm:kv_cache_usage_perc"] == 0.25
     assert "preread_s" in s["boot"] and "engine_ready_s" in s["boot"]
+    # The fake engine prints no vLLM milestones, so none are recorded.
+    assert "weights_loaded_s" not in s["boot"]
     assert "other_metric" not in s["stats"]
 
     app._proc.kill()
     app._proc.wait()
     assert httpx.get(f"{url}/health").status_code == 503
+
+
+def test_engine_logs_record_milestones_and_throttle_progress(capsys):
+    script = (
+        "import sys\n"
+        "w = sys.stdout.write\n"
+        "w('Loading shards 0/48\\rLoading shards 1/48\\rLoading shards 2/48\\r\\n')\n"
+        "w('INFO Loading weights took 61.2 seconds\\n')\n"
+        "w('INFO Application startup complete.\\n')\n"
+    )
+
+    class Probe(LLMApp):
+        model = "m"
+
+    app = Probe()
+    app._setup_start = time.monotonic()
+    app._boot = {}
+    app._engine_log_tail = deque(maxlen=50)
+    proc = subprocess.Popen(
+        [sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+    )
+    app._pump_engine_logs(proc)
+    proc.wait()
+
+    assert {"weights_loaded_s", "server_ready_s"} <= set(app._boot)
+    out = capsys.readouterr().out
+    # The first redraw is logged, later ones inside the interval are dropped,
+    # and the redraw ending in a newline always is.
+    assert "Loading shards 0/48" in out
+    assert "Loading shards 1/48" not in out
+    assert "Loading shards 2/48" in out
+
+
+def test_engine_logs_chunk_boundaries(capsys, monkeypatch):
+    monkeypatch.setattr("fal.toolkit.llm._app._MAX_LINE_BYTES", 32)
+
+    class Chunks:
+        def __init__(self, chunks):
+            self._chunks = iter(chunks)
+
+        def read1(self, _n):
+            return next(self._chunks, b"")
+
+    class FakeProc:
+        stdout = Chunks(
+            [
+                b"bar 1/2\r",
+                b"bar 2/2\r",
+                # \r\n split across reads is a normal line, not a redraw.
+                b"\nINFO Loading weights took 1s\r",
+                b"\n" + b"x" * 40,
+                b"\nTraceback tail without newline",
+            ]
+        )
+
+    class Probe(LLMApp):
+        model = "m"
+
+    app = Probe()
+    app._setup_start = time.monotonic()
+    app._boot = {}
+    app._engine_log_tail = deque(maxlen=50)
+    app._pump_engine_logs(FakeProc())  # type: ignore[arg-type]
+
+    out = capsys.readouterr().out
+    assert "bar 1/2" in out and "bar 2/2" in out
+    assert "weights_loaded_s" in app._boot
+    # Overlong runs are flushed and truncated at the cap.
+    assert "x" * 32 in out and "x" * 33 not in out
+    assert app._engine_log_tail[-1] == "Traceback tail without newline"
+
+
+def test_has_files(tmp_path):
+    empty = tmp_path / "empty"
+    (empty / "sub").mkdir(parents=True)
+    full = tmp_path / "full"
+    (full / "sub").mkdir(parents=True)
+    (full / "sub" / "kernel.so").write_bytes(b"x")
+    assert not _has_files(str(empty))
+    assert _has_files(str(empty), str(full))
 
 
 def test_endpoint_annotations_are_not_strings():
