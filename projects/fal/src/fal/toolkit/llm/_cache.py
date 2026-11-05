@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Mapping, MutableMapping
+from typing import Any, Mapping, MutableMapping
 
 from fal.toolkit.utils.download_utils import FAL_PERSISTENT_DIR
 
@@ -15,6 +19,157 @@ _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 def _slug(value: str) -> str:
     return _SAFE.sub("-", value).strip("-") or "default"
+
+
+def namespace_dir(
+    namespace: str = "default", *, root: str | os.PathLike[str] | None = None
+) -> Path:
+    """Directory holding one namespace's compile caches and boot markers."""
+    return (Path(root) if root is not None else ENGINE_CACHE_ROOT) / _slug(namespace)
+
+
+def snapshot_marker_path(
+    model: str,
+    revision: str | None = None,
+    *,
+    hf_home: str | os.PathLike[str] | None = None,
+) -> Path:
+    """Where LLMApp records a completed ``snapshot_download`` of ``model``.
+
+    Kept beside, not inside, HF's snapshot folders: HF's own cache layout
+    cannot tell a finished download from an interrupted one. It sits next to
+    the effective hub cache (``HF_HUB_CACHE`` if set) so marker and files
+    share a volume and a lifetime.
+    """
+    if hf_home is not None:
+        hub = Path(hf_home) / "hub"
+    elif os.environ.get("HF_HUB_CACHE"):
+        hub = Path(os.environ["HF_HUB_CACHE"])
+    else:
+        hub = Path(os.environ.get("HF_HOME") or HF_HOME_DIR) / "hub"
+    name = _slug(model) + (f"@{_slug(revision)}" if revision else "")
+    # Slugs collapse "/" and "-", so a hash keeps distinct ids apart.
+    digest = hashlib.sha1(f"{model}@{revision or ''}".encode()).hexdigest()[:8]
+    return hub.parent / "llm_app_snapshots" / f"{name}-{digest}.json"
+
+
+def read_marker(path: Path) -> dict[str, Any] | None:
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def write_marker(path: Path, data: Mapping[str, Any]) -> None:
+    """Atomic write: readers never see a partial marker.
+
+    The temp name is unique per call, since containers sharing a volume can
+    have the same pid.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(data))
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+def snapshot_intact(path: str) -> bool:
+    """Config and every weight file resolve (HF snapshots are symlinks)."""
+    if not os.path.isfile(os.path.join(path, "config.json")):
+        return False
+    for root, _, files in os.walk(path):
+        for name in files:
+            if name.endswith((".safetensors", ".bin")) and not os.path.exists(
+                os.path.join(root, name)
+            ):
+                return False
+    return True
+
+
+def _parse_date(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def advance_snapshot_marker(
+    model: str,
+    path: str,
+    commit: str,
+    commit_date: str | None,
+    *,
+    hf_home: str | os.PathLike[str] | None = None,
+) -> bool:
+    """Point the unpinned marker of ``model`` at ``path`` if it is newer.
+
+    Snapshot markers (``snapshot_marker_path``) are JSON objects::
+
+        {"model": <repo id>, "revision": <requested revision or null>,
+         "path": <absolute per-commit snapshot dir>,
+         "commit": <40-hex sha, the snapshot dir name>,
+         "commit_date": <ISO-8601 UTC commit time, or null if unknown>}
+
+    The unpinned marker is ``snapshot_marker_path(model, None)``: what an app
+    without ``model_revision`` boots from. It is replaced when missing,
+    unreadable or without a commit, or when ``commit_date`` is known and the
+    recorded one is unknown or older; the same commit is a no-op. Newest means
+    commit date, never file mtime. Only a default-branch commit belongs here.
+    Returns whether the marker was written.
+    """
+    marker = snapshot_marker_path(model, None, hf_home=hf_home)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    # Runners and the weights-pull CLI share the volume: serialize the
+    # read-compare-write so an older commit cannot land last.
+    with open(f"{marker}.lock", "a") as lock:
+        _lock(lock)
+        return _advance_locked(marker, model, path, commit, commit_date)
+
+
+def _lock(f: Any) -> None:
+    try:
+        import fcntl  # noqa: PLC0415  (POSIX only; best effort elsewhere)
+    except ImportError:
+        return
+    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+
+
+def _advance_locked(
+    marker: Path, model: str, path: str, commit: str, commit_date: str | None
+) -> bool:
+    current = read_marker(marker)
+    if current is not None and current.get("commit") == commit:
+        return False
+    current_path = (current or {}).get("path")
+    usable = isinstance(current_path, str) and snapshot_intact(current_path)
+    # A marker whose snapshot was pruned is replaced whatever the dates say.
+    if usable and isinstance(current.get("commit"), str):  # type: ignore[union-attr]
+        new = _parse_date(commit_date)
+        old = _parse_date(current.get("commit_date"))
+        if new is None or (old is not None and new <= old):
+            return False
+    write_marker(
+        marker,
+        {
+            "model": model,
+            "revision": None,
+            "path": path,
+            "commit": commit,
+            "commit_date": commit_date,
+        },
+    )
+    return True
 
 
 def engine_cache_env(

@@ -52,14 +52,28 @@ async def _complete(request: Request):
     if body.get("fail"):
         return JSONResponse({"error": "boom"}, status_code=400)
     if body.get("stream"):
+        # Hold response headers back, like an engine still queueing the request.
+        for _ in range(int(body.get("header_delay_ticks", 0))):
+            if await request.is_disconnected():
+                _mark_abort()
+                return JSONResponse({})
+            await asyncio.sleep(0.1)
 
         async def gen():
             done = False
             try:
                 for i in range(int(body.get("n_chunks", 5))):
                     delta = {"choices": [{"delta": {"content": str(i)}}]}
-                    yield f"data: {json.dumps(delta)}\n\n"
-                    await asyncio.sleep(0.2)
+                    event = f"data: {json.dumps(delta)}\n\n"
+                    if body.get("split_events"):
+                        # Half an event per write, so a cut can land mid-event.
+                        yield event[:10]
+                        await asyncio.sleep(0.2)
+                        yield event[10:]
+                        await asyncio.sleep(0.2)
+                    else:
+                        yield event
+                        await asyncio.sleep(0.2)
                 if (body.get("stream_options") or {}).get("include_usage"):
                     yield f"data: {json.dumps({'choices': [], 'usage': usage})}\n\n"
                 yield "data: [DONE]\n\n"
