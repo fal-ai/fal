@@ -1,12 +1,30 @@
+import json
+import os
 import re
-from typing import Dict, List, Optional, Sequence
+import subprocess
+from dataclasses import dataclass, field
+from typing import (
+    Any,
+    Dict,
+    FrozenSet,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
-# Preset flag per engine. Every flag here takes a value except the all-reduce
-# switch (see _BOOLEAN_FLAGS).
+# Preset flag per engine. Every flag here takes a value except the boolean
+# switches (see _BOOLEAN_FLAGS), which a recipe lists with an empty value.
 _TP_FLAG = {"vllm": "--tensor-parallel-size", "sglang": "--tp-size"}
 _MAX_SEQS_FLAG = {"vllm": "--max-num-seqs", "sglang": "--max-running-requests"}
+_KV_DTYPE_FLAG = "--kv-cache-dtype"
+_SPEC_FLAG = "--speculative-config"
+_QUANT_FLAG = "--quantization"
 _ALL_REDUCE_FLAG = "--disable-custom-all-reduce"
-_BOOLEAN_FLAGS = frozenset({_ALL_REDUCE_FLAG})
+_TRUST_REMOTE_CODE_FLAG = "--trust-remote-code"
+_LOAD_STRATEGY_FLAG = "--safetensors-load-strategy"
+_BOOLEAN_FLAGS = frozenset({_ALL_REDUCE_FLAG, _TRUST_REMOTE_CODE_FLAG})
 
 # Spellings that mean the same thing to an engine, keyed by a canonical group.
 _FLAG_GROUPS: Dict[str, str] = {
@@ -16,7 +34,15 @@ _FLAG_GROUPS: Dict[str, str] = {
     "-tp": "tp",
     "--max-num-seqs": "max_seqs",
     "--max-running-requests": "max_seqs",
+    _KV_DTYPE_FLAG: "kv_dtype",
+    _SPEC_FLAG: "spec",
+    "--speculative-model": "spec",
+    "--num-speculative-tokens": "spec",
+    _QUANT_FLAG: "quant",
+    "-q": "quant",
     _ALL_REDUCE_FLAG: "all_reduce",
+    _TRUST_REMOTE_CODE_FLAG: "trust_remote_code",
+    _LOAD_STRATEGY_FLAG: "load_strategy",
     "--pipeline-parallel-size": "pp",
     "--pp-size": "pp",
     "-pp": "pp",
@@ -37,45 +63,411 @@ _LAYOUT_GROUPS = frozenset({"tp", "pp", "dp"})
 _NO_NVLINK_PREFIXES = ("RTX", "GEFORCE", "L40")
 _NO_NVLINK_EXACT = frozenset({"A10", "A10G", "L4"})
 
+RTX_PRO_6000 = "RTX_PRO_6000"
+H100 = "H100"
+# Architectures whose EAGLE3 drafts crash vLLM 0.32 at startup.
+_SPEC_DENYLIST = frozenset({"GptOssForCausalLM"})
+PROFILES = ("throughput", "latency")
+_ENGINES = tuple(_TP_FLAG)
+
 
 def _normalize_gpu(gpu_type: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", gpu_type.upper())
 
 
-def _is_pcie_only(gpu_type: str) -> bool:
-    name = _normalize_gpu(gpu_type)
+def _is_pcie_only(gpu_type: str, gpu_name: Optional[str] = None) -> bool:
+    # The full nvidia-smi name is more precise than get_gpu_type()'s first word.
+    name = _normalize_gpu(gpu_name or gpu_type)
+    name = name.removeprefix("NVIDIA")
     return name in _NO_NVLINK_EXACT or name.startswith(_NO_NVLINK_PREFIXES)
+
+
+def classify_gpu(name: str, memory_mib: Optional[int] = None) -> str:
+    """Stable key for a GPU from its nvidia-smi name and memory (MiB).
+
+    RTX PRO 6000 (Blackwell, SM120, ~96 GB) gets ``"RTX_PRO_6000"`` and every
+    H100 variant gets ``"H100"``. Anything else returns its normalized name, so
+    GeForce RTX 5090 (32 GB) and other RTX cards never collide with them.
+    """
+    upper = name.upper()
+    if "RTX PRO 6000" in upper and (memory_mib is None or memory_mib >= 80 * 1024):
+        return RTX_PRO_6000
+    if "H100" in upper:
+        return H100
+    return re.sub(r"[^A-Z0-9]+", "_", upper).strip("_") or "UNKNOWN"
+
+
+def short_gpu_type(name: str) -> str:
+    """What ``get_gpu_type()`` returns for an nvidia-smi name (first word)."""
+    match = re.search(r"NVIDIA [a-zA-Z0-9]*", name)
+    return match.group(0)[7:] if match else "UNKNOWN"
+
+
+def detect_gpu() -> Optional[Tuple[str, Optional[int]]]:
+    """Name and memory (MiB) of the first GPU from nvidia-smi, None on failure."""
+    try:
+        out = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        ).stdout
+        line = out.strip().splitlines()[0]
+        name, _, memory = line.rpartition(",")
+        try:
+            memory_mib: Optional[int] = int(float(memory))
+        except ValueError:
+            memory_mib = None
+        return (name.strip(), memory_mib) if name.strip() else None
+    except Exception:
+        return None
+
+
+def load_model_config(model_path: str) -> Optional[Dict[str, Any]]:
+    """``config.json`` of a local model directory, None if absent or unreadable."""
+    try:
+        with open(os.path.join(model_path, "config.json")) as f:
+            config = json.load(f)
+        return config if isinstance(config, dict) else None
+    except Exception:
+        return None
+
+
+@dataclass(frozen=True)
+class Machine:
+    """The hardware an engine will run on."""
+
+    gpu_type: str  # get_gpu_type() spelling, e.g. "H100" or "RTX"
+    gpu_name: Optional[str]  # full nvidia-smi name
+    gpu_memory_mib: Optional[int]
+    num_gpus: int
+
+    @property
+    def gpu_key(self) -> Optional[str]:
+        if self.gpu_name is None:
+            return None
+        return classify_gpu(self.gpu_name, self.gpu_memory_mib)
+
+
+@dataclass(frozen=True)
+class ModelFacts:
+    """What the presets know about the model; unknown values are ``None``."""
+
+    model_id: Optional[str] = None
+    config: Optional[Mapping[str, Any]] = None
+    is_moe: Optional[bool] = None
+    active_params_b: Optional[float] = None
+    prequantized: bool = False
+
+    @property
+    def architectures(self) -> FrozenSet[str]:
+        archs = (self.config or {}).get("architectures")
+        return frozenset(archs) if isinstance(archs, list) else frozenset()
+
+
+def _num(config: Mapping[str, Any], *keys: str) -> Optional[float]:
+    for key in keys:
+        value = config.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+    return None
+
+
+def _text_config(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    nested = config.get("text_config")
+    if not isinstance(config.get("hidden_size"), (int, float)) and isinstance(
+        nested, Mapping
+    ):
+        return nested
+    return config
+
+
+def _estimate_active_params(
+    config: Mapping[str, Any],
+) -> Tuple[Optional[bool], Optional[float]]:
+    """``(is_moe, active_params_b)`` from a Hugging Face ``config.json``.
+
+    Active parameters per token, in billions: attention projections, the
+    dense MLP or the routed experts per token (plus shared experts), and input
+    plus untied output embeddings (an upper bound for tied models). Layer norms
+    and bias terms are ignored. ``None`` means the config lacks what is needed.
+    """
+    config = _text_config(config)
+    experts = _num(config, "num_local_experts", "num_experts", "n_routed_experts")
+    if experts is not None:
+        is_moe: Optional[bool] = experts > 0
+    else:
+        is_moe = False if _num(config, "hidden_size") else None
+
+    hidden = _num(config, "hidden_size")
+    layers = _num(config, "num_hidden_layers")
+    vocab = _num(config, "vocab_size")
+    heads = _num(config, "num_attention_heads")
+    if not (hidden and layers and vocab and heads):
+        return is_moe, None
+    kv_heads = _num(config, "num_key_value_heads") or heads
+    head_dim = _num(config, "head_dim") or hidden / heads
+    attn = hidden * head_dim * (2 * heads + 2 * kv_heads)
+    if is_moe:
+        ffn = _num(config, "moe_intermediate_size", "intermediate_size")
+        per_token = _num(config, "num_experts_per_tok", "experts_per_token")
+        if ffn is None or per_token is None:
+            return is_moe, None
+        shared = _num(config, "n_shared_experts", "num_shared_experts") or 0
+        mlp = 3 * hidden * ffn * (per_token + shared)
+    else:
+        ffn = _num(config, "intermediate_size")
+        if ffn is None:
+            return is_moe, None
+        mlp = 3 * hidden * ffn
+    total = layers * (attn + mlp) + 2 * vocab * hidden
+    return is_moe, total / 1e9
+
+
+def _is_prequantized(config: Mapping[str, Any]) -> bool:
+    # Any method (fp8, awq, gptq, mxfp4): adding --quantization fp8 on top of
+    # a quantized checkpoint fails at launch.
+    nested = config.get("text_config")
+    for source in (config, nested if isinstance(nested, Mapping) else {}):
+        if isinstance(source.get("quantization_config"), Mapping):
+            return True
+    return False
+
+
+def model_facts(
+    model_id: Optional[str],
+    config: Optional[Mapping[str, Any]],
+    active_params_b: Optional[float] = None,
+) -> ModelFacts:
+    """Facts from ``config.json``; ``active_params_b`` overrides the estimate."""
+    if not config:
+        return ModelFacts(model_id, None, None, active_params_b, False)
+    is_moe, estimate = _estimate_active_params(config)
+    active = active_params_b if active_params_b is not None else estimate
+    return ModelFacts(model_id, config, is_moe, active, _is_prequantized(config))
+
+
+@dataclass(frozen=True)
+class Recipe:
+    """A measured engine setting. Every set field must match for it to apply.
+
+    ``args`` is added for each engine in ``engines`` (flag to value, empty value
+    for a boolean switch). ``min_seqs`` raises the max concurrent sequences to
+    at least that value.
+    """
+
+    source: str  # what was measured, for the next reader
+    gpus: Tuple[str, ...]  # Machine.gpu_key values
+    engines: Tuple[str, ...]
+    args: Mapping[str, str] = field(default_factory=dict)
+    min_seqs: Optional[int] = None
+    single_gpu: Optional[bool] = None  # True: 1 GPU, False: tensor parallel
+    architectures: FrozenSet[str] = frozenset()  # any of; empty matches all
+    model_ids: FrozenSet[str] = frozenset()  # lowercase Hub ids; empty matches all
+    moe: Optional[bool] = None
+    max_active_b: Optional[float] = None  # needs known active parameters
+    profiles: Tuple[str, ...] = PROFILES
+
+    def matches(
+        self,
+        engine: str,
+        machine: Machine,
+        model: ModelFacts,
+        profile: str,
+    ) -> bool:
+        if (
+            machine.gpu_key not in self.gpus
+            or engine not in self.engines
+            or profile not in self.profiles
+            or (
+                self.single_gpu is not None
+                and self.single_gpu != (machine.num_gpus == 1)
+            )
+        ):
+            return False
+        if self.architectures and not self.architectures & model.architectures:
+            return False
+        if self.model_ids and (model.model_id or "").lower() not in self.model_ids:
+            return False
+        if self.moe is not None and model.is_moe is not self.moe:
+            return False
+        if self.max_active_b is not None and not (
+            model.active_params_b is not None
+            and model.active_params_b < self.max_active_b
+        ):
+            return False
+        return True
+
+
+# vLLM downloads the EAGLE3 draft at engine start into HF_HOME (on /data with
+# persistent caches): the first boot fetches it, later boots reuse it. It needs
+# a vLLM version with EAGLE3 speculator support.
+_EAGLE3_QWEN3_8B = {
+    _SPEC_FLAG: json.dumps(
+        {
+            "method": "eagle3",
+            "model": "RedHatAI/Qwen3-8B-speculator.eagle3",
+            "num_speculative_tokens": 3,
+        }
+    )
+}
+
+_RTX_AND_H100 = (RTX_PRO_6000, H100)
+
+# Measured recipes (all vLLM v0.32.0, 2k prompt / 256 output, via fal.run). To
+# add one, append an entry; flags are merged like any preset, so user
+# engine_args win. --max-num-batched-tokens stays at the vLLM default: 16384
+# gave no gain.
+RECIPES: Tuple[Recipe, ...] = (
+    Recipe(
+        source=(
+            "vLLM 0.32.0, 1x RTX PRO 6000 and 1x H100, Qwen3-8B and gpt-oss-120b: "
+            "a cap of 64 left 1.6x to 2x throughput unused, 256 uses it"
+        ),
+        gpus=_RTX_AND_H100,
+        engines=("vllm",),
+        min_seqs=256,
+        single_gpu=True,
+        max_active_b=40.0,
+    ),
+    Recipe(
+        source=(
+            "vLLM 0.32.0, 4x RTX PRO 6000, DeepSeek V4 Flash: a cap of 64 dips "
+            "throughput at 32 streams, 128 does not (64 left 1.6x to 2x unused "
+            "on every model tested)"
+        ),
+        gpus=(RTX_PRO_6000,),
+        engines=("vllm",),
+        min_seqs=128,
+        single_gpu=False,
+        moe=True,
+    ),
+    # Measured with the FP8 checkpoint (model = "Qwen/Qwen3-8B-FP8"); bf16
+    # weights with this recipe were not remeasured.
+    Recipe(
+        source=(
+            "vLLM 0.32.0, 1x RTX PRO 6000, Qwen3-8B-FP8: FP8 KV + cap 256 + "
+            "EAGLE3 (3 tokens) peaked at 4,206 tok/s and 208 tok/s single stream"
+        ),
+        gpus=(RTX_PRO_6000,),
+        engines=("vllm",),
+        args={_KV_DTYPE_FLAG: "fp8", **_EAGLE3_QWEN3_8B},
+        min_seqs=256,
+        single_gpu=True,
+        model_ids=frozenset({"qwen/qwen3-8b", "qwen/qwen3-8b-fp8"}),
+    ),
+    Recipe(
+        source=(
+            "vLLM 0.32.0, 1x RTX PRO 6000 and 1x H100, gpt-oss-120b: cap 256 + FP8 "
+            "KV cache; FP8 KV is required on H100 (bf16 KV preempts at high "
+            "load) and harmless on RTX PRO 6000. No EAGLE3: both NVIDIA drafts "
+            "crash vLLM 0.32 at startup"
+        ),
+        gpus=_RTX_AND_H100,
+        engines=("vllm",),
+        args={_KV_DTYPE_FLAG: "fp8"},
+        min_seqs=256,
+        single_gpu=True,
+        architectures=frozenset({"GptOssForCausalLM"}),
+    ),
+    # The multi-GPU layout (EP/PP) is being tuned, so this entry will change.
+    Recipe(
+        source=(
+            "vLLM 0.32.0, 4x RTX PRO 6000, DeepSeek V4 Flash 0731: cap 128 + "
+            "--disable-custom-all-reduce (base) + --trust-remote-code + prefetch "
+            "weight loading"
+        ),
+        gpus=(RTX_PRO_6000,),
+        engines=("vllm",),
+        args={_TRUST_REMOTE_CODE_FLAG: "", _LOAD_STRATEGY_FLAG: "prefetch"},
+        min_seqs=128,
+        single_gpu=False,
+        model_ids=frozenset({"deepseek-ai/deepseek-v4-flash-0731"}),
+    ),
+)
+
+
+def _has_flag(args: Sequence[str], group: str) -> bool:
+    return any(_flag_group(token) == group for token in args)
 
 
 def engine_preset_args(
     engine: str,
-    gpu_type: str,
-    num_gpus: int,
-    max_num_seqs: Optional[int] = None,
+    machine: Machine,
+    model: ModelFacts,
+    *,
+    profile: str = "throughput",
+    fp8_weights: bool = False,
+    max_multiplexing: Optional[int] = None,
+    user_args: Sequence[str] = (),
 ) -> List[str]:
     """Engine arguments that match the machine, for ``vllm`` or ``sglang``.
 
-    - ``num_gpus > 1``: tensor parallel across all GPUs (``--tensor-parallel-size``
-      for vLLM, ``--tp-size`` for SGLang).
-    - ``num_gpus > 1`` on PCIe-only GPUs (RTX PRO 6000, RTX 4090/5090, L40/L40S,
-      L4, A10): ``--disable-custom-all-reduce``, since the custom all-reduce
-      kernel needs NVLink.
-    - ``max_num_seqs``: ``--max-num-seqs`` (vLLM) or ``--max-running-requests``
-      (SGLang). Pass the app's ``max_multiplexing`` so the router sends exactly
-      what the engine can run at once.
+    Generic base:
 
-    ``gpu_type`` is what ``fal.toolkit.compilation.get_gpu_type()`` returns.
+    - ``machine.num_gpus > 1``: tensor parallel across all GPUs
+      (``--tensor-parallel-size`` for vLLM, ``--tp-size`` for SGLang), plus
+      ``--disable-custom-all-reduce`` on PCIe-only GPUs (RTX PRO 6000, RTX
+      4090/5090, L40/L40S, L4, A10), since the custom all-reduce kernel needs
+      NVLink.
+    - ``max_multiplexing``: ``--max-num-seqs`` (vLLM) or
+      ``--max-running-requests`` (SGLang), matching the router's concurrency.
+      A recipe may raise the engine cap above it, never lower it.
+    - ``fp8_weights``: ``--quantization fp8`` (any GPU) unless the checkpoint
+      is already quantized (any ``quantization_config``).
+
+    Measured recipes (see ``RECIPES``) add more for specific GPU, engine, model
+    and profile combinations. Speculative decoding is never added for an
+    architecture in ``_SPEC_DENYLIST``. ``user_args`` (the app's
+    ``engine_args``) only drives messages about the presets.
+
     Use ``merge_engine_args`` to put user arguments on top.
     """
     if engine not in _TP_FLAG:
         raise ValueError(f"unknown engine {engine!r}; expected 'vllm' or 'sglang'")
+    if profile not in PROFILES:
+        raise ValueError(f"unknown engine_profile {profile!r}; expected {PROFILES}")
+    recipes = [r for r in RECIPES if r.matches(engine, machine, model, profile)]
+    spec_denied = model.architectures & _SPEC_DENYLIST
+    user_spec = _has_flag(user_args, "spec")
+    if spec_denied and user_spec:
+        print(
+            f"[llm-app] speculative decoding on {sorted(spec_denied)} crashes "
+            "vLLM 0.32 at startup; your --speculative-config is passed as given"
+        )
+    seqs = max_multiplexing
+    for recipe in recipes:
+        if recipe.min_seqs is not None:
+            seqs = max(seqs or 0, recipe.min_seqs)
+
     args: List[str] = []
-    if num_gpus > 1:
-        args += [_TP_FLAG[engine], str(num_gpus)]
-        if _is_pcie_only(gpu_type):
+    if machine.num_gpus > 1:
+        args += [_TP_FLAG[engine], str(machine.num_gpus)]
+        if _is_pcie_only(machine.gpu_type, machine.gpu_name):
             args.append(_ALL_REDUCE_FLAG)
-    if max_num_seqs is not None:
-        args += [_MAX_SEQS_FLAG[engine], str(max_num_seqs)]
+    if seqs is not None:
+        args += [_MAX_SEQS_FLAG[engine], str(seqs)]
+    for recipe in recipes:
+        for flag, value in recipe.args.items():
+            if flag == _SPEC_FLAG and spec_denied:
+                continue
+            args += [flag] if flag in _BOOLEAN_FLAGS else [flag, value]
+    # Online FP8 for a bf16 checkpoint; an FP8 one already has it.
+    if fp8_weights and not model.prequantized:
+        args += [_QUANT_FLAG, "fp8"]
+    if (
+        profile == "latency"
+        and engine == "vllm"
+        and machine.gpu_key == RTX_PRO_6000
+        and _SPEC_FLAG not in args
+        and not user_spec
+    ):
+        print(f"[llm-app] latency profile: no measured recipe for {model.model_id!r}")
     return args
 
 
