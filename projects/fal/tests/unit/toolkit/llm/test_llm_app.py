@@ -554,6 +554,20 @@ def test_config_key_uses_resolved_model_config(tmp_path, monkeypatch):
     assert keyed != app._config_key(str(tmp_path / "missing"))
 
 
+def test_config_key_follows_the_served_repo(tmp_path, monkeypatch):
+    app = _make_probe(tmp_path, monkeypatch, model="org/m")
+    app.engine_command = lambda path: ["serve", path]  # type: ignore[method-assign]
+    snap = str(tmp_path / "snap")
+    app._model_repo = "org/m-FP8"
+    fp8 = app._config_key(snap)
+    app._model_repo = "org/m"
+    # Same flags, different weights: an FP8 checkpoint and the bf16 model
+    # compile different kernels, so they must not share a boot marker.
+    assert app._config_key(snap) != fp8
+    app._model_repo = "org/m-FP8"
+    assert app._config_key(str(tmp_path / "other-snap")) == fp8
+
+
 def test_write_marker_leaves_no_tmp_and_tolerates_concurrency(tmp_path):
     path = tmp_path / "d" / "m.json"
     errors = []
@@ -1619,6 +1633,19 @@ def test_upstream_newer_sets_boot_fields_and_gauge(tmp_path, monkeypatch):
     app._check_upstream()
     assert app._boot["upstream_newer"] is False
     assert _gauge() == 0.0
+
+
+def test_upstream_check_queries_the_served_repo(tmp_path, monkeypatch):
+    hub, app = _resolver(tmp_path, monkeypatch)
+    app._resolve_model()
+    asked = []
+    monkeypatch.setattr(
+        _app, "_hub_commit", lambda repo, rev, timeout: asked.append(repo) or None
+    )
+    # A recipe checkpoint was served: its own main is the comparison.
+    app._model_repo = "org/model-FP8"
+    app._check_upstream()
+    assert asked == ["org/model-FP8"]
 
 
 def test_upstream_check_failure_and_start_conditions(tmp_path, monkeypatch):

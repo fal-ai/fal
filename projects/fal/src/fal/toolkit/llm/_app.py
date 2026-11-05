@@ -43,6 +43,7 @@ from fal.toolkit.llm._preread import DEFAULT_WORKERS, preread_weights
 from fal.toolkit.llm._presets import (
     PROFILES,
     Machine,
+    checkpoint_for,
     detect_gpu,
     engine_arg_warnings,
     engine_preset_args,
@@ -317,7 +318,11 @@ class LLMApp(App):
     next to the HF hub cache) to change it. An unpinned app adopts the newest
     complete copy on the volume (also one downloaded by a pinned app), and
     after boot reports whether the Hub has a newer commit (``upstream_newer``
-    in the boot report, gauge ``fal_app_llm_model_upstream_newer``).
+    in the boot report, gauge ``fal_app_llm_model_upstream_newer``). When a
+    recipe serves a different checkpoint (below), these markers, downloads and
+    checks apply to that checkpoint's repo, so pre-stage it with
+    ``fal volumes weights pull <checkpoint>``; the boot report names it as
+    ``served_repo``. A pinned ``model_revision`` is never swapped.
 
     With ``engine_presets`` on, tensor parallelism (from ``num_gpus``),
     ``--disable-custom-all-reduce`` on PCIe-only GPUs and the engine's max
@@ -328,8 +333,10 @@ class LLMApp(App):
     on RTX PRO 6000 and H100 (see ``RECIPES``): sequence caps, FP8 KV cache
     and EAGLE3 for Qwen3-8B, and settings for gpt-oss-120b and DeepSeek V4
     Flash. A recipe may
-    raise the engine's cap above ``max_multiplexing``. See
-    ``engine_preset_args``.
+    raise the engine's cap above ``max_multiplexing``. A recipe can also
+    serve a pre-quantized checkpoint (``checkpoint_for``): the default for
+    Qwen3-8B on RTX PRO 6000 is ``Qwen/Qwen3-8B-FP8``. Clients keep using
+    ``model`` (or ``served_model_name``). See ``engine_preset_args``.
 
     Subclasses overriding ``handle_exit`` or ``teardown`` must call ``super()``:
     they start the shutdown drain and stop the engine.
@@ -347,12 +354,19 @@ class LLMApp(App):
     # measured recipes); engine_args override per flag. The engine cap can
     # exceed max_multiplexing when a recipe raises it, which is harmless.
     engine_presets: ClassVar[bool] = True
-    # "throughput" (default) or "latency"; recipes can differ by profile.
+    # "throughput" (default), "latency" or "max_throughput"; recipes can differ
+    # by profile. max_throughput trades quality for speed and is opt-in only:
+    # for Qwen3-8B on RTX PRO 6000 it serves the NVFP4 checkpoint (MMLU-Pro -8.2
+    # pts) for about 1.4x the throughput. Models without a max_throughput recipe
+    # get the throughput one.
     engine_profile: ClassVar[str] = "throughput"
-    # Online FP8 weights (--quantization fp8) for a bf16 checkpoint, a quality
-    # tradeoff so opt-in. The measured Qwen3-8B recipe (4,206 tok/s peak, 208
-    # tok/s single stream) used model = "Qwen/Qwen3-8B-FP8".
-    fp8_weights: ClassVar[bool] = False
+    # None: the measured default (Qwen3-8B on RTX PRO 6000 serves the
+    # Qwen/Qwen3-8B-FP8 checkpoint, quality within run noise, see
+    # ai-designs/2026-11-05-rtx-quant-quality.md). False: stay on bf16. True:
+    # also online FP8 (--quantization fp8) for models without a measured
+    # checkpoint, a quality tradeoff. engine_profile "max_throughput" picks its
+    # own (NVFP4) checkpoint regardless of this setting.
+    fp8_weights: ClassVar[Optional[bool]] = None
     # Active parameters in billions when the config.json estimate is wrong.
     active_params_b: ClassVar[Optional[float]] = None
     engine_env: ClassVar[Dict[str, str]] = {}
@@ -441,24 +455,16 @@ class LLMApp(App):
             raise ValueError(f"unknown engine {self.engine!r}; override engine_command")
         engine_args = list(self.engine_args)
         if self.engine_presets:
-            # One nvidia-smi call: the short type is derived from the name.
-            gpu = self._gpu_name()
-            machine = Machine(
-                gpu_type=short_gpu_type(gpu[0]) if gpu else self._gpu_type(),
-                gpu_name=gpu[0] if gpu else None,
-                gpu_memory_mib=gpu[1] if gpu else None,
-                num_gpus=self.num_gpus or 1,
-            )
             model = model_facts(
                 self.model, load_model_config(model_path), self.active_params_b
             )
             engine_args = merge_engine_args(
                 engine_preset_args(
                     self.engine,
-                    machine,
+                    self._machine(),
                     model,
                     profile=self.engine_profile,
-                    fp8_weights=self.fp8_weights,
+                    fp8_weights=self.fp8_weights is True,
                     max_multiplexing=self.max_multiplexing,
                     user_args=engine_args,
                 ),
@@ -603,29 +609,93 @@ class LLMApp(App):
     def _gpu_name() -> Optional[Tuple[str, Optional[int]]]:
         return detect_gpu()
 
-    def _resolve_model(self) -> str:
-        if os.path.isdir(self.model):
-            self._boot["resolve_source"] = "path"
+    def _machine(self) -> Machine:
+        # One nvidia-smi call per boot: the short type is derived from the name.
+        machine = getattr(self, "_machine_cache", None)
+        if machine is None:
+            gpu = self._gpu_name()
+            machine = Machine(
+                gpu_type=short_gpu_type(gpu[0]) if gpu else self._gpu_type(),
+                gpu_name=gpu[0] if gpu else None,
+                gpu_memory_mib=gpu[1] if gpu else None,
+                num_gpus=self.num_gpus or 1,
+            )
+            self._machine_cache = machine
+        return machine
+
+    def _model_source(self) -> str:
+        """What to download and serve: a recipe's checkpoint, else ``model``."""
+        # A local model directory is served as given.
+        if not self.engine_presets or os.path.isdir(self.model):
             return self.model
+        source = checkpoint_for(
+            self.engine,
+            self._machine(),
+            self.model,
+            profile=self.engine_profile,
+            fp8_weights=self.fp8_weights,
+        )
+        if not source or source == self.model:
+            return self.model
+        if self.model_revision is not None:
+            # A pinned model_revision names exact weights, so it is never swapped.
+            print(
+                f"[llm-app] model_revision is pinned: serving {self.model}, "
+                f"not the recipe checkpoint {source}"
+            )
+            return self.model
+        self._boot["model_source"] = source
+        print(
+            f"[llm-app] serving checkpoint {source} as {self._served_name()} "
+            f"(pre-stage it with `fal volumes weights pull {source}`)"
+        )
+        return source
+
+    def _resolve_model(self) -> str:
+        source = self._model_source()
+        if source == self.model:
+            return self._resolve_repo(self.model)
+        try:
+            return self._resolve_repo(source)
+        except Exception as exc:
+            # A recipe's checkpoint must never stop an app that would boot on
+            # its own model (offline hub, missing repo).
+            print(
+                f"[llm-app] checkpoint {source} unavailable ({exc!r}), "
+                f"serving {self.model}"
+            )
+            self._boot.pop("model_source", None)
+            return self._resolve_repo(self.model)
+
+    def _resolve_repo(self, repo: str) -> str:
+        """Resolve ``repo`` local-first; its markers and upstream check follow it."""
+        self._model_repo = repo
+        self._served_commit = None
+        self._boot["served_repo"] = repo
+        if os.path.isdir(repo):
+            self._boot["resolve_source"] = "path"
+            return repo
         try:
             from huggingface_hub import snapshot_download  # noqa: PLC0415
         except ImportError:
             self._boot["resolve_source"] = "path"
-            return self.model
-        revision = self.model_revision
+            return repo
+        # model_revision pins the app's own model; a recipe checkpoint is only
+        # chosen when unpinned (see _model_source).
+        revision = self.model_revision if repo == self.model else None
         if revision is None:
             print(
-                f"[llm-app] model_revision is not set: {self.model} follows the "
+                f"[llm-app] model_revision is not set: {repo} follows the "
                 "default branch. Pin model_revision for reproducible deploys."
             )
         if not self.persistent_caches:
             # The HF cache is not persistent, so a marker would mislead.
-            return self._download(snapshot_download, revision)
-        marker = snapshot_marker_path(self.model, revision)
+            return self._download(snapshot_download, revision, repo)
+        marker = snapshot_marker_path(repo, revision)
         recorded = read_marker(marker)
         recorded = recorded or {}
         path = recorded.get("path")
-        if recorded.get("model") == self.model and isinstance(path, str):
+        if recorded.get("model") == repo and isinstance(path, str):
             # Reuse the exact snapshot (a per-commit dir) a previous download
             # completed, without contacting the Hub. Re-resolving the revision
             # offline could land on another runner's partial download of a
@@ -639,12 +709,12 @@ class LLMApp(App):
                     self._served_commit = self._dir_commit(path)
                 return path
             print(f"[llm-app] cached snapshot {path} incomplete, downloading")
-        path = self._download(snapshot_download, revision)
+        path = self._download(snapshot_download, revision, repo)
         # Only the default branch head may enter the unpinned marker: a pinned
         # branch or PR ref with a newer date must not change what unpinned
         # apps serve. One Hub call tells both whether this commit is main's
         # head and its date.
-        main = _hub_commit(self.model, None, _HUB_TIMEOUT_S)
+        main = _hub_commit(repo, None, _HUB_TIMEOUT_S)
         # The snapshot dir name is authoritative for what was downloaded.
         commit = self._dir_commit(path)
         if commit is None and revision is None and main is not None:
@@ -657,7 +727,7 @@ class LLMApp(App):
                 write_marker(
                     marker,
                     {
-                        "model": self.model,
+                        "model": repo,
                         "revision": revision,
                         "path": path,
                         "commit": commit,
@@ -667,13 +737,13 @@ class LLMApp(App):
             # An unpinned download is main by definition, even if the lookup
             # failed; a pinned one only when it is main's current head.
             if commit is not None and (revision is None or is_main_head):
-                advance_snapshot_marker(self.model, path, commit, date)
+                advance_snapshot_marker(repo, path, commit, date)
             elif revision is None:
                 # Commit unknown (not a per-commit dir, Hub unreachable):
                 # still record the completed download for reuse.
                 write_marker(
                     marker,
-                    {"model": self.model, "revision": None, "path": path},
+                    {"model": repo, "revision": None, "path": path},
                 )
         except OSError as exc:
             print(f"[llm-app] could not write snapshot marker: {exc!r}")
@@ -696,7 +766,8 @@ class LLMApp(App):
 
     def _check_upstream(self) -> None:
         # Report only: never changes the weights served or the markers.
-        info = _hub_commit(self.model, None, _HUB_TIMEOUT_S)
+        repo = getattr(self, "_model_repo", None) or self.model
+        info = _hub_commit(repo, None, _HUB_TIMEOUT_S)
         if info is None:
             print("[llm-app] upstream model check failed, skipped")
             return
@@ -709,7 +780,7 @@ class LLMApp(App):
         )
         if newer:
             print(
-                f"[llm-app] WARNING: {self.model} main differs from the served "
+                f"[llm-app] WARNING: {repo} main differs from the served "
                 "commit. New runners pick it up once a complete copy is on the "
                 "volume (fal volumes weights pull, or pin model_revision)."
             )
@@ -718,20 +789,25 @@ class LLMApp(App):
         self._boot["upstream_newer"] = newer
         _set_upstream_newer_gauge(1.0 if newer else 0.0)
 
-    def _download(self, snapshot_download: Any, revision: Optional[str]) -> str:
-        path = snapshot_download(self.model, revision=revision)
+    def _download(
+        self, snapshot_download: Any, revision: Optional[str], repo: str
+    ) -> str:
+        path = snapshot_download(repo, revision=revision)
         self._boot["resolve_source"] = "network"
         self._served_commit = self._dir_commit(path)
         return path
 
     def _config_key(self, model_path: Optional[str] = None) -> str:
         # The command is built from the real model path (presets read its
-        # config.json), then the path is replaced by the model id: snapshot dirs
-        # change per revision. The port says nothing about the compiled kernels.
+        # config.json), then the path is replaced by the repo it came from:
+        # snapshot dirs change per revision, while a recipe checkpoint (FP8)
+        # and the model itself (bf16) compile different kernels under the same
+        # flags. The port says nothing about the compiled kernels.
+        repo = getattr(self, "_model_repo", None) or self.model
         try:
             cmd = self.engine_command(model_path or self.model)
             if model_path:
-                cmd = [self.model if arg == model_path else arg for arg in cmd]
+                cmd = [repo if arg == model_path else arg for arg in cmd]
         except Exception as exc:
             print(
                 f"[llm-app] engine_command failed ({exc!r}), "
@@ -749,7 +825,7 @@ class LLMApp(App):
                 stripped.append(arg)
         env = sorted(self.engine_env.items())
         blob = json.dumps(
-            [self.model, self.engine, stripped, env, self.num_gpus], default=str
+            [repo, self.engine, stripped, env, self.num_gpus], default=str
         )
         return hashlib.sha1(blob.encode()).hexdigest()[:16]
 

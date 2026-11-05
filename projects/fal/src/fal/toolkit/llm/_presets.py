@@ -24,6 +24,7 @@ _QUANT_FLAG = "--quantization"
 _ALL_REDUCE_FLAG = "--disable-custom-all-reduce"
 _TRUST_REMOTE_CODE_FLAG = "--trust-remote-code"
 _LOAD_STRATEGY_FLAG = "--safetensors-load-strategy"
+_GPU_MEM_FLAG = "--gpu-memory-utilization"
 _BOOLEAN_FLAGS = frozenset({_ALL_REDUCE_FLAG, _TRUST_REMOTE_CODE_FLAG})
 
 # Spellings that mean the same thing to an engine, keyed by a canonical group.
@@ -43,6 +44,7 @@ _FLAG_GROUPS: Dict[str, str] = {
     _ALL_REDUCE_FLAG: "all_reduce",
     _TRUST_REMOTE_CODE_FLAG: "trust_remote_code",
     _LOAD_STRATEGY_FLAG: "load_strategy",
+    _GPU_MEM_FLAG: "gpu_mem",
     "--pipeline-parallel-size": "pp",
     "--pp-size": "pp",
     "-pp": "pp",
@@ -67,7 +69,10 @@ RTX_PRO_6000 = "RTX_PRO_6000"
 H100 = "H100"
 # Architectures whose EAGLE3 drafts crash vLLM 0.32 at startup.
 _SPEC_DENYLIST = frozenset({"GptOssForCausalLM"})
-PROFILES = ("throughput", "latency")
+# max_throughput trades quality for speed and is opt-in; models without a
+# max_throughput recipe get the throughput one.
+PROFILES = ("throughput", "latency", "max_throughput")
+_SAFE_PROFILES = ("throughput", "latency")
 _ENGINES = tuple(_TP_FLAG)
 
 
@@ -258,7 +263,11 @@ class Recipe:
 
     ``args`` is added for each engine in ``engines`` (flag to value, empty value
     for a boolean switch). ``min_seqs`` raises the max concurrent sequences to
-    at least that value.
+    at least that value. ``checkpoint`` is a Hub repo downloaded and served in
+    place of the user's model (clients keep the user's name). A checkpoint
+    recipe is picked before the download, so it matches on model id, GPU,
+    engine, GPU count and profile only. ``fp8_weights`` marks the FP8 weights
+    default, which the app's ``fp8_weights = False`` opts out of.
     """
 
     source: str  # what was measured, for the next reader
@@ -272,6 +281,8 @@ class Recipe:
     moe: Optional[bool] = None
     max_active_b: Optional[float] = None  # needs known active parameters
     profiles: Tuple[str, ...] = PROFILES
+    checkpoint: Optional[str] = None
+    fp8_weights: bool = False
 
     def matches(
         self,
@@ -347,12 +358,15 @@ RECIPES: Tuple[Recipe, ...] = (
         single_gpu=False,
         moe=True,
     ),
-    # Measured with the FP8 checkpoint (model = "Qwen/Qwen3-8B-FP8"); bf16
-    # weights with this recipe were not remeasured.
+    # Measured with the pre-quantized FP8 checkpoint, which is served in place
+    # of Qwen/Qwen3-8B; with fp8_weights = False the same flags apply to bf16
+    # weights (not remeasured).
     Recipe(
         source=(
             "vLLM 0.32.0, 1x RTX PRO 6000, Qwen3-8B-FP8: FP8 KV + cap 256 + "
-            "EAGLE3 (3 tokens) peaked at 4,206 tok/s and 208 tok/s single stream"
+            "EAGLE3 (3 tokens) peaked at 4,206 tok/s and 208 tok/s single "
+            "stream; quality within run noise (MMLU-Pro -2.2 pts) vs bf16, "
+            "ai-designs/2026-11-05-rtx-quant-quality.md"
         ),
         gpus=(RTX_PRO_6000,),
         engines=("vllm",),
@@ -360,13 +374,39 @@ RECIPES: Tuple[Recipe, ...] = (
         min_seqs=256,
         single_gpu=True,
         model_ids=frozenset({"qwen/qwen3-8b", "qwen/qwen3-8b-fp8"}),
+        profiles=_SAFE_PROFILES,
+        checkpoint="Qwen/Qwen3-8B-FP8",
+        fp8_weights=True,
     ),
+    # Opt-in: the NVFP4 checkpoint loses 8.2 pts on MMLU-Pro (GSM8K and IFEval
+    # hold) for about 1.4x the FP8 peak.
+    Recipe(
+        source=(
+            "vLLM 0.32.0, 1x RTX PRO 6000, Qwen3-8B NVFP4: FP8 KV + EAGLE3 + cap "
+            "512 + gpu-memory-utilization 0.95 peaked at 6,067 tok/s; MMLU-Pro "
+            "-8.2 pts vs bf16, outside run noise"
+        ),
+        gpus=(RTX_PRO_6000,),
+        engines=("vllm",),
+        args={
+            _KV_DTYPE_FLAG: "fp8",
+            _GPU_MEM_FLAG: "0.95",
+            **_EAGLE3_QWEN3_8B,
+        },
+        min_seqs=512,
+        single_gpu=True,
+        model_ids=frozenset({"qwen/qwen3-8b"}),
+        profiles=("max_throughput",),
+        checkpoint="nvidia/Qwen3-8B-NVFP4",
+    ),
+    # gpt-oss on SM120 runs the Marlin W4A16 MoE path. The native b12x backend
+    # crashes on expert biases, so never force a b12x backend here.
     Recipe(
         source=(
             "vLLM 0.32.0, 1x RTX PRO 6000 and 1x H100, gpt-oss-120b: cap 256 + FP8 "
             "KV cache; FP8 KV is required on H100 (bf16 KV preempts at high "
-            "load) and harmless on RTX PRO 6000. No EAGLE3: both NVIDIA drafts "
-            "crash vLLM 0.32 at startup"
+            "load) and quality-safe (no measurable loss on RTX PRO 6000). No "
+            "EAGLE3: both NVIDIA drafts crash vLLM 0.32 at startup"
         ),
         gpus=_RTX_AND_H100,
         engines=("vllm",),
@@ -390,6 +430,31 @@ RECIPES: Tuple[Recipe, ...] = (
         model_ids=frozenset({"deepseek-ai/deepseek-v4-flash-0731"}),
     ),
 )
+
+
+def checkpoint_for(
+    engine: str,
+    machine: Machine,
+    model_id: str,
+    *,
+    profile: str = "throughput",
+    fp8_weights: Optional[bool] = None,
+) -> Optional[str]:
+    """Hub repo to download and serve instead of ``model_id``, or None.
+
+    Runs before the download, so only recipes that match on model id, GPU,
+    engine, GPU count and profile can apply. ``fp8_weights=False`` skips the
+    FP8 weights default.
+    """
+    facts = ModelFacts(model_id)
+    for recipe in RECIPES:
+        if (
+            recipe.checkpoint
+            and not (recipe.fp8_weights and fp8_weights is False)
+            and recipe.matches(engine, machine, facts, profile)
+        ):
+            return recipe.checkpoint
+    return None
 
 
 def _has_flag(args: Sequence[str], group: str) -> bool:
@@ -418,8 +483,9 @@ def engine_preset_args(
     - ``max_multiplexing``: ``--max-num-seqs`` (vLLM) or
       ``--max-running-requests`` (SGLang), matching the router's concurrency.
       A recipe may raise the engine cap above it, never lower it.
-    - ``fp8_weights``: ``--quantization fp8`` (any GPU) unless the checkpoint
-      is already quantized (any ``quantization_config``).
+    - ``fp8_weights``: online ``--quantization fp8`` (any GPU) unless the
+      checkpoint is already quantized (any ``quantization_config``, which
+      includes a checkpoint substituted by ``checkpoint_for``).
 
     Measured recipes (see ``RECIPES``) add more for specific GPU, engine, model
     and profile combinations. Speculative decoding is never added for an
@@ -468,6 +534,14 @@ def engine_preset_args(
         and not user_spec
     ):
         print(f"[llm-app] latency profile: no measured recipe for {model.model_id!r}")
+    if profile == "max_throughput" and not any(
+        "throughput" not in r.profiles for r in recipes
+    ):
+        # Only generic recipes matched, so this is the throughput profile.
+        print(
+            "[llm-app] max_throughput: no measured recipe for "
+            f"{model.model_id!r} on this machine, using throughput"
+        )
     return args
 
 
