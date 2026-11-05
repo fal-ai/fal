@@ -948,7 +948,9 @@ def test_drain_budget_leaves_engine_and_slack():
     class A(LLMApp):
         model = "m"
 
-    assert A()._drain_budget() == 1.0  # 5s default window - 3s engine - 1s slack
+    assert A()._drain_budget() == 30.0  # 60s class default, capped by shutdown_grace_s
+    A.termination_grace_period_seconds = None
+    assert A()._drain_budget() == 1.0  # 5s platform window - 3s engine - 1s slack
     A.termination_grace_period_seconds = 2
     assert A()._drain_budget() == 0.0
     A.termination_grace_period_seconds = 60
@@ -957,6 +959,54 @@ def test_drain_budget_leaves_engine_and_slack():
     A.termination_grace_period_seconds = 3600
     A.shutdown_grace_s = 1000.0
     assert A()._drain_budget() == 1000.0
+
+
+def test_termination_grace_default_reaches_host_kwargs():
+    class A(LLMApp):
+        model = "m"
+
+    class B(LLMApp):
+        model = "m"
+        termination_grace_period_seconds = 120
+
+    assert A.termination_grace_period_seconds == 60
+    assert A.host_kwargs["termination_grace_period_seconds"] == 60
+    assert A()._termination_window() == 60.0
+    assert B.host_kwargs["termination_grace_period_seconds"] == 120
+    assert B()._termination_window() == 120.0
+
+
+def test_pyproject_grace_overrides_inherited_default_only():
+    from fal.api import Options
+    from fal.app import App
+    from fal.utils import (
+        _merge_host_config,
+        _toml_host_keys_overriding_app_defaults,
+    )
+
+    class A(LLMApp):
+        model = "m"
+
+    class B(LLMApp):
+        model = "m"
+        termination_grace_period_seconds = 120
+
+    class Base(App):
+        termination_grace_period_seconds = 30
+
+    class C(Base):
+        pass
+
+    options = Options(host={"termination_grace_period_seconds": 300})
+    key = "termination_grace_period_seconds"
+    overrides = _toml_host_keys_overriding_app_defaults(A, App, options)
+    assert key in overrides
+    merged = dict(A.host_kwargs)
+    _merge_host_config(merged, options.host, overrides)
+    assert merged[key] == 300
+    assert key not in _toml_host_keys_overriding_app_defaults(B, App, options)
+    # A user's own base class still wins, as before.
+    assert key not in _toml_host_keys_overriding_app_defaults(C, App, options)
 
 
 def test_engine_stop_wait_tracks_remaining_window():

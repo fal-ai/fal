@@ -357,9 +357,12 @@ class LLMApp(App):
     # fit inside the termination window, so subclasses raise
     # ``termination_grace_period_seconds`` to drain longer. Only that class
     # attribute is visible at runtime: a value set in pyproject or the CLI
-    # reaches the platform but not the app, so the budget then assumes the 5s
-    # default window.
+    # overrides it on the platform but not in the app, so the budget then
+    # assumes the class value.
     shutdown_grace_s: ClassVar[float] = 30.0
+    # Seconds between SIGTERM and SIGKILL. The platform default (5s) leaves no
+    # time to drain streams; 60 fits the 30s drain plus the engine stop.
+    termination_grace_period_seconds: ClassVar[Optional[int]] = 60
 
     keep_alive = 300
 
