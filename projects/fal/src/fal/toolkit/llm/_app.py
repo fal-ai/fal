@@ -81,15 +81,20 @@ _ENGINE_CONNECT_TIMEOUT_S = 30.0
 _DEADLINE_HEADER = "x-fal-request-deadline"
 _GATEWAY_REMAINING_HEADER = "x-fal-request-timeout-remaining"
 # Engine log lines that mark a boot phase, as (substring, phase). Each phase
-# records its first occurrence; a needle that never matches just leaves the
-# phase out of the report.
+# records its first occurrence, except phases ending in "_end", which record
+# the last (vLLM captures graphs once to size memory, then again for real). A
+# needle that never matches just leaves the phase out of the report.
 _BOOT_MILESTONES: Dict[str, tuple] = {
     "vllm": (
+        ("Initializing a V1 LLM engine", "engine_core_start"),
         ("Loading weights took", "weights_loaded"),
         ("Model loading took", "model_loaded"),
+        ("torch.compile took", "compile_loaded"),
         ("Capturing CUDA graph", "cuda_graph_begin"),
         ("Graph capturing finished", "cuda_graph_end"),
         ("GPU KV cache size", "kv_cache_allocated"),
+        ("Autotuning process starts", "autotune_begin"),
+        ("Autotuning process ends", "autotune_end"),
         ("Application startup complete", "server_ready"),
     ),
     "sglang": (
@@ -595,6 +600,7 @@ class LLMApp(App):
 
         self._deadline = t0 + self._startup_budget_s()
         self._boot_marker: Optional[Path] = None
+        self._preread_stop = threading.Event()
         self._stage = "init"
         watchdog = threading.Timer(
             max(0.0, self._deadline - time.monotonic()), self._on_budget_timer
@@ -616,7 +622,7 @@ class LLMApp(App):
             watchdog.cancel()
 
     def _on_budget_timer(self) -> None:
-        # Blocking stages (download, pre-read) cannot be interrupted, so make
+        # Blocking stages (download) cannot be interrupted, so make
         # the overrun visible before the platform kills the runner. The
         # readiness wait checks the budget itself and reports through _fail.
         if self._stage == "engine startup":
@@ -653,19 +659,16 @@ class LLMApp(App):
             self._boot["compile_cache_warm"] = previous is not None
             if previous is not None:
                 self._boot["previous_boot"] = previous
-        if self.preread_workers > 0 and os.path.isdir(model_path):
-            self._stage = "weight pre-read"
-            stats = preread_weights(model_path, workers=self.preread_workers)
-            self._boot["preread_s"] = stats.seconds
-            print(
-                f"[llm-app] pre-read {stats.bytes / 1e9:.1f} GB in "
-                f"{stats.seconds:.1f}s ({stats.gb_per_s:.2f} GB/s)"
-            )
-            self._check_budget("weight pre-read")
 
         self._stage = "engine startup"
         self._engine_started = time.monotonic()
         self._proc = self._start_engine(model_path)
+        # The engine spends its first seconds importing and initializing CUDA
+        # before it reads weights, so the pre-read runs alongside it.
+        if self.preread_workers > 0 and os.path.isdir(model_path):
+            threading.Thread(
+                target=self._preread, args=(model_path,), daemon=True
+            ).start()
         base_url = f"http://127.0.0.1:{self.engine_port}"
         self._wait_ready(base_url)
         self._boot["engine_ready_s"] = time.monotonic() - self._engine_started
@@ -960,6 +963,24 @@ class LLMApp(App):
         tail = "\n".join(list(self._engine_log_tail)[-10:])
         raise RuntimeError(f"{reason}\nboot report: {report}\n{tail}")
 
+    def _preread(self, model_path: str) -> None:
+        # Only warms the page cache; the engine reads the weights regardless.
+        try:
+            stats = preread_weights(
+                model_path, workers=self.preread_workers, stop=self._preread_stop
+            )
+        except OSError as exc:
+            print(f"[llm-app] pre-read failed: {exc}")
+            return
+        if self._preread_stop.is_set():
+            print("[llm-app] pre-read stopped with the engine")
+            return
+        self._boot["preread_s"] = stats.seconds
+        print(
+            f"[llm-app] pre-read {stats.bytes / 1e9:.1f} GB in "
+            f"{stats.seconds:.1f}s ({stats.gb_per_s:.2f} GB/s)"
+        )
+
     def _start_engine(self, model_path: str) -> subprocess.Popen:
         cmd = self.engine_command(model_path)
         env = {**os.environ, **self.engine_env}
@@ -991,7 +1012,7 @@ class LLMApp(App):
             # Milestone times are seconds since setup start.
             for needle, phase in milestones:
                 key = f"{phase}_s"
-                if needle in line and key not in self._boot:
+                if needle in line and (key not in self._boot or key.endswith("_end_s")):
                     self._boot[key] = time.monotonic() - self._setup_start
             if progress:
                 now = time.monotonic()
@@ -1088,6 +1109,10 @@ class LLMApp(App):
         self._stop_engine(self._engine_stop_wait())
 
     def _stop_engine(self, timeout: float) -> None:
+        # A running pre-read would otherwise hold interpreter exit.
+        stop = getattr(self, "_preread_stop", None)
+        if stop is not None:
+            stop.set()
         proc = getattr(self, "_proc", None)
         if proc is not None and proc.poll() is None:
             proc.terminate()
