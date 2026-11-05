@@ -525,11 +525,11 @@ _UPLOAD_POLICY_KEY_BYTES = UPLOAD_POLICY_KEY.encode()
 class _RejectUploadPolicyOnWebSocket:
     """Refuse a WebSocket handshake carrying an upload policy.
 
-    The policy is parsed by an ``@app.middleware("http")``, and Starlette
-    implements those as ``BaseHTTPMiddleware``, which never runs for a websocket
-    scope. There would be no request context, so ``get_upload_policy()`` returns
-    ``None`` and the output goes to fal-owned storage behind a 200: the caller
-    asked for their own bucket and silently got ours.
+    The policy is parsed by ``_RequestContextMiddleware``, which only handles
+    http scopes and never runs for a websocket. There would be no request
+    context, so ``get_upload_policy()`` returns ``None`` and the output goes to
+    fal-owned storage behind a 200: the caller asked for their own bucket and
+    silently got ours.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -558,6 +558,188 @@ class _RejectUploadPolicyOnWebSocket:
             await send({"type": "websocket.close", "code": 1008})
             return
         await self.app(scope, receive, send)
+
+
+def _set_response_header(message: dict, name: bytes, value: str) -> None:
+    """Replace ``name`` (lowercase) on an ``http.response.start`` message."""
+    headers = [(k, v) for k, v in message.get("headers", ()) if k.lower() != name]
+    headers.append((name, value.encode("latin-1")))
+    message["headers"] = headers
+
+
+class _ProvideHintsMiddleware:
+    """Adds ``X-Fal-Runner-Hints`` to every HTTP response."""
+
+    def __init__(self, app: ASGIApp, fal_app: App) -> None:
+        self.app = app
+        self.fal_app = fal_app
+
+    def _hints_header(self) -> str | None:
+        fal_app = self.fal_app
+        try:
+            # make sure the hints can be encoded in latin-1, so we don't crash
+            # when serving.
+            # https://github.com/encode/starlette/blob/a766a58d14007f07c0b5782fa78cdc370b892796/starlette/datastructures.py#L568
+            hints = []
+            for hint in fal_app.provide_hints():
+                try:
+                    _ = hint.encode("latin-1")
+                    hints.append(hint)
+                except UnicodeEncodeError:
+                    from fastapi.logger import logger  # noqa: PLC0415
+
+                    logger.warning(
+                        "Ignoring hint %s for %s because it can't be encoded in "
+                        "latin-1",
+                        hint,
+                        fal_app.__class__.__name__,
+                    )
+            return ",".join(hints)
+        except NotImplementedError:
+            # This lets us differentiate between apps that don't provide hints
+            # and apps that provide empty hints.
+            return None
+        except Exception:
+            from fastapi.logger import logger  # noqa: PLC0415
+
+            logger.exception(
+                "Failed to provide hints for %s", fal_app.__class__.__name__
+            )
+            return None
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_hints(message: dict) -> None:
+            if message["type"] == "http.response.start":
+                value = self._hints_header()
+                if value is not None:
+                    _set_response_header(message, b"x-fal-runner-hints", value)
+            await send(message)
+
+        await self.app(scope, receive, send_with_hints)
+
+
+class _RequestContextMiddleware:
+    """Parses the upload policy and exposes the per-request ``RequestContext``."""
+
+    def __init__(self, app: ASGIApp, fal_app: App) -> None:
+        self.app = app
+        self.fal_app = fal_app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        fal_app = self.fal_app
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        if fal_app._current_request_context is None:
+            from fastapi.logger import logger  # noqa: PLC0415
+
+            logger.warning(
+                "request context is not set. lifespan may not have worked as expected."
+            )
+            await self.app(scope, receive, send)
+            return
+
+        request = fastapi.Request(scope)
+        try:
+            upload_policy = parse_upload_policy(request.headers)
+        except UploadPolicyInputError as exc:
+            # Middleware sits outside the exception-handler chain, so render
+            # here rather than leaning on AppException's handler. Bill zero
+            # explicitly (as the 404 and RequestValidation handlers do):
+            # this runs before inference, and without the header the
+            # platform charges the endpoint's default.
+            response = fastapi.responses.JSONResponse(
+                {"detail": exc.message},
+                exc.status_code,
+                headers={"x-fal-billable-units": "0"},
+            )
+            await response(scope, receive, send)
+            return
+
+        context = RequestContext(
+            request_id=request.headers.get(REQUEST_ID_KEY),
+            endpoint=request.headers.get(REQUEST_ENDPOINT_KEY),
+            lifecycle_preference=request_lifecycle_preference(request),
+            headers=dict(request.headers),
+            upload_policy=upload_policy,
+        )
+
+        token = fal_app._current_request_context.set(context)
+        _LIFECYCLE_PREFERENCE.set(context.lifecycle_preference)
+        initial_cdn_token = request.headers.get(CDN_TOKEN_KEY)
+
+        async def send_with_cdn_token(message: dict) -> None:
+            if message["type"] == "http.response.start":
+                # Forward the gateway's re-issued x-fal-cdn-token (extended
+                # with downstream request_ids from chained calls) back to the
+                # caller, so it can read artifacts produced deeper in the chain.
+                new_cdn_token = context.headers.get(CDN_TOKEN_KEY)
+                if new_cdn_token and new_cdn_token != initial_cdn_token:
+                    _set_response_header(
+                        message, CDN_TOKEN_KEY.lower().encode(), new_cdn_token
+                    )
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_cdn_token)
+        finally:
+            fal_app._current_request_context.reset(token)
+            _LIFECYCLE_PREFERENCE.set(None)
+
+
+class _LogContextMiddleware:
+    """Labels the runner's logs with the request id for the request's duration."""
+
+    def __init__(self, app: ASGIApp, fal_app: App) -> None:
+        self.app = app
+        self.fal_app = fal_app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        fal_app = self.fal_app
+        # NOTE: Setting request_id is not supported for websocket/realtime endpoints
+        if (
+            scope["type"] != "http"
+            or not os.getenv("IS_ISOLATE_AGENT")
+            or not os.environ.get("NOMAD_ALLOC_PORT_grpc")
+        ):
+            # If not running in the expected environment, skip setting request_id
+            await self.app(scope, receive, send)
+            return
+
+        if fal_app.isolate_channel is None:
+            grpc_port = os.environ.get("NOMAD_ALLOC_PORT_grpc")
+            fal_app.isolate_channel = await open_isolate_channel(
+                f"localhost:{grpc_port}"
+            )
+
+        headers = fastapi.Request(scope).headers
+        request_id = headers.get(REQUEST_ID_KEY)
+        request_endpoint = headers.get(REQUEST_ENDPOINT_KEY)
+        if fal_app.isolate_channel is None or (
+            request_id is None and request_endpoint is None
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        labels_to_set = {}
+        if request_id:
+            labels_to_set["fal_request_id"] = request_id
+        if request_endpoint:
+            labels_to_set["fal_endpoint"] = request_endpoint
+
+        await _set_logger_labels(labels_to_set, channel=fal_app.isolate_channel)
+
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            # Only after the entire response was sent can the logger labels go
+            # back to the default.
+            await _set_logger_labels({}, channel=fal_app.isolate_channel)  # type: ignore
 
 
 @dataclass
@@ -1008,144 +1190,12 @@ class App(BaseServable):
         # rather than its constructor; the shape matches CORSMiddleware's.
         app.add_middleware(_RejectUploadPolicyOnWebSocket)  # type: ignore[arg-type,call-arg]
 
-        @app.middleware("http")
-        async def provide_hints_headers(request, call_next):
-            response = await call_next(request)
-            try:
-                # make sure the hints can be encoded in latin-1, so we don't crash
-                # when serving.
-                # https://github.com/encode/starlette/blob/a766a58d14007f07c0b5782fa78cdc370b892796/starlette/datastructures.py#L568
-                hints = []
-                for hint in self.provide_hints():
-                    try:
-                        _ = hint.encode("latin-1")
-                        hints.append(hint)
-                    except UnicodeEncodeError:
-                        from fastapi.logger import logger  # noqa: PLC0415
-
-                        logger.warning(
-                            "Ignoring hint %s for %s because it can't be encoded in "
-                            "latin-1",
-                            hint,
-                            self.__class__.__name__,
-                        )
-
-                response.headers["X-Fal-Runner-Hints"] = ",".join(hints)
-            except NotImplementedError:
-                # This lets us differentiate between apps that don't provide hints
-                # and apps that provide empty hints.
-                pass
-            except Exception:
-                from fastapi.logger import logger  # noqa: PLC0415
-
-                logger.exception(
-                    "Failed to provide hints for %s",
-                    self.__class__.__name__,
-                )
-            return response
-
-        @app.middleware("http")
-        async def set_current_request_context(request, call_next):
-            if self._current_request_context is None:
-                from fastapi.logger import logger  # noqa: PLC0415
-
-                logger.warning(
-                    "request context is not set. "
-                    "lifespan may not have worked as expected."
-                )
-                return await call_next(request)
-
-            try:
-                upload_policy = parse_upload_policy(request.headers)
-            except UploadPolicyInputError as exc:
-                # Middleware sits outside the exception-handler chain, so render
-                # here rather than leaning on AppException's handler. Bill zero
-                # explicitly (as the 404 and RequestValidation handlers do):
-                # this runs before inference, and without the header the
-                # platform charges the endpoint's default.
-                return fastapi.responses.JSONResponse(
-                    {"detail": exc.message},
-                    exc.status_code,
-                    headers={"x-fal-billable-units": "0"},
-                )
-
-            context = RequestContext(
-                request_id=request.headers.get(REQUEST_ID_KEY),
-                endpoint=request.headers.get(REQUEST_ENDPOINT_KEY),
-                lifecycle_preference=request_lifecycle_preference(request),
-                headers=dict(request.headers),
-                upload_policy=upload_policy,
-            )
-
-            token = self._current_request_context.set(context)
-            _LIFECYCLE_PREFERENCE.set(context.lifecycle_preference)
-            try:
-                initial_cdn_token = request.headers.get(CDN_TOKEN_KEY)
-                response: fastapi.responses.Response = await call_next(request)
-                new_cdn_token = context.headers.get(CDN_TOKEN_KEY)
-
-                # Forward the gateway's re-issued x-fal-cdn-token (extended
-                # with downstream request_ids from chained calls) back to the
-                # caller, so it can read artifacts produced deeper in the chain.
-                if new_cdn_token and new_cdn_token != initial_cdn_token:
-                    response.headers[CDN_TOKEN_KEY] = new_cdn_token
-
-                return response
-            finally:
-                self._current_request_context.reset(token)
-                _LIFECYCLE_PREFERENCE.set(None)
-
-        @app.middleware("http")
-        async def set_log_context(request, call_next):
-            # NOTE: Setting request_id is not supported for websocket/realtime endpoints
-            if not os.getenv("IS_ISOLATE_AGENT") or not os.environ.get(
-                "NOMAD_ALLOC_PORT_grpc"
-            ):
-                # If not running in the expected environment, skip setting request_id
-                return await call_next(request)
-
-            if self.isolate_channel is None:
-                grpc_port = os.environ.get("NOMAD_ALLOC_PORT_grpc")
-                self.isolate_channel = await open_isolate_channel(
-                    f"localhost:{grpc_port}"
-                )
-
-            if self.isolate_channel is None:
-                return await call_next(request)
-
-            request_id = request.headers.get(REQUEST_ID_KEY)
-            request_endpoint = request.headers.get(REQUEST_ENDPOINT_KEY)
-
-            if request_id is None and request_endpoint is None:
-                return await call_next(request)
-
-            labels_to_set = {}
-            if request_id:
-                labels_to_set["fal_request_id"] = request_id
-            if request_endpoint:
-                labels_to_set["fal_endpoint"] = request_endpoint
-
-            await _set_logger_labels(labels_to_set, channel=self.isolate_channel)
-
-            async def _unset_at_end():
-                await _set_logger_labels({}, channel=self.isolate_channel)  # type: ignore
-
-            try:
-                response: fastapi.responses.Response = await call_next(request)
-            except BaseException:
-                await _unset_at_end()
-                raise
-            else:
-                # We need to wait for the entire response to be sent before
-                # we can set the logger labels back to the default.
-                background_tasks = fastapi.BackgroundTasks()
-                background_tasks.add_task(_unset_at_end)
-                if response.background:
-                    # We normally have no background tasks, but we should handle it
-                    background_tasks.add_task(response.background)
-                response.background = background_tasks
-
-                return response
+        # Raw ASGI rather than @app.middleware("http"): BaseHTTPMiddleware
+        # relays every body chunk through anyio memory streams, which capped a
+        # streaming proxy at a few thousand chunks per second.
+        app.add_middleware(_ProvideHintsMiddleware, fal_app=self)  # type: ignore[arg-type,call-arg]
+        app.add_middleware(_RequestContextMiddleware, fal_app=self)  # type: ignore[arg-type,call-arg]
+        app.add_middleware(_LogContextMiddleware, fal_app=self)  # type: ignore[arg-type,call-arg]
 
         @app.exception_handler(RequestCancelledException)
         async def value_error_exception_handler(
