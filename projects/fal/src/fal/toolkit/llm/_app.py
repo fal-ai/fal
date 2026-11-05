@@ -256,6 +256,20 @@ def _remaining(deadline: Optional[float]) -> Optional[float]:
     return None if deadline is None else max(deadline - time.monotonic(), 0.0)
 
 
+def _same_repo(a: str, b: str) -> bool:
+    return a.lower() == b.lower()
+
+
+def _wait_limit(
+    deadline: Optional[float], idle_s: Optional[float]
+) -> Tuple[Optional[float], bool]:
+    """Timeout for one wait on the engine, and whether the idle limit sets it."""
+    remaining = _remaining(deadline)
+    if idle_s is not None and (remaining is None or idle_s < remaining):
+        return idle_s, True
+    return remaining, False
+
+
 def _shutting_down_response() -> JSONResponse:
     return JSONResponse(
         _SHUTTING_DOWN_BODY,
@@ -450,6 +464,12 @@ class LLMApp(App):
     # gateway's remaining time (less the margin) caps either.
     request_deadline_s: ClassVar[Optional[float]] = None
     deadline_margin_s: ClassVar[float] = 1.0
+    # A stream that gets no bytes from the engine for this long (headers or
+    # body) ends with finish_reason "idle_timeout" and the engine request is
+    # aborted, so a wedged engine cannot hold a stream forever. The first wait
+    # includes engine queueing and prefill, so this also caps time to first
+    # token. None disables.
+    stream_idle_timeout_s: ClassVar[Optional[float]] = 300.0
 
     # After SIGTERM, in-flight requests get this long to finish before they are
     # aborted (streams end with finish_reason "shutdown", unary calls get a
@@ -470,6 +490,8 @@ class LLMApp(App):
 
     _draining = False
     _drain_started: Optional[float] = None
+    # A recipe checkpoint that failed to download (see _resolve_model).
+    _skip_checkpoint: Optional[str] = None
     _abort_fired = False
     _serving_loop: Optional[asyncio.AbstractEventLoop] = None
 
@@ -522,6 +544,7 @@ class LLMApp(App):
                     fp8_weights=self.fp8_weights is True,
                     max_multiplexing=self.max_multiplexing,
                     user_args=engine_args,
+                    skip_checkpoint=self._skip_checkpoint,
                 ),
                 engine_args,
             )
@@ -695,7 +718,8 @@ class LLMApp(App):
             profile=self.engine_profile,
             fp8_weights=self.fp8_weights,
         )
-        if not source or source == self.model:
+        # Hub ids are case-insensitive, as recipe matching is.
+        if not source or _same_repo(source, self.model):
             return self.model
         if self.model_revision is not None:
             # A pinned model_revision names exact weights, so it is never swapped.
@@ -712,6 +736,7 @@ class LLMApp(App):
         return source
 
     def _resolve_model(self) -> str:
+        self._skip_checkpoint = None
         source = self._model_source()
         if source == self.model:
             return self._resolve_repo(self.model)
@@ -725,6 +750,8 @@ class LLMApp(App):
                 f"serving {self.model}"
             )
             self._boot.pop("model_source", None)
+            # Its recipe's flags were tuned for those weights, not these.
+            self._skip_checkpoint = source
             return self._resolve_repo(self.model)
 
     def _resolve_repo(self, repo: str) -> str:
@@ -742,7 +769,7 @@ class LLMApp(App):
             return repo
         # model_revision pins the app's own model; a recipe checkpoint is only
         # chosen when unpinned (see _model_source).
-        revision = self.model_revision if repo == self.model else None
+        revision = self.model_revision if _same_repo(repo, self.model) else None
         if revision is None:
             print(
                 f"[llm-app] model_revision is not set: {repo} follows the "
@@ -1202,10 +1229,11 @@ class LLMApp(App):
                 payload["stream_options"] = {"include_usage": True}
             send = asyncio.ensure_future(self._open_upstream(path, payload))
             aborted = asyncio.ensure_future(abort.wait())
+            limit, idle_bound = _wait_limit(deadline, self.stream_idle_timeout_s)
             try:
                 await asyncio.wait(
                     {send, aborted},
-                    timeout=_remaining(deadline),
+                    timeout=limit,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
             except asyncio.CancelledError:
@@ -1223,11 +1251,17 @@ class LLMApp(App):
                 if abort.is_set() and not _expired(deadline):
                     self._count_shutdown_abort()
                     return _shutting_down_response()
+                # An expired deadline wins here too, as in _relay.
+                if idle_bound and not _expired(deadline):
+                    reason = "idle_timeout"
+                    self._count_idle_abort(path)
+                else:
+                    reason = "deadline"
+                    self._count_deadline_abort()
                 # Same shape as a mid-stream expiry (200 SSE), so stream
                 # clients handle a deadline in one place.
-                self._count_deadline_abort()
                 return StreamingResponse(
-                    iter([self._finish_chunk(path, "deadline")]),
+                    iter([self._finish_chunk(path, reason)]),
                     media_type="text/event-stream",
                 )
             upstream = send.result()
@@ -1289,11 +1323,15 @@ class LLMApp(App):
         pending: Optional[asyncio.Future] = None
         try:
             while True:
+                idle_bound = False
                 if not aborted.done() and not _expired(deadline):
                     pending = asyncio.ensure_future(chunks.__anext__())
+                    limit, idle_bound = _wait_limit(
+                        deadline, self.stream_idle_timeout_s
+                    )
                     await asyncio.wait(
                         {pending, aborted},
-                        timeout=_remaining(deadline),
+                        timeout=limit,
                         return_when=asyncio.FIRST_COMPLETED,
                     )
                 if pending is None or not pending.done():
@@ -1304,10 +1342,18 @@ class LLMApp(App):
                     # abort this is the wait's timeout, which may fire a
                     # clock tick early.
                     shutdown = aborted.done() and not _expired(deadline)
-                    reason = "shutdown" if shutdown else "deadline"
+                    idle = idle_bound and not aborted.done() and not _expired(deadline)
+                    if shutdown:
+                        reason = "shutdown"
+                    elif idle:
+                        reason = "idle_timeout"
+                    else:
+                        reason = "deadline"
                     if not done_sent:
                         if shutdown:
                             self._count_shutdown_abort()
+                        elif idle:
+                            self._count_idle_abort(path)
                         else:
                             self._count_deadline_abort()
                         # After a real finish reason only the terminator is
@@ -1357,6 +1403,13 @@ class LLMApp(App):
     def _count_deadline_abort(self) -> None:
         self._usage_totals["deadline_aborts"] = (
             self._usage_totals.get("deadline_aborts", 0) + 1
+        )
+
+    def _count_idle_abort(self, path: str) -> None:
+        self._usage_totals["idle_aborts"] = self._usage_totals.get("idle_aborts", 0) + 1
+        print(
+            f"[llm-app] {path} stream got nothing from {self.engine} for "
+            f"{self.stream_idle_timeout_s:g}s; aborted the engine request"
         )
 
     async def _proxy_unary(

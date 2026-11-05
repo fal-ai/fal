@@ -788,6 +788,91 @@ def test_app_falls_back_to_own_model_when_substitute_fails(
     assert "unavailable" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize(
+    "profile,checkpoint", [("throughput", FP8_CKPT), ("max_throughput", NVFP4_CKPT)]
+)
+def test_fallback_drops_the_checkpoint_recipe_flags(
+    monkeypatch, capsys, tmp_path, profile, checkpoint
+):
+    own = tmp_path / "own"
+    own.mkdir()
+    (own / "config.json").write_text(json.dumps(QWEN3_8B))
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+
+    def download(repo, revision=None):
+        if repo == checkpoint:
+            raise OSError("offline")
+        return str(own)
+
+    hub = types.ModuleType("huggingface_hub")
+    hub.snapshot_download = download
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    app = _checkpoint_app(monkeypatch, engine_profile=profile)
+    path = app._resolve_model()
+    cmd = app.engine_command(path)
+    # Only the generic single-GPU cap is left; 0.95 memory, cap 512, FP8 KV
+    # and EAGLE3 were tuned for the checkpoint.
+    for flag in (
+        "--gpu-memory-utilization",
+        "--kv-cache-dtype",
+        "--speculative-config",
+        "--quantization",
+    ):
+        assert flag not in cmd
+    assert cmd[cmd.index("--max-num-seqs") + 1] == "256"
+
+
+def test_skip_checkpoint_drops_only_that_recipe_case_insensitively():
+    kept = _rtx("vllm", QWEN3_8B, model_id="Qwen/Qwen3-8B", profile="max_throughput")
+    assert "--gpu-memory-utilization" in kept
+    for skip in (NVFP4_CKPT, NVFP4_CKPT.upper()):
+        args = _rtx(
+            "vllm",
+            QWEN3_8B,
+            model_id="Qwen/Qwen3-8B",
+            profile="max_throughput",
+            skip_checkpoint=skip,
+        )
+        assert args == ["--max-num-seqs", "256"]
+    # Another checkpoint's name leaves the matching recipe alone.
+    other = _rtx(
+        "vllm",
+        QWEN3_8B,
+        model_id="Qwen/Qwen3-8B",
+        profile="max_throughput",
+        skip_checkpoint=FP8_CKPT,
+    )
+    assert other == kept
+
+
+def test_swap_check_is_case_insensitive(monkeypatch):
+    def app_for(model):
+        sub = _make(monkeypatch, model=model)
+        monkeypatch.setattr(
+            sub, "_gpu_name", staticmethod(lambda: (PRO6000_NAME, 97887))
+        )
+        app = sub()
+        app._boot = {}
+        return app
+
+    # Already the recipe's checkpoint, in another case: served as given.
+    same = app_for("qwen/qwen3-8b-fp8")
+    assert same._model_source() == "qwen/qwen3-8b-fp8"
+    assert "model_source" not in same._boot
+    # Recipe matching is case-insensitive too, so this one is swapped.
+    other = app_for("QWEN/Qwen3-8B")
+    assert other._model_source() == FP8_CKPT
+    # A pin on the model applies however the repo is spelled.
+    seen = []
+    hub = types.ModuleType("huggingface_hub")
+    hub.snapshot_download = lambda repo, revision=None: seen.append(revision) or "/p"
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    monkeypatch.setattr(type(same), "persistent_caches", False)
+    monkeypatch.setattr(type(same), "model_revision", "a" * 40)
+    same._resolve_repo(FP8_CKPT)
+    assert seen == ["a" * 40]
+
+
 def test_pinned_revision_is_never_swapped_for_a_checkpoint(
     monkeypatch, capsys, tmp_path
 ):

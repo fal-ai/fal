@@ -470,6 +470,7 @@ def engine_preset_args(
     fp8_weights: bool = False,
     max_multiplexing: Optional[int] = None,
     user_args: Sequence[str] = (),
+    skip_checkpoint: Optional[str] = None,
 ) -> List[str]:
     """Engine arguments that match the machine, for ``vllm`` or ``sglang``.
 
@@ -491,6 +492,8 @@ def engine_preset_args(
     and profile combinations. Speculative decoding is never added for an
     architecture in ``_SPEC_DENYLIST``. ``user_args`` (the app's
     ``engine_args``) only drives messages about the presets.
+    ``skip_checkpoint`` drops the recipes tuned for that checkpoint, for when
+    it could not be served and the original weights are used instead.
 
     Use ``merge_engine_args`` to put user arguments on top.
     """
@@ -498,7 +501,13 @@ def engine_preset_args(
         raise ValueError(f"unknown engine {engine!r}; expected 'vllm' or 'sglang'")
     if profile not in PROFILES:
         raise ValueError(f"unknown engine_profile {profile!r}; expected {PROFILES}")
-    recipes = [r for r in RECIPES if r.matches(engine, machine, model, profile)]
+    skipped = skip_checkpoint.lower() if skip_checkpoint else None
+    recipes = [
+        r
+        for r in RECIPES
+        if r.matches(engine, machine, model, profile)
+        and not (skipped and r.checkpoint and r.checkpoint.lower() == skipped)
+    ]
     spec_denied = model.architectures & _SPEC_DENYLIST
     user_spec = _has_flag(user_args, "spec")
     if spec_denied and user_spec:
