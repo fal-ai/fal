@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 import warnings
 
 import pytest
@@ -8,6 +10,7 @@ import pytest
 from fal.toolkit.llm import (
     LLMApp,
     _app,
+    _cache,
     _presets,
     engine_preset_args,
     merge_engine_args,
@@ -590,6 +593,326 @@ def test_fp8_weights_stays_opt_in():
     assert on == {**base, "--quantization": "fp8"}
     sglang = _flags(_rtx("sglang", QWEN3_8B, fp8_weights=True))
     assert sglang == {"--quantization": "fp8"}
+
+
+# Checkpoint substitution and the max_throughput profile.
+
+RTX_MACHINE = Machine(PRO6000, PRO6000_NAME, 97887, 1)
+FP8_CKPT = "Qwen/Qwen3-8B-FP8"
+NVFP4_CKPT = "nvidia/Qwen3-8B-NVFP4"
+
+
+@pytest.mark.parametrize("profile", ["throughput", "latency"])
+def test_checkpoint_default_is_fp8_on_rtx(profile):
+    assert (
+        _presets.checkpoint_for("vllm", RTX_MACHINE, "Qwen/Qwen3-8B", profile=profile)
+        == FP8_CKPT
+    )
+    # True also lands on the measured checkpoint, not online quantization.
+    assert (
+        _presets.checkpoint_for(
+            "vllm", RTX_MACHINE, "qwen/qwen3-8b", profile=profile, fp8_weights=True
+        )
+        == FP8_CKPT
+    )
+
+
+def test_checkpoint_fp8_opt_out_and_no_match_cases():
+    def pick(model_id="Qwen/Qwen3-8B", machine=RTX_MACHINE, engine="vllm", **kw):
+        return _presets.checkpoint_for(engine, machine, model_id, **kw)
+
+    assert pick(fp8_weights=False) is None
+    assert pick(machine=Machine("H100", H100_NAME, 81559, 1)) is None
+    assert pick(machine=Machine(PRO6000, PRO6000_NAME, 97887, 4)) is None
+    assert pick(machine=Machine(PRO6000, None, None, 1)) is None
+    assert pick(engine="sglang") is None
+    assert pick(model_id="org/other") is None
+    assert pick(model_id="openai/gpt-oss-120b") is None
+
+
+def test_default_run_keeps_bf16_recipe_flags_and_adds_no_online_quant():
+    # The served FP8 checkpoint carries quantization_config, so even
+    # fp8_weights=True adds no --quantization.
+    config = {**QWEN3_8B, "quantization_config": FP8_QUANT}
+    args = _rtx("vllm", config, model_id="Qwen/Qwen3-8B", fp8_weights=True)
+    flags = _flags(args)
+    assert "--quantization" not in flags
+    assert flags["--kv-cache-dtype"] == "fp8" and flags["--max-num-seqs"] == "256"
+    assert flags["--speculative-config"] == json.dumps(EAGLE3_QWEN3_8B)
+
+
+def test_max_throughput_on_rtx_qwen3_8b():
+    assert (
+        _presets.checkpoint_for(
+            "vllm", RTX_MACHINE, "Qwen/Qwen3-8B", profile="max_throughput"
+        )
+        == NVFP4_CKPT
+    )
+    # Opting out of FP8 weights does not opt out of an explicit max_throughput.
+    assert (
+        _presets.checkpoint_for(
+            "vllm",
+            RTX_MACHINE,
+            "Qwen/Qwen3-8B",
+            profile="max_throughput",
+            fp8_weights=False,
+        )
+        == NVFP4_CKPT
+    )
+    config = {**QWEN3_8B, "quantization_config": {"quant_method": "modelopt"}}
+    flags = _flags(
+        _rtx("vllm", config, model_id="Qwen/Qwen3-8B", profile="max_throughput")
+    )
+    assert flags == {
+        "--max-num-seqs": "512",
+        "--gpu-memory-utilization": "0.95",
+        "--kv-cache-dtype": "fp8",
+        "--speculative-config": json.dumps(EAGLE3_QWEN3_8B),
+    }
+
+
+def test_max_throughput_elsewhere_equals_throughput():
+    for run, config, model_id in (
+        (_h100, QWEN3_8B, "Qwen/Qwen3-8B"),
+        (_rtx, LLAMA_8B, "org/other"),
+        (_rtx, GPT_OSS_120B, "openai/gpt-oss-120b"),
+        (_rtx, QWEN3_8B, "qwen/qwen3-8b-other"),
+    ):
+        assert run("vllm", config, model_id=model_id, profile="max_throughput") == run(
+            "vllm", config, model_id=model_id, profile="throughput"
+        )
+    machine = Machine(PRO6000, PRO6000_NAME, 97887, 4)
+    assert (
+        _presets.checkpoint_for(
+            "vllm", machine, "Qwen/Qwen3-8B", profile="max_throughput"
+        )
+        is None
+    )
+    assert _rtx("sglang", QWEN3_8B, profile="max_throughput") == []
+
+
+def test_max_throughput_user_args_win():
+    preset = _rtx("vllm", QWEN3_8B, model_id="Qwen/Qwen3-8B", profile="max_throughput")
+    merged = merge_engine_args(
+        preset, ["--gpu-memory-utilization=0.9", "--max-num-seqs", "64"]
+    )
+    assert "--gpu-memory-utilization" not in merged[:-3]
+    assert merged[-3:] == ["--gpu-memory-utilization=0.9", "--max-num-seqs", "64"]
+    assert merged.count("--max-num-seqs") == 1
+
+
+def _checkpoint_app(monkeypatch, **attrs):
+    sub = _make(monkeypatch, model="Qwen/Qwen3-8B", **attrs)
+    monkeypatch.setattr(sub, "_gpu_name", staticmethod(lambda: (PRO6000_NAME, 97887)))
+    app = sub()
+    app._boot = {}
+    return app
+
+
+@pytest.mark.parametrize(
+    "attrs,expected",
+    [
+        ({}, FP8_CKPT),
+        ({"fp8_weights": True}, FP8_CKPT),
+        ({"fp8_weights": False}, "Qwen/Qwen3-8B"),
+        ({"engine_profile": "max_throughput"}, NVFP4_CKPT),
+        ({"engine_presets": False}, "Qwen/Qwen3-8B"),
+        ({"engine": "sglang"}, "Qwen/Qwen3-8B"),
+        ({"num_gpus": 4}, "Qwen/Qwen3-8B"),
+    ],
+)
+def test_app_model_source_and_served_name(monkeypatch, attrs, expected):
+    app = _checkpoint_app(monkeypatch, **attrs)
+    assert app._model_source() == expected
+    # Clients and the engine's served name keep the user's model.
+    assert app._served_name() == "Qwen/Qwen3-8B"
+    cmd = app.engine_command("/m")
+    assert cmd[cmd.index("--served-model-name") + 1] == "Qwen/Qwen3-8B"
+    assert ("model_source" in app._boot) == (expected != "Qwen/Qwen3-8B")
+
+
+def test_app_resolve_downloads_the_substitute(monkeypatch, capsys, tmp_path):
+    seen = []
+
+    def download(repo, revision=None):
+        # The recipe checkpoint is never pinned to the app's model_revision.
+        assert revision is None
+        seen.append(repo)
+        return "/p"
+
+    hub = types.ModuleType("huggingface_hub")
+    hub.snapshot_download = download
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    app = _checkpoint_app(monkeypatch)
+    assert app._resolve_model() == "/p"
+    assert seen == [FP8_CKPT]
+    # Local-first reuse and the upstream check follow the checkpoint repo.
+    assert app._model_repo == FP8_CKPT
+    assert app._boot["served_repo"] == FP8_CKPT
+    marker = _cache.snapshot_marker_path(FP8_CKPT)
+    assert _cache.read_marker(marker) == {
+        "model": FP8_CKPT,
+        "revision": None,
+        "path": "/p",
+    }
+    assert app._boot["model_source"] == FP8_CKPT
+    assert FP8_CKPT in capsys.readouterr().out
+    off = _checkpoint_app(monkeypatch, fp8_weights=False)
+    assert off._resolve_model() == "/p"
+    assert seen[-1] == "Qwen/Qwen3-8B"
+    assert "model_source" not in off._boot
+
+
+def test_app_falls_back_to_own_model_when_substitute_fails(
+    monkeypatch, capsys, tmp_path
+):
+    seen = []
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+
+    def download(repo, revision=None):
+        seen.append(repo)
+        if repo == FP8_CKPT:
+            raise OSError("offline")
+        return "/own"
+
+    hub = types.ModuleType("huggingface_hub")
+    hub.snapshot_download = download
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    app = _checkpoint_app(monkeypatch)
+    assert app._resolve_model() == "/own"
+    assert seen == [FP8_CKPT, "Qwen/Qwen3-8B"]
+    assert "model_source" not in app._boot
+    assert app._model_repo == "Qwen/Qwen3-8B"
+    assert app._boot["served_repo"] == "Qwen/Qwen3-8B"
+    assert "unavailable" in capsys.readouterr().out
+
+
+def test_pinned_revision_is_never_swapped_for_a_checkpoint(
+    monkeypatch, capsys, tmp_path
+):
+    seen = []
+    hub = types.ModuleType("huggingface_hub")
+    hub.snapshot_download = lambda repo, revision=None: (
+        seen.append((repo, revision)) or "/p"
+    )
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    pin = "a" * 40
+    app = _checkpoint_app(monkeypatch, model_revision=pin)
+    assert app._resolve_model() == "/p"
+    assert seen == [("Qwen/Qwen3-8B", pin)]
+    assert "model_source" not in app._boot
+    assert "pinned" in capsys.readouterr().out
+    # The app's pin names the app's own model; another repo resolves unpinned.
+    seen.clear()
+    app._resolve_repo(FP8_CKPT)
+    assert seen == [(FP8_CKPT, None)]
+
+
+def _snap(root, commit):
+    path = root / commit
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "config.json").write_text("{}")
+    return str(path)
+
+
+def test_local_model_dir_is_never_swapped(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "Qwen" / "Qwen3-8B").mkdir(parents=True)
+    assert _checkpoint_app(monkeypatch)._model_source() == "Qwen/Qwen3-8B"
+
+
+def test_checkpoint_markers_are_separate_from_the_model(monkeypatch, capsys, tmp_path):
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    bf16, fp8 = _snap(tmp_path, "b" * 40), _snap(tmp_path, "f" * 40)
+    # A completed bf16 download is on the volume.
+    _cache.write_marker(
+        _cache.snapshot_marker_path("Qwen/Qwen3-8B"),
+        {"model": "Qwen/Qwen3-8B", "revision": None, "path": bf16},
+    )
+    seen = []
+    hub = types.ModuleType("huggingface_hub")
+    hub.snapshot_download = lambda repo, revision=None: seen.append(repo) or fp8
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    # The checkpoint is downloaded, not the bf16 snapshot adopted.
+    assert _checkpoint_app(monkeypatch)._resolve_model() == fp8
+    assert seen == [FP8_CKPT]
+    # The next boot reuses the checkpoint's own marker without a download.
+    again = _checkpoint_app(monkeypatch)
+    assert again._resolve_model() == fp8
+    assert seen == [FP8_CKPT]
+    assert again._boot["resolve_source"] == "local"
+    assert again._served_commit == "f" * 40
+
+
+def test_fallback_does_not_keep_the_checkpoint_commit(monkeypatch, capsys, tmp_path):
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    fp8 = _snap(tmp_path, "f" * 40)
+    hub = types.ModuleType("huggingface_hub")
+    hub.snapshot_download = lambda repo, revision=None: (
+        fp8 if repo == FP8_CKPT else "/own"
+    )
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+
+    def advance(repo, *args, **kwargs):
+        # Fails after the checkpoint download set its commit.
+        raise RuntimeError("marker bug")
+
+    monkeypatch.setattr(_app, "advance_snapshot_marker", advance)
+    app = _checkpoint_app(monkeypatch)
+    assert app._resolve_model() == "/own"
+    # /own is not a per-commit dir, so no commit is known for what is served.
+    assert app._served_commit is None
+    assert app._boot["served_repo"] == "Qwen/Qwen3-8B"
+
+
+def test_max_throughput_profile_is_valid_and_says_when_unmeasured(capsys):
+    class Max(LLMApp):
+        model = "m"
+        engine_profile = "max_throughput"
+
+    assert Max.engine_profile == "max_throughput"
+    _h100(config=QWEN3_8B, model_id="Qwen/Qwen3-8B", profile="max_throughput")
+    assert "max_throughput: no measured recipe" in capsys.readouterr().out
+    _rtx(config=QWEN3_8B, model_id="Qwen/Qwen3-8B", profile="max_throughput")
+    assert "no measured recipe" not in capsys.readouterr().out
+
+
+def test_app_substituted_checkpoint_gets_no_online_quant(monkeypatch, tmp_path):
+    (tmp_path / "config.json").write_text(
+        json.dumps({**QWEN3_8B, "quantization_config": FP8_QUANT})
+    )
+    app = _checkpoint_app(monkeypatch, fp8_weights=True)
+    cmd = app.engine_command(str(tmp_path))
+    assert "--quantization" not in cmd
+    assert cmd[cmd.index("--kv-cache-dtype") + 1] == "fp8"
+
+
+def test_app_one_nvidia_smi_call_with_checkpoint_resolution(monkeypatch):
+    calls = {"smi": 0}
+
+    def fake_detect():
+        calls["smi"] += 1
+        return PRO6000_NAME, 97887
+
+    class Sub(LLMApp):
+        model = "Qwen/Qwen3-8B"
+
+    monkeypatch.setattr(_app, "detect_gpu", fake_detect)
+    app = Sub()
+    app._boot = {}
+    assert app._model_source() == FP8_CKPT
+    app.engine_command("/m")
+    assert calls["smi"] == 1
+
+
+def test_app_user_engine_args_win_with_checkpoint(monkeypatch):
+    app = _checkpoint_app(monkeypatch, engine_args=["--kv-cache-dtype", "auto"])
+    assert app._model_source() == FP8_CKPT
+    cmd = app.engine_command("/m")
+    assert cmd.count("--kv-cache-dtype") == 1
+    assert cmd[-2:] == ["--kv-cache-dtype", "auto"]
 
 
 def test_user_flags_win_over_qwen3_recipe():
