@@ -23,6 +23,7 @@ from fal.toolkit.llm._app import (
     _event_cut,
     _RelayResponse,
     _Stream,
+    _wait_limit,
 )
 
 FAKE = str(Path(__file__).parent / "fake_engine.py")
@@ -1257,6 +1258,73 @@ def test_expired_deadline_wins_over_abort(served):
     )
     assert app._usage_totals["deadline_aborts"] == 1
     assert "shutdown_aborts" not in app._usage_totals
+
+
+def test_stream_idle_timeout_ends_stream_and_closes_upstream(served, capsys):
+    app, _, _, _ = served
+    app.stream_idle_timeout_s = 0.2
+
+    async def go():
+        up = _FakeUpstream([b"data: {}\n\n"], hang=True)
+        stream = _Stream(app, up, "/v1/chat/completions", asyncio.Event())
+        # A far deadline: the idle limit is what ends this stream.
+        deadline = time.monotonic() + 30
+        out = [
+            c async for c in app._relay(stream, "/v1/chat/completions", True, deadline)
+        ]
+        return out, up.closed
+
+    out, closed = _run(app, go())
+    assert out[0] == b"data: {}\n\n"
+    final = json.loads(out[-1].split(b"\n\n")[0][6:])
+    assert final["choices"][0]["finish_reason"] == "idle_timeout"
+    assert out[-1].endswith(b"data: [DONE]\n\n")
+    assert closed == 1  # the connection close aborts the engine request
+    assert app._usage_totals["idle_aborts"] == 1
+    assert "deadline_aborts" not in app._usage_totals
+    assert "nothing from" in capsys.readouterr().out
+
+
+def test_stream_idle_timeout_after_done_adds_nothing(served):
+    app, _, _, _ = served
+    app.stream_idle_timeout_s = 0.2
+
+    async def go():
+        up = _FakeUpstream([b"data: {}\n\n", b"data: [DONE]\n\n"], hang=True)
+        stream = _Stream(app, up, "/v1/chat/completions", asyncio.Event())
+        return [c async for c in app._relay(stream, "/v1/chat/completions")]
+
+    assert _run(app, go()) == [b"data: {}\n\n", b"data: [DONE]\n\n"]
+    assert "idle_aborts" not in app._usage_totals
+
+
+@pytest.mark.parametrize("served", [{"stream_idle_timeout_s": 0.5}], indirect=True)
+def test_stream_idle_timeout_before_headers(served):
+    app, url, abort_file, _ = served
+    with httpx.stream(
+        "POST",
+        f"{url}/v1/chat/completions",
+        json={"stream": True, "header_delay_ticks": 300},
+        timeout=30,
+    ) as r:
+        assert r.status_code == 200
+        lines = _sse(r)
+    assert lines[-1] == "data: [DONE]"
+    assert json.loads(lines[-2][5:])["choices"][0]["finish_reason"] == "idle_timeout"
+    assert app._usage_totals["idle_aborts"] == 1
+    assert _wait_for(abort_file, timeout=8.0)
+
+
+def test_wait_limit_picks_the_sooner_bound():
+    assert _wait_limit(None, None) == (None, False)
+    assert _wait_limit(None, 300.0) == (300.0, True)
+    soon = time.monotonic() + 1.0
+    limit, idle = _wait_limit(soon, 300.0)
+    assert 0.0 < limit <= 1.0 and not idle
+    later = time.monotonic() + 600.0
+    assert _wait_limit(later, 300.0) == (300.0, True)
+    limit, idle = _wait_limit(soon, None)
+    assert limit <= 1.0 and not idle
 
 
 def test_unary_expired_deadline_wins_over_abort(served):
