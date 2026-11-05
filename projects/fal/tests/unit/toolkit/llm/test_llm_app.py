@@ -156,7 +156,11 @@ def test_engine_logs_record_milestones_and_throttle_progress(capsys):
         "import sys\n"
         "w = sys.stdout.write\n"
         "w('Loading shards 0/48\\rLoading shards 1/48\\rLoading shards 2/48\\r\\n')\n"
+        "import time\n"
         "w('INFO Loading weights took 61.2 seconds\\n')\n"
+        "w('INFO Graph capturing finished in 36 secs\\n'); sys.stdout.flush()\n"
+        "time.sleep(0.2)\n"
+        "w('INFO Graph capturing finished in 70 secs\\n')\n"
         "w('INFO Application startup complete.\\n')\n"
     )
 
@@ -174,6 +178,8 @@ def test_engine_logs_record_milestones_and_throttle_progress(capsys):
     proc.wait()
 
     assert {"weights_loaded_s", "server_ready_s"} <= set(app._boot)
+    # "_end" phases keep the last match: the second graph capture pass.
+    assert app._boot["cuda_graph_end_s"] - app._boot["weights_loaded_s"] >= 0.2
     out = capsys.readouterr().out
     # The first redraw is logged, later ones inside the interval are dropped,
     # and the redraw ending in a newline always is.

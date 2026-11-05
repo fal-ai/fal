@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from fal.app import App, endpoint
 from fal.toolkit.compilation import get_gpu_type
-from fal.toolkit.llm._cache import apply_engine_cache_env
+from fal.toolkit.llm._cache import NON_PATH_KEYS, apply_engine_cache_env
 from fal.toolkit.llm._preread import DEFAULT_WORKERS, preread_weights
 
 _METRIC_PREFIXES = (
@@ -34,15 +34,20 @@ _METRIC_PREFIXES = (
 _METRIC_RE = re.compile(r"^([^\s{]+)(?:\{[^}]*\})?\s+([0-9.eE+-]+|nan|NaN)$")
 _STREAM_TAIL_BYTES = 8192
 # Engine log lines that mark a boot phase, as (substring, phase). Each phase
-# records its first occurrence; a needle that never matches just leaves the
-# phase out of the report.
+# records its first occurrence, except phases ending in "_end", which record
+# the last (vLLM captures graphs once to size memory, then again for real). A
+# needle that never matches just leaves the phase out of the report.
 _BOOT_MILESTONES: Dict[str, tuple] = {
     "vllm": (
+        ("Initializing a V1 LLM engine", "engine_core_start"),
         ("Loading weights took", "weights_loaded"),
         ("Model loading took", "model_loaded"),
+        ("torch.compile took", "compile_loaded"),
         ("Capturing CUDA graph", "cuda_graph_begin"),
         ("Graph capturing finished", "cuda_graph_end"),
         ("GPU KV cache size", "kv_cache_allocated"),
+        ("Autotuning process starts", "autotune_begin"),
+        ("Autotuning process ends", "autotune_end"),
         ("Application startup complete", "server_ready"),
     ),
     "sglang": (
@@ -193,21 +198,24 @@ class LLMApp(App):
             # Warm means a previous runner left compiled artifacts behind; the
             # boot report then shows what the cache saved.
             self._boot["compile_cache_warm"] = _has_files(
-                *(v for k, v in cache_env.items() if not k.startswith("HF_"))
+                *(
+                    v
+                    for k, v in cache_env.items()
+                    if not k.startswith("HF_") and k not in NON_PATH_KEYS
+                )
             )
 
         model_path = self._resolve_model()
         self._boot["resolve_s"] = time.monotonic() - t0
-        if self.preread_workers > 0 and os.path.isdir(model_path):
-            stats = preread_weights(model_path, workers=self.preread_workers)
-            self._boot["preread_s"] = stats.seconds
-            print(
-                f"[llm-app] pre-read {stats.bytes / 1e9:.1f} GB in "
-                f"{stats.seconds:.1f}s ({stats.gb_per_s:.2f} GB/s)"
-            )
 
         self._engine_started = time.monotonic()
         self._proc = self._start_engine(model_path)
+        # The engine spends its first seconds importing and initializing CUDA
+        # before it reads weights, so the pre-read runs alongside it.
+        if self.preread_workers > 0 and os.path.isdir(model_path):
+            threading.Thread(
+                target=self._preread, args=(model_path,), daemon=True
+            ).start()
         base_url = f"http://127.0.0.1:{self.engine_port}"
         self._wait_ready(base_url)
         self._boot["engine_ready_s"] = time.monotonic() - self._engine_started
@@ -234,6 +242,19 @@ class LLMApp(App):
         except ImportError:
             return self.model
         return snapshot_download(self.model)
+
+    def _preread(self, model_path: str) -> None:
+        # Only warms the page cache; the engine reads the weights regardless.
+        try:
+            stats = preread_weights(model_path, workers=self.preread_workers)
+        except OSError as exc:
+            print(f"[llm-app] pre-read failed: {exc}")
+            return
+        self._boot["preread_s"] = stats.seconds
+        print(
+            f"[llm-app] pre-read {stats.bytes / 1e9:.1f} GB in "
+            f"{stats.seconds:.1f}s ({stats.gb_per_s:.2f} GB/s)"
+        )
 
     def _start_engine(self, model_path: str) -> subprocess.Popen:
         cmd = self.engine_command(model_path)
@@ -262,7 +283,7 @@ class LLMApp(App):
             # Milestone times are seconds since setup start.
             for needle, phase in milestones:
                 key = f"{phase}_s"
-                if needle in line and key not in self._boot:
+                if needle in line and (key not in self._boot or key.endswith("_end_s")):
                     self._boot[key] = time.monotonic() - self._setup_start
             if progress:
                 now = time.monotonic()
