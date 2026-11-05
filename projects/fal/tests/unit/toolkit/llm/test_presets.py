@@ -381,7 +381,7 @@ def test_every_preset_flag_is_recognized_as_user_override():
 def test_every_recipe_names_gpu_count_gpu_engine_version_and_numbers():
     for recipe in RECIPES:
         assert "vLLM 0.32.0" in recipe.source
-        assert any(tag in recipe.source for tag in ("1x ", "4x "))
+        assert any(tag in recipe.source for tag in ("1x ", "2x ", "4x "))
         assert "RTX PRO 6000" in recipe.source
         assert any(ch.isdigit() for ch in recipe.source)
 
@@ -1094,10 +1094,10 @@ def test_engine_command_warns_for_denylisted_user_spec(monkeypatch, tmp_path, ca
     assert capsys.readouterr().out.count("speculative decoding") == 1
 
 
-# Recipe 6: DeepSeek V4 Flash on 4x RTX PRO 6000.
+# Recipe 6: DeepSeek V4 Flash on 2x and 4x RTX PRO 6000.
 
 
-def test_deepseek_v4_flash_recipe_on_four_rtx():
+def test_deepseek_v4_flash_recipe_on_four_rtx(capsys):
     args = _rtx("vllm", DSV4_FLASH, model_id=DSV4_ID, num_gpus=4)
     assert _flags(args) == {
         "--tensor-parallel-size": "4",
@@ -1105,7 +1105,9 @@ def test_deepseek_v4_flash_recipe_on_four_rtx():
         "--max-num-seqs": "128",
         "--trust-remote-code": None,
         "--safetensors-load-strategy": "prefetch",
+        "--kv-cache-dtype": "fp8_ds_mla",
     }
+    assert "2 GPUs (num_gpus = 2)" in capsys.readouterr().out
     # --trust-remote-code is a bare switch: no value token follows it.
     i = args.index("--trust-remote-code")
     assert args[i + 1].startswith("--")
@@ -1113,6 +1115,48 @@ def test_deepseek_v4_flash_recipe_on_four_rtx():
     assert "--trust-remote-code" in _rtx(
         "vllm", None, model_id=DSV4_ID.lower(), num_gpus=4
     )
+
+
+def test_deepseek_v4_flash_default_layout_on_two_rtx(capsys):
+    args = _rtx("vllm", DSV4_FLASH, model_id=DSV4_ID, num_gpus=2)
+    assert _flags(args) == {
+        "--tensor-parallel-size": "2",
+        "--disable-custom-all-reduce": None,
+        "--max-num-seqs": "128",
+        "--trust-remote-code": None,
+        "--safetensors-load-strategy": "prefetch",
+        "--kv-cache-dtype": "fp8_ds_mla",
+        "--gpu-memory-utilization": "0.95",
+    }
+    assert "num_gpus = 2" not in capsys.readouterr().out
+    # Other multi-GPU counts get the base entry only.
+    assert "--kv-cache-dtype" not in _rtx(
+        "vllm", DSV4_FLASH, model_id=DSV4_ID, num_gpus=8
+    )
+
+
+@pytest.mark.parametrize(
+    "user",
+    [
+        ["--data-parallel-size", "4", "--enable-expert-parallel"],
+        ["--pipeline-parallel-size=4"],
+        ["--tensor-parallel-size", "2", "--pipeline-parallel-size", "2"],
+    ],
+)
+def test_user_layout_skips_the_tp_fp8_kv_recipes(user, capsys):
+    preset = _rtx("vllm", DSV4_FLASH, model_id=DSV4_ID, num_gpus=4, user_args=user)
+    assert "recipes measured with the tensor parallel" in capsys.readouterr().out
+    merged = merge_engine_args(preset, user)
+    flags = _flags(merged[: -len(user)])
+    # FP8 KV was measured with the tensor parallel preset only.
+    assert "--kv-cache-dtype" not in flags
+    assert "--tensor-parallel-size" not in flags
+    assert flags["--max-num-seqs"] == "128"
+    assert "--trust-remote-code" in flags
+    two = _rtx(
+        "vllm", DSV4_FLASH, model_id=DSV4_ID, num_gpus=2, user_args=["--dp", "2"]
+    )
+    assert "--gpu-memory-utilization" not in two
 
 
 def test_deepseek_v4_flash_recipe_needs_the_model_gpu_count_and_vllm():

@@ -283,6 +283,10 @@ class Recipe:
     profiles: Tuple[str, ...] = PROFILES
     checkpoint: Optional[str] = None
     fp8_weights: bool = False
+    gpu_counts: Tuple[int, ...] = ()  # exact GPU counts; empty matches all
+    # Only when the presets own the GPU layout (no user tp, pp or dp).
+    preset_layout: bool = False
+    note: Optional[str] = None  # printed at boot when the recipe applies
 
     def matches(
         self,
@@ -299,6 +303,7 @@ class Recipe:
                 self.single_gpu is not None
                 and self.single_gpu != (machine.num_gpus == 1)
             )
+            or (self.gpu_counts and machine.num_gpus not in self.gpu_counts)
         ):
             return False
         if self.architectures and not self.architectures & model.architectures:
@@ -329,6 +334,7 @@ _EAGLE3_QWEN3_8B = {
 }
 
 _RTX_AND_H100 = (RTX_PRO_6000, H100)
+_DSV4_FLASH = frozenset({"deepseek-ai/deepseek-v4-flash-0731"})
 
 # Measured recipes (all vLLM v0.32.0, 2k prompt / 256 output, via fal.run). To
 # add one, append an entry; flags are merged like any preset, so user
@@ -415,19 +421,54 @@ RECIPES: Tuple[Recipe, ...] = (
         single_gpu=True,
         architectures=frozenset({"GptOssForCausalLM"}),
     ),
-    # The multi-GPU layout (EP/PP) is being tuned, so this entry will change.
     Recipe(
         source=(
-            "vLLM 0.32.0, 4x RTX PRO 6000, DeepSeek V4 Flash 0731: cap 128 + "
-            "--disable-custom-all-reduce (base) + --trust-remote-code + prefetch "
-            "weight loading"
+            "vLLM 0.32.0, 2x and 4x RTX PRO 6000, DeepSeek V4 Flash 0731: cap 128 "
+            "+ --disable-custom-all-reduce (base) + --trust-remote-code + "
+            "prefetch weight loading"
         ),
         gpus=(RTX_PRO_6000,),
         engines=("vllm",),
         args={_TRUST_REMOTE_CODE_FLAG: "", _LOAD_STRATEGY_FLAG: "prefetch"},
         min_seqs=128,
         single_gpu=False,
-        model_ids=frozenset({"deepseek-ai/deepseek-v4-flash-0731"}),
+        model_ids=_DSV4_FLASH,
+    ),
+    # Layouts measured on PCIe (2k prompt / 256 out, tokens per GPU-hour at 128
+    # streams): TP2 1.72M, DP4 + EP 1.24M, TP4 0.92M, PP4 0.87M. DP4 + EP has
+    # the best 4-GPU peak (1,382 tok/s) but drops to 348 at 32 streams, so it
+    # only suits steady high load (engine_args --data-parallel-size 4
+    # --enable-expert-parallel). The FP8 KV entries assume the tensor
+    # parallel preset, so a user layout skips them.
+    Recipe(
+        source=(
+            "vLLM 0.32.0, 2x RTX PRO 6000, DeepSeek V4 Flash 0731: TP2 + FP8 KV "
+            "(fp8_ds_mla) + gpu-memory-utilization 0.95 + cap 128: 955 tok/s at "
+            "128 streams, 80 tok/s single stream, 1.72M tok/GPU-h vs 0.92M on TP4"
+        ),
+        gpus=(RTX_PRO_6000,),
+        engines=("vllm",),
+        args={_KV_DTYPE_FLAG: "fp8_ds_mla", _GPU_MEM_FLAG: "0.95"},
+        gpu_counts=(2,),
+        model_ids=_DSV4_FLASH,
+        preset_layout=True,
+    ),
+    Recipe(
+        source=(
+            "vLLM 0.32.0, 4x RTX PRO 6000, DeepSeek V4 Flash 0731: TP4 + FP8 KV "
+            "(fp8_ds_mla): 1,021 tok/s at 128 streams, TTFT p50 at 64 streams "
+            "3.5s vs 7.0s without"
+        ),
+        gpus=(RTX_PRO_6000,),
+        engines=("vllm",),
+        args={_KV_DTYPE_FLAG: "fp8_ds_mla"},
+        gpu_counts=(4,),
+        model_ids=_DSV4_FLASH,
+        preset_layout=True,
+        note=(
+            "DeepSeek V4 Flash: 2 GPUs (num_gpus = 2) measured 1.9x more tokens "
+            "per GPU-hour than 4, at the same single-stream speed"
+        ),
     ),
 )
 
@@ -491,7 +532,9 @@ def engine_preset_args(
     Measured recipes (see ``RECIPES``) add more for specific GPU, engine, model
     and profile combinations. Speculative decoding is never added for an
     architecture in ``_SPEC_DENYLIST``. ``user_args`` (the app's
-    ``engine_args``) only drives messages about the presets.
+    ``engine_args``) drives messages about the presets and, when it sets a
+    tensor, pipeline or data parallel size, skips recipes that assume the
+    tensor parallel preset.
     ``skip_checkpoint`` drops the recipes tuned for that checkpoint, for when
     it could not be served and the original weights are used instead.
 
@@ -502,12 +545,22 @@ def engine_preset_args(
     if profile not in PROFILES:
         raise ValueError(f"unknown engine_profile {profile!r}; expected {PROFILES}")
     skipped = skip_checkpoint.lower() if skip_checkpoint else None
+    user_layout = any(_has_flag(user_args, g) for g in _LAYOUT_GROUPS)
     recipes = [
         r
         for r in RECIPES
         if r.matches(engine, machine, model, profile)
         and not (skipped and r.checkpoint and r.checkpoint.lower() == skipped)
     ]
+    if user_layout and any(r.preset_layout for r in recipes):
+        print(
+            "[llm-app] engine_args set the parallel layout, so recipes measured "
+            "with the tensor parallel preset (e.g. FP8 KV cache) are skipped"
+        )
+        recipes = [r for r in recipes if not r.preset_layout]
+    for recipe in recipes:
+        if recipe.note:
+            print(f"[llm-app] {recipe.note}")
     spec_denied = model.architectures & _SPEC_DENYLIST
     user_spec = _has_flag(user_args, "spec")
     if spec_denied and user_spec:

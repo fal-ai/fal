@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
 import resource
@@ -1249,6 +1250,39 @@ def test_stream_idle_timeout_before_headers(served):
     assert json.loads(lines[-2][5:])["choices"][0]["finish_reason"] == "idle_timeout"
     assert app._usage_totals["idle_aborts"] == 1
     assert _wait_for(abort_file, timeout=8.0)
+
+
+@pytest.mark.parametrize("budget,expected", [(3000.0, 2990), (10.0, 600)])
+def test_engine_ready_timeout_follows_the_startup_budget(monkeypatch, budget, expected):
+    seen = {}
+
+    class Proc:
+        stdout = io.BytesIO(b"")
+
+        def poll(self):
+            return 0
+
+    def popen(cmd, env, **kwargs):
+        seen.update(env)
+        return Proc()
+
+    class A(LLMApp):
+        model = "m"
+        engine_presets = False
+
+    monkeypatch.delenv("VLLM_ENGINE_READY_TIMEOUT_S", raising=False)
+    monkeypatch.setattr(_app.subprocess, "Popen", popen)
+    app = A()
+    app._engine_log_tail = deque(maxlen=5)
+    app._boot = {}
+    app._deadline = time.monotonic() + budget
+    app._start_engine("/m")
+    value = int(seen["VLLM_ENGINE_READY_TIMEOUT_S"])
+    assert expected - 15 <= value <= expected + 10
+    # A value the app sets wins.
+    A.engine_env = {"VLLM_ENGINE_READY_TIMEOUT_S": "42"}
+    app._start_engine("/m")
+    assert seen["VLLM_ENGINE_READY_TIMEOUT_S"] == "42"
 
 
 def test_wait_limit_picks_the_sooner_bound():
