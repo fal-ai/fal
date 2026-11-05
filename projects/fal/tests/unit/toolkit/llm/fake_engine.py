@@ -34,6 +34,9 @@ async def metrics():
         'vllm:num_requests_running{engine="0"} 2.0\n'
         'vllm:num_requests_waiting{engine="0"} 1.0\n'
         'vllm:kv_cache_usage_perc{engine="0"} 0.25\n'
+        'vllm:spec_decode_num_draft_tokens_total{engine="0"} 40.0\n'
+        'vllm:spec_decode_num_accepted_tokens_total{engine="0"} 30.0\n'
+        'vllm:spec_decode_num_accepted_tokens_per_pos_total{position="0"} 9.0\n'
         "other_metric 5\n"
     )
 

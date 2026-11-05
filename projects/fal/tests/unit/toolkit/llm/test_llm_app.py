@@ -167,6 +167,10 @@ def test_health_and_engine_stats(served):
     # The fake engine prints no vLLM milestones, so none are recorded.
     assert "weights_loaded_s" not in s["boot"]
     assert "other_metric" not in s["stats"]
+    assert s["stats"]["spec_decode_acceptance_rate"] == 0.75
+    # The per-position counter is not summed into the accepted total.
+    assert s["stats"]["vllm:spec_decode_num_accepted_tokens_total"] == 30.0
+    assert h["engine"]["spec_decode_acceptance_rate"] == 0.75
 
     app._proc.kill()
     app._proc.wait()
@@ -302,6 +306,38 @@ def test_compile_marker_absent_then_present(tmp_path, monkeypatch):
     # A different engine config is a different compile cache.
     other = _make_probe(tmp_path, monkeypatch, engine_args=["--tp", "8"])
     assert other._config_key() != second._config_key()
+
+
+def test_compile_marker_keyed_on_resolved_snapshot(tmp_path, monkeypatch):
+    seen: list = []
+
+    def boot(snapshot):
+        snapshot.mkdir(exist_ok=True)
+        app = _make_probe(tmp_path, monkeypatch, model="org/m")
+
+        def engine_command(path):
+            seen.append(path)
+            # Like a preset gated on the snapshot's config.json.
+            gated = ["--gated"] if os.path.isdir(path) else []
+            port = str(app.engine_port)
+            return [sys.executable, FAKE, "--port", port, "--model", path, *gated]
+
+        app.engine_command = engine_command  # type: ignore[method-assign]
+        app._resolve_model = lambda: str(snapshot)  # type: ignore[method-assign]
+        app.setup()
+        try:
+            return dict(app._boot)
+        finally:
+            app.teardown()
+
+    first = boot(tmp_path / "snap-a")
+    # Keyed after resolve, from the real snapshot path (not the Hub id).
+    assert "org/m" not in seen and seen[0] == str(tmp_path / "snap-a")
+    assert first["compile_cache_warm"] is False
+    # A new snapshot dir of the same config is still the same compile cache.
+    second = boot(tmp_path / "snap-b")
+    assert second["compile_cache_warm"] is True
+    assert len(list((tmp_path / "engine" / "ns").glob("boot-*.json"))) == 1
 
 
 def _fake_snapshot_download(monkeypatch, tmp_path):
@@ -494,6 +530,28 @@ def test_config_key_engine_env_and_port_forms(tmp_path, monkeypatch, capsys):
     broken.engine_command = boom  # type: ignore[method-assign]
     broken._config_key()
     assert "falls back to engine_args" in capsys.readouterr().out
+
+
+def test_config_key_uses_resolved_model_config(tmp_path, monkeypatch):
+    app = _make_probe(tmp_path, monkeypatch)
+    seen = []
+
+    def cmd(path):
+        seen.append(path)
+        # Like a config-gated preset: the flag depends on the snapshot's files.
+        extra = ["--kv-cache-dtype", "fp8"] if os.path.isdir(path) else []
+        return ["serve", path, *extra]
+
+    app.engine_command = cmd  # type: ignore[method-assign]
+    snap_a, snap_b = tmp_path / "snap-a", tmp_path / "snap-b"
+    snap_a.mkdir()
+    snap_b.mkdir()
+    keyed = app._config_key(str(snap_a))
+    assert seen[-1] == str(snap_a)
+    # The snapshot dir is replaced by the model id; the gated flag is kept.
+    assert keyed == app._config_key(str(snap_b))
+    # Without the snapshot's files the gated flag is absent, so the key differs.
+    assert keyed != app._config_key(str(tmp_path / "missing"))
 
 
 def test_write_marker_leaves_no_tmp_and_tolerates_concurrency(tmp_path):

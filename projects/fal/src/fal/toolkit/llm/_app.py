@@ -41,11 +41,20 @@ from fal.toolkit.llm._cache import (
 )
 from fal.toolkit.llm._preread import DEFAULT_WORKERS, preread_weights
 from fal.toolkit.llm._presets import (
+    PROFILES,
+    Machine,
+    detect_gpu,
     engine_arg_warnings,
     engine_preset_args,
+    load_model_config,
     merge_engine_args,
+    model_facts,
+    short_gpu_type,
 )
 
+# vLLM speculative decoding counters (cumulative since engine start).
+_SPEC_ACCEPTED = "vllm:spec_decode_num_accepted_tokens_total"
+_SPEC_DRAFTED = "vllm:spec_decode_num_draft_tokens_total"
 _METRIC_PREFIXES = (
     "vllm:num_requests_running",
     "vllm:num_requests_waiting",
@@ -54,6 +63,8 @@ _METRIC_PREFIXES = (
     "vllm:prefix_cache_queries_total",
     "vllm:prefix_cache_hits_total",
     "vllm:num_preemptions_total",
+    _SPEC_ACCEPTED,
+    _SPEC_DRAFTED,
     "sglang:num_running_reqs",
     "sglang:num_queue_reqs",
     "sglang:token_usage",
@@ -311,7 +322,14 @@ class LLMApp(App):
     With ``engine_presets`` on, tensor parallelism (from ``num_gpus``),
     ``--disable-custom-all-reduce`` on PCIe-only GPUs and the engine's max
     concurrent sequences (from ``max_multiplexing``) are added to the launch;
-    any flag already in ``engine_args`` wins. See ``engine_preset_args``.
+    any flag already in ``engine_args`` wins. Set ``max_multiplexing`` to the
+    measured cap (256 on one GPU, 128 for multi-GPU MoE) so the router feeds
+    the engine enough requests. The presets also apply measured vLLM recipes
+    on RTX PRO 6000 and H100 (see ``RECIPES``): sequence caps, FP8 KV cache
+    and EAGLE3 for Qwen3-8B, and settings for gpt-oss-120b and DeepSeek V4
+    Flash. A recipe may
+    raise the engine's cap above ``max_multiplexing``. See
+    ``engine_preset_args``.
 
     Subclasses overriding ``handle_exit`` or ``teardown`` must call ``super()``:
     they start the shutdown drain and stop the engine.
@@ -325,9 +343,18 @@ class LLMApp(App):
     model_revision: ClassVar[Optional[str]] = None
     served_model_name: ClassVar[Optional[str]] = None
     engine_args: ClassVar[List[str]] = []
-    # Prepend machine-matched engine args (TP, all-reduce, max sequences);
-    # engine_args override per flag.
+    # Prepend machine-matched engine args (TP, all-reduce, max sequences,
+    # measured recipes); engine_args override per flag. The engine cap can
+    # exceed max_multiplexing when a recipe raises it, which is harmless.
     engine_presets: ClassVar[bool] = True
+    # "throughput" (default) or "latency"; recipes can differ by profile.
+    engine_profile: ClassVar[str] = "throughput"
+    # Online FP8 weights (--quantization fp8) for a bf16 checkpoint, a quality
+    # tradeoff so opt-in. The measured Qwen3-8B recipe (4,206 tok/s peak, 208
+    # tok/s single stream) used model = "Qwen/Qwen3-8B-FP8".
+    fp8_weights: ClassVar[bool] = False
+    # Active parameters in billions when the config.json estimate is wrong.
+    active_params_b: ClassVar[Optional[float]] = None
     engine_env: ClassVar[Dict[str, str]] = {}
     engine_port: ClassVar[int] = 8000
     engine_startup_timeout_s: ClassVar[float] = 3300.0
@@ -365,7 +392,12 @@ class LLMApp(App):
     # time to drain streams; 60 fits the 30s drain plus the engine stop.
     termination_grace_period_seconds: ClassVar[Optional[int]] = 60
 
-    keep_alive = 300
+    # Idle seconds before a runner scales down. LLM boots take minutes, so a
+    # short keep_alive lets cold starts dominate the tail (simulated with a 143s
+    # boot: p99 queue wait 111s at keep_alive 30, 35s at 120). 600 kept p99 under 1s at
+    # high volume and is nearly insensitive to boot time; the cost is idle GPU
+    # time at low volume. Rule of thumb: keep_alive >= 2x boot time.
+    keep_alive = 600
 
     _draining = False
     _drain_started: Optional[float] = None
@@ -373,14 +405,23 @@ class LLMApp(App):
     _serving_loop: Optional[asyncio.AbstractEventLoop] = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
         # Check only the class that sets these, so subclasses do not repeat it.
-        if not {"engine_args", "num_gpus", "max_multiplexing"} & set(vars(cls)):
+        sets_config = bool(
+            {"engine_args", "num_gpus", "max_multiplexing"} & set(vars(cls))
+        )
+        user_multiplexing = cls.max_multiplexing
+        super().__init_subclass__(**kwargs)
+        if cls.engine_profile not in PROFILES:
+            raise ValueError(
+                f"{cls.__name__}: engine_profile must be one of {PROFILES}, "
+                f"got {cls.engine_profile!r}"
+            )
+        if not sets_config:
             return
         # warnings (not print): this runs on the deploying machine and callers
         # can filter or assert on it.
         for message in engine_arg_warnings(
-            cls.engine_args, cls.num_gpus or 1, cls.max_multiplexing
+            cls.engine_args, cls.num_gpus or 1, user_multiplexing
         ):
             warnings.warn(f"{cls.__name__}: {message}", stacklevel=2)
 
@@ -400,12 +441,26 @@ class LLMApp(App):
             raise ValueError(f"unknown engine {self.engine!r}; override engine_command")
         engine_args = list(self.engine_args)
         if self.engine_presets:
+            # One nvidia-smi call: the short type is derived from the name.
+            gpu = self._gpu_name()
+            machine = Machine(
+                gpu_type=short_gpu_type(gpu[0]) if gpu else self._gpu_type(),
+                gpu_name=gpu[0] if gpu else None,
+                gpu_memory_mib=gpu[1] if gpu else None,
+                num_gpus=self.num_gpus or 1,
+            )
+            model = model_facts(
+                self.model, load_model_config(model_path), self.active_params_b
+            )
             engine_args = merge_engine_args(
                 engine_preset_args(
                     self.engine,
-                    self._gpu_type(),
-                    self.num_gpus or 1,
-                    self.max_multiplexing,
+                    machine,
+                    model,
+                    profile=self.engine_profile,
+                    fp8_weights=self.fp8_weights,
+                    max_multiplexing=self.max_multiplexing,
+                    user_args=engine_args,
                 ),
                 engine_args,
             )
@@ -489,25 +544,28 @@ class LLMApp(App):
         )
 
     def _setup_stages(self, httpx: Any, t0: float) -> None:
+        namespace = None
         if self.persistent_caches:
             namespace = self.cache_namespace or "-".join(
                 (self.engine, _engine_version(self.engine), self._gpu_type())
             )
             apply_engine_cache_env(namespace)
-            # Compiled kernels depend on model shapes, TP size and engine args,
-            # so warm means a previous boot of this exact config finished.
-            self._boot_marker = namespace_dir(namespace) / (
-                f"boot-{self._config_key()}.json"
-            )
-            previous = read_marker(self._boot_marker)
-            self._boot["compile_cache_warm"] = previous is not None
-            if previous is not None:
-                self._boot["previous_boot"] = previous
 
         self._stage = "model resolve"
         model_path = self._resolve_model()
         self._boot["resolve_s"] = time.monotonic() - t0
         self._check_budget("model resolve")
+        if namespace is not None:
+            # Compiled kernels depend on model shapes, TP size and engine args,
+            # so warm means a previous boot of this exact config finished. Keyed
+            # after resolve: presets read the model's config.json.
+            self._boot_marker = namespace_dir(namespace) / (
+                f"boot-{self._config_key(model_path)}.json"
+            )
+            previous = read_marker(self._boot_marker)
+            self._boot["compile_cache_warm"] = previous is not None
+            if previous is not None:
+                self._boot["previous_boot"] = previous
         if self.preread_workers > 0 and os.path.isdir(model_path):
             self._stage = "weight pre-read"
             stats = preread_weights(model_path, workers=self.preread_workers)
@@ -540,6 +598,10 @@ class LLMApp(App):
     @staticmethod
     def _gpu_type() -> str:
         return get_gpu_type()
+
+    @staticmethod
+    def _gpu_name() -> Optional[Tuple[str, Optional[int]]]:
+        return detect_gpu()
 
     def _resolve_model(self) -> str:
         if os.path.isdir(self.model):
@@ -662,11 +724,14 @@ class LLMApp(App):
         self._served_commit = self._dir_commit(path)
         return path
 
-    def _config_key(self) -> str:
-        # The model path is a placeholder (snapshot dirs change per revision) and
-        # the port says nothing about what the kernels were compiled for.
+    def _config_key(self, model_path: Optional[str] = None) -> str:
+        # The command is built from the real model path (presets read its
+        # config.json), then the path is replaced by the model id: snapshot dirs
+        # change per revision. The port says nothing about the compiled kernels.
         try:
-            cmd = self.engine_command(self.model)
+            cmd = self.engine_command(model_path or self.model)
+            if model_path:
+                cmd = [self.model if arg == model_path else arg for arg in cmd]
         except Exception as exc:
             print(
                 f"[llm-app] engine_command failed ({exc!r}), "
@@ -873,6 +938,10 @@ class LLMApp(App):
                 m = _METRIC_RE.match(line)
                 if m:
                     stats[m.group(1)] = stats.get(m.group(1), 0.0) + float(m.group(2))
+        if stats.get(_SPEC_DRAFTED) and _SPEC_ACCEPTED in stats:
+            stats["spec_decode_acceptance_rate"] = (
+                stats[_SPEC_ACCEPTED] / stats[_SPEC_DRAFTED]
+            )
         return stats
 
     async def health(self) -> Dict[str, Any]:  # type: ignore[override]
