@@ -26,8 +26,18 @@ _TRUST_REMOTE_CODE_FLAG = "--trust-remote-code"
 _LOAD_STRATEGY_FLAG = "--safetensors-load-strategy"
 _GPU_MEM_FLAG = "--gpu-memory-utilization"
 _PROMPT_DETAILS_FLAG = "--enable-prompt-tokens-details"
+_PREFIX_CACHING_FLAG = "--enable-prefix-caching"
+_AUTO_TOOL_FLAG = "--enable-auto-tool-choice"
+_TOOL_PARSER_FLAG = "--tool-call-parser"
+_MAX_MODEL_LEN_FLAG = "--max-model-len"
 _BOOLEAN_FLAGS = frozenset(
-    {_ALL_REDUCE_FLAG, _TRUST_REMOTE_CODE_FLAG, _PROMPT_DETAILS_FLAG}
+    {
+        _ALL_REDUCE_FLAG,
+        _TRUST_REMOTE_CODE_FLAG,
+        _PROMPT_DETAILS_FLAG,
+        _PREFIX_CACHING_FLAG,
+        _AUTO_TOOL_FLAG,
+    }
 )
 
 # Spellings that mean the same thing to an engine, keyed by a canonical group.
@@ -49,6 +59,10 @@ _FLAG_GROUPS: Dict[str, str] = {
     _PROMPT_DETAILS_FLAG: "prompt_details",
     _LOAD_STRATEGY_FLAG: "load_strategy",
     _GPU_MEM_FLAG: "gpu_mem",
+    _PREFIX_CACHING_FLAG: "prefix_caching",
+    _AUTO_TOOL_FLAG: "auto_tool",
+    _TOOL_PARSER_FLAG: "tool_parser",
+    _MAX_MODEL_LEN_FLAG: "max_model_len",
     "--pipeline-parallel-size": "pp",
     "--pp-size": "pp",
     "-pp": "pp",
@@ -75,9 +89,42 @@ H100 = "H100"
 _SPEC_DENYLIST = frozenset({"GptOssForCausalLM"})
 # max_throughput trades quality for speed and is opt-in; models without a
 # max_throughput recipe get the throughput one.
-PROFILES = ("throughput", "latency", "max_throughput")
+# agent: long multi-turn tool-calling sessions (coding agents). Adds prefix
+# caching, the tool-call parser and a 128k window here; LLMApp also turns on
+# the CPU KV tier (0.5) and prefix_hints unless the app sets them.
+PROFILES = ("throughput", "latency", "max_throughput", "agent")
+# The Qwen3-8B FP8 + EAGLE3 recipes are not measured with long context, prefix
+# caching and the CPU KV tier, so the agent profile does not take them.
 _SAFE_PROFILES = ("throughput", "latency")
 _ENGINES = tuple(_TP_FLAG)
+
+AGENT_PROFILE = "agent"
+AGENT_MAX_MODEL_LEN = 131072
+AGENT_KV_CPU_OFFLOAD = 0.5
+# vLLM --tool-call-parser per model family, matched on architecture. Families
+# not listed get no parser (a note is printed) rather than a wrong one.
+_QWEN_ARCHS = frozenset(
+    {
+        "Qwen2ForCausalLM",
+        "Qwen3ForCausalLM",
+        "Qwen3MoeForCausalLM",
+        "Qwen3NextForCausalLM",
+    }
+)
+_TOOL_PARSERS: Tuple[Tuple[FrozenSet[str], str], ...] = (
+    (frozenset({"GptOssForCausalLM"}), "openai"),
+    (
+        frozenset(
+            {
+                "Qwen2ForCausalLM",
+                "Qwen3ForCausalLM",
+                "Qwen3MoeForCausalLM",
+                "Qwen3NextForCausalLM",
+            }
+        ),
+        "hermes",
+    ),
+)
 
 
 def _normalize_gpu(gpu_type: str) -> str:
@@ -531,6 +578,10 @@ def engine_preset_args(
       A recipe may raise the engine cap above it, never lower it.
     - vLLM: ``--enable-prompt-tokens-details``, so ``usage`` carries
       ``prompt_tokens_details.cached_tokens``.
+    - ``profile="agent"`` (vLLM): ``--enable-prefix-caching``, the tool-call
+      parser for the model family (``--enable-auto-tool-choice``,
+      ``--tool-call-parser``) and ``--max-model-len`` of the model's window up
+      to 128k.
     - ``fp8_weights``: online ``--quantization fp8`` (any GPU) unless the
       checkpoint is already quantized (any ``quantization_config``, which
       includes a checkpoint substituted by ``checkpoint_for``).
@@ -595,6 +646,8 @@ def engine_preset_args(
             if flag == _SPEC_FLAG and spec_denied:
                 continue
             args += [flag] if flag in _BOOLEAN_FLAGS else [flag, value]
+    if profile == AGENT_PROFILE and engine == "vllm":
+        args += _agent_args(model)
     # Online FP8 for a bf16 checkpoint; an FP8 one already has it.
     if fp8_weights and not model.prequantized:
         args += [_QUANT_FLAG, "fp8"]
@@ -614,6 +667,51 @@ def engine_preset_args(
             "[llm-app] max_throughput: no measured recipe for "
             f"{model.model_id!r} on this machine, using throughput"
         )
+    return args
+
+
+def tool_call_parser(model: ModelFacts) -> Optional[str]:
+    mid = (model.model_id or "").lower()
+    # Same architecture, different tool format: Qwen3-Coder and Llama 2.
+    if "coder" in mid and model.architectures & {
+        "Qwen3MoeForCausalLM",
+        "Qwen3NextForCausalLM",
+    }:
+        return "qwen3_coder"
+    # llama3_json is for Llama 3.1 and later only.
+    if "LlamaForCausalLM" in model.architectures:
+        meta = mid.startswith("meta-llama/") and re.search(r"llama-?3\.[1-9]", mid)
+        return "llama3_json" if meta else None
+    # Distills and fine-tunes share the Qwen architectures but not the format.
+    qwen = model.architectures & _QWEN_ARCHS
+    if qwen and ("qwen" not in mid or "deepseek" in mid or "distill" in mid):
+        return None
+    for architectures, parser in _TOOL_PARSERS:
+        if architectures & model.architectures:
+            return parser
+    return None
+
+
+def _agent_args(model: ModelFacts) -> List[str]:
+    """vLLM flags of the agent profile (see ``PROFILES``)."""
+    args = [_PREFIX_CACHING_FLAG]
+    parser = tool_call_parser(model)
+    if parser:
+        args += [_AUTO_TOOL_FLAG, _TOOL_PARSER_FLAG, parser]
+    else:
+        print(
+            "[llm-app] agent profile: no known tool-call parser for "
+            f"{model.model_id!r}; set --enable-auto-tool-choice and "
+            "--tool-call-parser in engine_args"
+        )
+    window = _num(_text_config(model.config or {}), "max_position_embeddings")
+    if window is None:
+        print(
+            "[llm-app] agent profile: model window unknown, leaving "
+            "--max-model-len to the engine"
+        )
+    else:
+        args += [_MAX_MODEL_LEN_FLAG, str(int(min(window, AGENT_MAX_MODEL_LEN)))]
     return args
 
 

@@ -1353,3 +1353,157 @@ def test_detect_gpu_returns_none_without_nvidia_smi(monkeypatch):
 
     monkeypatch.setattr(_presets.subprocess, "run", boom)
     assert _presets.detect_gpu() is None
+
+
+GPT_OSS_WINDOW = {**GPT_OSS_120B, "max_position_embeddings": 131072}
+
+
+def _flag_value(args, flag):
+    return args[args.index(flag) + 1]
+
+
+def test_agent_profile_vllm_flags_for_gpt_oss():
+    args = _rtx(config=GPT_OSS_WINDOW, model_id="openai/gpt-oss-120b", profile="agent")
+    assert "--enable-prefix-caching" in args
+    assert "--enable-auto-tool-choice" in args
+    assert _flag_value(args, "--tool-call-parser") == "openai"
+    assert _flag_value(args, "--max-model-len") == "131072"
+    # Measured gpt-oss recipe still applies.
+    assert _flag_value(args, "--kv-cache-dtype") == "fp8"
+
+
+@pytest.mark.parametrize(
+    "arch,parser",
+    [
+        ("Qwen3ForCausalLM", "hermes"),
+        ("LlamaForCausalLM", "llama3_json"),
+    ],
+)
+def test_agent_profile_tool_parser_per_family(arch, parser):
+    config = {**QWEN3_8B, "architectures": [arch], "max_position_embeddings": 32768}
+    mid = "meta-llama/Llama-3.1-8B-Instruct" if "Llama" in arch else "Qwen/Qwen3-8B"
+    args = _h100(config=config, model_id=mid, profile="agent")
+    assert _flag_value(args, "--tool-call-parser") == parser
+    # Window never exceeds what the model supports.
+    assert _flag_value(args, "--max-model-len") == "32768"
+
+
+def test_agent_profile_caps_window_at_128k():
+    config = {**GPT_OSS_120B, "max_position_embeddings": 1_000_000}
+    args = _rtx(config=config, model_id="x/y", profile="agent")
+    assert _flag_value(args, "--max-model-len") == "131072"
+
+
+def test_agent_profile_unknown_family_and_window_say_so(capsys):
+    config = {**QWEN3_8B, "architectures": ["FooForCausalLM"]}
+    args = _rtx(config=config, model_id="x/y", profile="agent")
+    out = capsys.readouterr().out
+    assert "no known tool-call parser" in out and "window unknown" in out
+    assert "--tool-call-parser" not in args and "--max-model-len" not in args
+    assert "--enable-prefix-caching" in args
+
+
+def test_agent_profile_is_vllm_only_and_other_profiles_untouched():
+    assert "--enable-prefix-caching" not in _rtx(
+        engine="sglang", config=GPT_OSS_WINDOW, profile="agent"
+    )
+    plain = _rtx(config=GPT_OSS_WINDOW, model_id="x/y")
+    assert "--tool-call-parser" not in plain
+    assert "--max-model-len" not in plain
+
+
+def test_agent_profile_user_flags_win():
+    preset = _rtx(config=GPT_OSS_WINDOW, model_id="x/y", profile="agent")
+    merged = merge_engine_args(
+        preset,
+        ["--max-model-len", "65536", "--tool-call-parser", "hermes"]
+        + ["--no-enable-prefix-caching"],
+    )
+    assert merged.count("--max-model-len") == 1
+    assert _flag_value(merged, "--max-model-len") == "65536"
+    assert _flag_value(merged, "--tool-call-parser") == "hermes"
+    assert "--enable-prefix-caching" not in merged
+
+
+def test_agent_app_defaults_offload_and_hints_and_overrides(monkeypatch):
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 100 << 30)
+
+    class Agent(LLMApp):
+        model = "org/m"
+        engine_profile = "agent"
+
+    monkeypatch.setattr(Agent, "_gpu_type", staticmethod(lambda: PRO6000))
+    monkeypatch.setattr(Agent, "_gpu_name", staticmethod(lambda: None))
+    cmd = Agent().engine_command("/m")
+    cfg = json.loads(cmd[cmd.index("--kv-transfer-config") + 1])
+    assert cfg["kv_connector_extra_config"]["cpu_bytes_to_use"] == 50 << 30
+    assert Agent()._prefix_hints_on() is True
+
+    class Tuned(Agent):
+        kv_cpu_offload = 0.25
+        prefix_hints = False
+
+    cmd = Tuned().engine_command("/m")
+    cfg = json.loads(cmd[cmd.index("--kv-transfer-config") + 1])
+    assert cfg["kv_connector_extra_config"]["cpu_bytes_to_use"] == 25 << 30
+    assert Tuned()._prefix_hints_on() is False
+
+    class Off(Agent):
+        kv_cpu_offload = 0
+
+    assert "--kv-transfer-config" not in Off().engine_command("/m")
+
+    class NoPresets(Agent):
+        engine_presets = False
+
+    assert "--kv-transfer-config" not in NoPresets().engine_command("/m")
+    with pytest.raises(NotImplementedError):
+        Tuned().provide_hints()
+    assert Agent().provide_hints() == []
+
+
+def test_non_agent_app_keeps_offload_and_hints_off(monkeypatch):
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 100 << 30)
+
+    class Plain(LLMApp):
+        model = "m"
+        engine_presets = False
+
+    assert "--kv-transfer-config" not in Plain().engine_command("/m")
+    assert Plain()._prefix_hints_on() is False
+
+
+@pytest.mark.parametrize(
+    "arch,model_id,parser",
+    [
+        ("Qwen3MoeForCausalLM", "Qwen/Qwen3-Coder-30B-A3B-Instruct", "qwen3_coder"),
+        ("Qwen3MoeForCausalLM", "Qwen/Qwen3-30B-A3B", "hermes"),
+        ("LlamaForCausalLM", "meta-llama/Llama-2-7b-chat-hf", None),
+        ("LlamaForCausalLM", "meta-llama/Meta-Llama-3-8B-Instruct", None),
+        ("Qwen3NextForCausalLM", "Qwen/Qwen3-Coder-Next", "qwen3_coder"),
+        ("LlamaForCausalLM", "NousResearch/Hermes-3-Llama-3.1-8B", None),
+        ("Qwen2ForCausalLM", "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B", None),
+        ("Qwen2ForCausalLM", "Qwen/Qwen2.5-7B-Instruct", "hermes"),
+    ],
+)
+def test_agent_tool_parser_same_architecture_exceptions(arch, model_id, parser):
+    facts = ModelFacts(model_id, {"architectures": [arch]})
+    assert _presets.tool_call_parser(facts) == parser
+
+
+def test_agent_profile_skips_qwen3_fp8_eagle_recipe():
+    args = _rtx(config=QWEN3_8B, model_id="Qwen/Qwen3-8B", profile="agent")
+    assert "--speculative-config" not in args
+
+
+def test_agent_offload_skipped_when_ram_unreadable_and_implicit(monkeypatch, capsys):
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 0)
+
+    class Agent(LLMApp):
+        model = "org/m"
+        engine_profile = "agent"
+
+    monkeypatch.setattr(Agent, "_gpu_type", staticmethod(lambda: PRO6000))
+    monkeypatch.setattr(Agent, "_gpu_name", staticmethod(lambda: None))
+    assert "--kv-transfer-config" not in Agent().engine_command("/m")
+    assert "container RAM unreadable" in capsys.readouterr().out

@@ -41,6 +41,8 @@ from fal.toolkit.llm._cache import (
 )
 from fal.toolkit.llm._preread import DEFAULT_WORKERS, preread_weights
 from fal.toolkit.llm._presets import (
+    AGENT_KV_CPU_OFFLOAD,
+    AGENT_PROFILE,
     PROFILES,
     Machine,
     checkpoint_for,
@@ -468,8 +470,14 @@ class LLMApp(App):
     # measured recipes); engine_args override per flag. The engine cap can
     # exceed max_multiplexing when a recipe raises it, which is harmless.
     engine_presets: ClassVar[bool] = True
-    # "throughput" (default), "latency" or "max_throughput"; recipes can differ
-    # by profile. max_throughput trades quality for speed and is opt-in only:
+    # "throughput" (default), "latency", "max_throughput" or "agent"; recipes
+    # can differ by profile. "agent" is the one switch for long tool-calling
+    # sessions on vLLM: prefix caching, the model family's tool-call parser, a
+    # context window up to 128k, the CPU KV tier (kv_cpu_offload 0.5) and
+    # prefix_hints, each overridable by setting it on the class or in
+    # engine_args. The engine flags need vLLM and engine_presets; the CPU tier
+    # needs vLLM, and prefix_hints works with any engine.
+    # max_throughput trades quality for speed and is opt-in only:
     # for Qwen3-8B on RTX PRO 6000 it serves the NVFP4 checkpoint (MMLU-Pro -8.2
     # pts) for about 1.4x the throughput. Models without a max_throughput recipe
     # get the throughput one.
@@ -492,6 +500,8 @@ class LLMApp(App):
     # connectors, and the pinned pages count against the container's RAM limit.
     # The size is the total across all workers (vLLM's cpu_bytes_to_use), capped
     # at 0.8. None: off. Ignored when engine_args already set --kv-transfer-config.
+    # With engine_profile = "agent" (and engine_presets), None means 0.5; 0 turns
+    # the tier off.
     kv_cpu_offload: ClassVar[Optional[float]] = None
     engine_port: ClassVar[int] = 8000
     engine_startup_timeout_s: ClassVar[float] = 3300.0
@@ -511,7 +521,8 @@ class LLMApp(App):
     # served recently in ``X-Fal-Runner-Hints`` and the gateway prefers a free
     # runner that lists the id, so a conversation keeps hitting the runner
     # that holds its KV cache. Requests without an id advertise nothing.
-    prefix_hints: ClassVar[bool] = False
+    # With engine_profile = "agent", None means on; False turns it off there.
+    prefix_hints: ClassVar[Optional[bool]] = None
     # The gateway matches the id literally, so it is advertised as sent. The
     # runner no longer derives hints from the prompt (prefix_hint_chars is
     # gone): without a client id nothing is advertised.
@@ -574,11 +585,11 @@ class LLMApp(App):
                 f"got {cls.engine_profile!r}"
             )
         if cls.kv_cpu_offload is not None and not (
-            0 < cls.kv_cpu_offload <= _KV_OFFLOAD_MAX_FRACTION
+            0 <= cls.kv_cpu_offload <= _KV_OFFLOAD_MAX_FRACTION
         ):
             raise ValueError(
                 f"{cls.__name__}: kv_cpu_offload must be a fraction in "
-                f"(0, {_KV_OFFLOAD_MAX_FRACTION}], got {cls.kv_cpu_offload!r}"
+                f"[0, {_KV_OFFLOAD_MAX_FRACTION}], got {cls.kv_cpu_offload!r}"
             )
         if not sets_config:
             return
@@ -604,6 +615,16 @@ class LLMApp(App):
         else:
             raise ValueError(f"unknown engine {self.engine!r}; override engine_command")
         engine_args = list(self.engine_args)
+        offload = self._kv_offload_fraction()
+        if offload and self.kv_cpu_offload is None:
+            # The implicit agent default must not stop a boot.
+            if not _container_ram_bytes():
+                print(
+                    "[llm-app] agent profile: container RAM unreadable, no CPU KV tier"
+                )
+                offload = None
+            elif "--no-enable-prefix-caching" in engine_args:
+                offload = None
         if self.engine_presets:
             model = model_facts(
                 self.model, load_model_config(model_path), self.active_params_b
@@ -622,7 +643,7 @@ class LLMApp(App):
                 engine_args,
             )
         if (
-            self.kv_cpu_offload
+            offload
             and self.engine == "vllm"
             and not any(
                 a.replace("_", "-").split("=")[0] == "--kv-transfer-config"
@@ -631,7 +652,7 @@ class LLMApp(App):
         ):
             engine_args += [
                 "--kv-transfer-config",
-                json.dumps(_kv_offload_config(self.kv_cpu_offload)),
+                json.dumps(_kv_offload_config(offload)),
             ]
         return [
             *head,
@@ -657,8 +678,19 @@ class LLMApp(App):
             self._usage_totals[key] = self._usage_totals.get(key, 0) + int(value or 0)
         self._usage_totals["requests"] = self._usage_totals.get("requests", 0) + 1
 
+    def _kv_offload_fraction(self) -> Optional[float]:
+        if self.kv_cpu_offload is None:
+            agent = self.engine_profile == AGENT_PROFILE and self.engine_presets
+            return AGENT_KV_CPU_OFFLOAD if agent else None
+        return self.kv_cpu_offload or None
+
+    def _prefix_hints_on(self) -> bool:
+        if self.prefix_hints is None:
+            return self.engine_profile == AGENT_PROFILE
+        return self.prefix_hints
+
     def provide_hints(self) -> List[str]:
-        if not self.prefix_hints:
+        if not self._prefix_hints_on():
             raise NotImplementedError
         return list(getattr(self, "_recent_prefixes", ()))
 
@@ -1280,7 +1312,7 @@ class LLMApp(App):
         return await self._proxy(request, "/v1/responses")
 
     def _note_prefix(self, payload: Dict[str, Any], headers: Any) -> None:
-        if not self.prefix_hints:
+        if not self._prefix_hints_on():
             return
         raw = next(
             (
