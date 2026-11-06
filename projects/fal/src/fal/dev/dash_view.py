@@ -15,6 +15,14 @@ from rich.segment import Segment
 from rich.table import Table
 from rich.text import Text
 
+from fal.console.icons import (
+    get_bar_empty_icon,
+    get_bar_full_icon,
+    get_column_separator_icon,
+    get_degrees_celsius_icon,
+    get_inline_separator_icon,
+    get_state_dot_icon,
+)
 from fal.dev.dash import (
     _CONTROL,
     HOLD_HOURS,
@@ -35,7 +43,16 @@ WARNING = "yellow"
 ERROR = "red"
 MUTED = "dim"
 TITLE = "bold default"
-SEPARATOR = Text(" │ ", style=BORDER)
+
+
+def _separator() -> Text:
+    return Text(f" {get_column_separator_icon()} ", style=BORDER)
+
+
+def _dot() -> str:
+    return get_inline_separator_icon()
+
+
 STATE_STYLES = {
     "running": SUCCESS,
     "starting": WARNING,
@@ -103,8 +120,8 @@ def _bar(pct: float | None, width: int = 8) -> Text:
         return Text("-" * width, style="dim")
     filled = round(min(max(pct, 0), 100) / 100 * width)
     style = ERROR if pct >= 90 else WARNING if pct >= 60 else SUCCESS
-    return Text.styled("█" * filled, style=style) + Text(
-        "░" * (width - filled), style=BORDER
+    return Text.styled(get_bar_full_icon() * filled, style=style) + Text(
+        get_bar_empty_icon() * (width - filled), style=BORDER
     )
 
 
@@ -151,11 +168,12 @@ class _StatusLine:
         lines = [Text()]
         for segment in self.segments:
             line = lines[-1]
-            if line and line.cell_len + SEPARATOR.cell_len + segment.cell_len > width:
+            separator = _separator()
+            if line and line.cell_len + separator.cell_len + segment.cell_len > width:
                 lines.append(Text())
                 line = lines[-1]
             if line:
-                line.append_text(SEPARATOR)
+                line.append_text(separator)
             line.append_text(segment)
         yield Text("\n").join(lines)
 
@@ -212,7 +230,7 @@ def header(snapshot: Snapshot, now: float) -> RenderableType:
         )
     state_style = STATE_STYLES.get(info.state, MUTED)
     line = _StatusLine(
-        Text(f"● {info.state}", style=f"bold {state_style}"),
+        Text(f"{get_state_dot_icon()} {info.state}", style=f"bold {state_style}"),
         Text(info.app_name),
         Text(info.team or "personal", style=MUTED),
         Text(f"{num_gpus}x {info.machine_type or '?'}"),
@@ -248,7 +266,7 @@ def gpu_panel(snapshot: Snapshot) -> RenderableType:
             Text(f"{util if util is not None else '-':>3}%"),
             Text(f"{(used or 0) / 1024:.1f}/{(total or 0) / 1024:.0f} GiB"),
             Text(
-                f"{gpu.get('temp_c', '-')}°C {watts}W",
+                f"{gpu.get('temp_c', '-')}{get_degrees_celsius_icon()} {watts}W",
                 style="dim",
             ),
         )
@@ -278,8 +296,8 @@ def idle_panel(snapshot: Snapshot, view: IdleView | None, now: float) -> Rendera
         style = f"bold {ERROR}" if view.remaining_seconds < 300 else "bold"
         label = Text.styled(f"in {duration(view.remaining_seconds)}", style=style)
         # An estimate can be up to a minute short: the watchdog looks once a minute.
-        approx = " ±1m" if view.source == "estimated" else ""
-        detail = f"{approx} · {view.idle_minutes} min timeout"
+        approx = " (up to 1m early)" if view.source == "estimated" else ""
+        detail = f"{approx} {_dot()} {view.idle_minutes} min timeout"
         rows.append(("auto-stop", label + Text(detail, style=MUTED)))
     if view.active_now:
         rows.append(("active now", Text(", ".join(view.active_now), style=SUCCESS)))
@@ -332,7 +350,7 @@ def connections_panel(snapshot: Snapshot, now: float) -> RenderableType:
     if claude.get("running"):
         last = ago(activity.get("last_claude_activity"), box_now)
         claude_text = Text.styled("running", style=SUCCESS) + Text(
-            f" · last activity {last}", style=MUTED
+            f" {_dot()} last activity {last}", style=MUTED
         )
     else:
         claude_text = Text("not running", style=MUTED)
@@ -353,7 +371,7 @@ def connections_panel(snapshot: Snapshot, now: float) -> RenderableType:
             state = Text.styled("ready", style=SUCCESS)
         else:
             state = Text.styled("loading model", style=WARNING)
-        version = Text(f" · code v{hot.get('code_version', '-')}", style=MUTED)
+        version = Text(f" {_dot()} code v{hot.get('code_version', '-')}", style=MUTED)
         rows.append(("hot reload", state + version))
         reload = hot.get("last_reload") or {}
         if reload:
@@ -401,7 +419,8 @@ def work_panel(snapshot: Snapshot, now: float) -> RenderableType:
                 "lease",
                 Text.styled(holder, style=SUCCESS if lease.get("mine") else WARNING)
                 + Text(
-                    f" · {safe(lease.get('state'))}, heartbeat {heartbeat}", style=MUTED
+                    f" {_dot()} {safe(lease.get('state'))}, heartbeat {heartbeat}",
+                    style=MUTED,
                 ),
             )
         )

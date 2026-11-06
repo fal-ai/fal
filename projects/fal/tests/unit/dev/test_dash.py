@@ -1,3 +1,4 @@
+import io
 import json
 import re
 import subprocess
@@ -21,6 +22,28 @@ from fal.dev.dash import (
     price_per_hour,
 )
 from fal.dev.dash_view import render, render_screen
+
+
+def _console_with_encoding(encoding: str) -> Console:
+    return Console(file=io.TextIOWrapper(io.BytesIO(), encoding=encoding))
+
+
+@pytest.fixture(autouse=True)
+def unicode_icons(monkeypatch):
+    """Glyphs follow the default console's encoding; make it UTF-8 here."""
+    from fal.console import icons
+
+    monkeypatch.setattr(icons, "default_console", _console_with_encoding("utf-8"))
+
+
+def test_render_falls_back_to_ascii(monkeypatch):
+    from fal.console import icons
+
+    monkeypatch.setattr(icons, "default_console", _console_with_encoding("ascii"))
+    text = _text(render(_snapshot(), FakeBox(), now=NOW))
+    assert "* running" in text
+    assert "41 C" in text
+
 
 FIXTURES = Path(__file__).with_name("fixtures")
 NOW = 1762380000.0
@@ -191,9 +214,9 @@ def test_render_running_box():
         "~$4.50",
         "37%",
         "21.0/80 GiB",
-        "41°C",
+        "41\u00b0C",
         "in 58m 00s",
-        "±1m · 60 min timeout",
+        "(up to 1m early) · 60 min timeout",
         "hot request, 2m 00s ago",
         "hold",
         "code v3",

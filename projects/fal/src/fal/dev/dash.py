@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import re
-import shlex
 import subprocess
 import sys
 import threading
@@ -24,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+from fal.dev import config
 from fal.dev.dash_probe import DEFAULTS as PROBE_DEFAULTS
 from fal.dev.dash_probe import END_MARKER
 
@@ -421,7 +421,26 @@ def _ready_settings(message: str) -> dict:
 
 
 class FalBox:
-    """A box deployed as a fal app with the fal-devbox layout."""
+    """The dashboard's view of a box deployed by `fal dev` (fal/dev/box_app.py).
+
+    It keeps its own exec and down rather than `fal.dev.box.Box`'s: the dashboard
+    needs per-call timeouts and string results it can show. Holds share
+    `fal.dev.config.hold_command`.
+    """
+
+    @classmethod
+    def from_box(
+        cls, box, idle_minutes: int | None = None, app_name: str | None = None
+    ) -> FalBox:
+        """Share a `fal.dev.box.Box`'s name, app, team, host and client."""
+        return cls(
+            box.name,
+            app_name or box.app,
+            team=box.team,
+            host=box.host,
+            idle_minutes=idle_minutes,
+            client=box.client,
+        )
 
     def __init__(
         self,
@@ -432,7 +451,8 @@ class FalBox:
         host: str | None = None,
         idle_minutes: int | None = None,
         workspace: str | None = None,
-        save_command: str = "/usr/local/bin/devbox-save",
+        save_command: str = config.SAVE_COMMAND,
+        client=None,
     ) -> None:
         """`save_command` is trusted shell, run on the box before stopping it."""
         from fal.api.client import SyncServerlessClient
@@ -445,9 +465,9 @@ class FalBox:
         self.save_command = save_command
         self.claude_enabled: bool | None = None
         self.probe_config: dict[str, Any] = {
-            "workspace": workspace or f"/data/devboxes/{name}"
+            "workspace": workspace or f"{config.WORKSPACE_ROOT}/{name}"
         }
-        self._client = SyncServerlessClient(host=host, team=team)
+        self._client = client or SyncServerlessClient(host=host, team=team)
         self._stub = None
         self._settings_runner: str | None = None
         self._settings_attempts = 0
@@ -602,20 +622,14 @@ class FalBox:
         # Re-arming a box that has already stopped would start a new runner.
         if self.info().live_runner != runner_id:
             return "the box is no longer running; nothing held"
-        hold_file = shlex.quote(self._config("hold_file"))
         # Re-arm first, in case the watchdog has just started stopping the box.
         self._scale(1)
         until = int(time.time() + hours * 3600)
-        # Never shorten a longer hold, e.g. one set for an unattended job.
-        script = (
-            f"old=$(cat {hold_file} 2>/dev/null || echo 0); "
-            f'if [ "${{old%.*}}" -gt {until} ] 2>/dev/null; then echo kept; '
-            f"else echo {until} > {hold_file}; fi"
-        )
+        script = config.hold_command(until, self._config("hold_file"))
         code, out = self.exec(runner_id, ["sh", "-c", script], timeout=30)
         if code != 0:
             return f"hold failed (exit {code}); the box is armed but not held"
-        if b"kept" in out:
+        if config.HOLD_KEPT in out.decode(errors="replace").split():
             return "a longer hold is already in place; kept it"
         # An idle shutdown already under way may have scaled to 0 after the re-arm.
         if not self.info().min_concurrency:

@@ -123,3 +123,14 @@ def test_resolve_name_remembers_explicit_name_per_folder(monkeypatch, tmp_path):
     other.mkdir()
     monkeypatch.chdir(other)
     assert resolve_name(_ns()) == "someone"
+
+
+def test_dev_group_includes_app_and_dash():
+    assert parse_args(["dev", "dash", "--once"]).once
+    assert parse_args(["dev", "app", "status"]).cmd == "status"
+    assert parse_args(["dev", "up", "--dash"]).dash
+
+
+def test_dev_dash_rejects_invalid_box_names():
+    with pytest.raises(FalParserExit):
+        parse_args(["dev", "dash", "My_Box", "--once"])

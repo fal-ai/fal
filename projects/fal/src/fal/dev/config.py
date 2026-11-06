@@ -6,6 +6,7 @@ Standard library only, so the CLI starts fast.
 from __future__ import annotations
 
 import re
+import shlex
 
 # Box apps are named `devbox-<name>` and keep their workspace in
 # /data/devboxes/<name>, the same as boxes made with the standalone devbox tool.
@@ -47,6 +48,12 @@ CLAUDE_WORKDIR = "/work/fal-devbox"
 
 WORKSPACE_ROOT = "/data/devboxes"
 HOLD_FILE = "/tmp/devbox-hold-until"
+# Touched after each restore and save; a file under /work newer than it is a change.
+SAVE_STAMP = "/tmp/devbox-save-stamp"
+# Shown by every new shell when idle shutdown cannot work.
+WARNING_FILE = "/tmp/devbox-idle-shutdown-warning"
+# The idle watchdog's state each tick, for `fal dev dash`.
+IDLE_STATE_FILE = "/tmp/fal-dev-idle.json"
 MAX_HOLD_HOURS = 168
 
 # Fast working directory on the container's local disk. /data is slow for
@@ -83,3 +90,20 @@ NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 
 def app_name(name: str) -> str:
     return f"{APP_PREFIX}{name}"
+
+
+# What hold_command prints when a longer hold is already in place.
+HOLD_KEPT = "hold-kept"
+
+
+def hold_command(until: int, hold_file: str = HOLD_FILE) -> str:
+    """Shell that holds the box until `until`; prints HOLD_KEPT if a longer one stands.
+
+    Never shortens a longer hold, e.g. one set for an unattended job.
+    """
+    path = shlex.quote(hold_file)
+    return (
+        f"old=$(cat {path} 2>/dev/null || echo 0); "
+        f'if [ "${{old%.*}}" -gt {until} ] 2>/dev/null; then echo {HOLD_KEPT}; '
+        f"else echo {until} > {path}; fi"
+    )

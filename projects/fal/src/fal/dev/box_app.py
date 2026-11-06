@@ -13,6 +13,7 @@ on the fast local disk and is kept in the workspace as one snapshot file.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fcntl
 import glob
 import hmac
@@ -52,9 +53,9 @@ LEASE = WORKSPACE / config.LEASE_FILE
 # Serializes this runner's lease writes (heartbeat vs. release).
 LEASE_LOCK = Path("/tmp/devbox-lease.lock")
 # Touched after each restore and save; a file under /work newer than it is a change.
-SAVE_STAMP = Path("/tmp/devbox-save-stamp")
+SAVE_STAMP = Path(config.SAVE_STAMP)
 # Shown by every new shell when idle shutdown cannot work.
-WARNING_FILE = Path("/tmp/devbox-idle-shutdown-warning")
+WARNING_FILE = Path(config.WARNING_FILE)
 # Dotfiles and config directories that live in the workspace and get
 # symlinked into $HOME on start.
 PERSISTED_HOME_FILES = [".gitconfig"]
@@ -329,6 +330,21 @@ def _scale_to_zero() -> bool:
     return error is None
 
 
+def _publish_idle_state(last_active: float, reasons: list[str]) -> None:
+    """Write the watchdog's view for `fal dev dash`, which cannot see all signals."""
+    state = {
+        "last_active": last_active,
+        "idle_minutes": IDLE_MINUTES,
+        "reasons": reasons,
+        # No "watchdog" on/off: the key can be set yet invalid. The dash reads that
+        # from the box's warnings instead.
+    }
+    path = Path(config.IDLE_STATE_FILE)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state))
+    os.replace(tmp, path)
+
+
 def _idle_watchdog() -> None:
     """Scale the box to zero after IDLE_MINUTES without terminal or GPU activity.
 
@@ -340,11 +356,27 @@ def _idle_watchdog() -> None:
         time.sleep(WATCHDOG_INTERVAL_SECONDS)
         try:
             now = time.time()
-            if _gpu_busy() or _held() or _ssh_connected():
-                last_active = now
-            last_active = max(last_active, _last_tty_input(), _last_hot_request)
+            checks = (
+                ("GPU busy", _gpu_busy),
+                ("hold", _held),
+                ("SSH session", _ssh_connected),
+            )
+            active = [name for name, check in checks if check()]
+            signals = {
+                "terminal input": _last_tty_input(),
+                "hot request": _last_hot_request,
+            }
             if CLAUDE_ENABLED:
-                last_active = max(last_active, _last_claude_activity())
+                signals["Claude session"] = _last_claude_activity()
+            latest = max(signals, key=lambda name: signals[name])
+            if active:
+                last_active = now
+            elif signals[latest] > last_active:
+                active = [latest]
+            last_active = max(last_active, signals[latest])
+            # Only for the dashboard: never let it get in the way of shutting down.
+            with contextlib.suppress(OSError):
+                _publish_idle_state(last_active, active)
             idle_for = now - last_active
             if idle_for < IDLE_MINUTES * 60:
                 continue

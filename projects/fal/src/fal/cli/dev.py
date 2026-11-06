@@ -23,6 +23,7 @@ from typing import Callable, List
 from fal.dev import config, hot, state
 from fal.dev.box import FINAL_STATES, Box, DevError, newest_first, ssh_config
 
+from . import dev_app, dev_dash
 from .parser import FalClientParser
 
 EXPERIMENTAL = "(experimental) "
@@ -102,7 +103,10 @@ def _up(args):
     box = _get_box(args)
     runner = box.up(args.timeout, args.gpu)
     print(f"ready: runner {runner.runner_id} ({runner.machine_type})")
-    print("connect with: fal dev shell")
+    if args.dash:
+        dev_dash.show(box, args.console)
+    else:
+        print("connect with: fal dev shell, or watch it with: fal dev dash")
 
 
 def _down(args):
@@ -166,8 +170,10 @@ def _logs(args):
 
 
 def _hold(args):
-    _get_box(args).hold(args.hours)
-    print(f"idle shutdown suspended for {args.hours:g}h (until the box next stops)")
+    if _get_box(args).hold(args.hours):
+        print(f"idle shutdown suspended for {args.hours:g}h (until the box next stops)")
+    else:
+        print("a longer hold is already in place; kept it")
 
 
 def _fal_command() -> str:
@@ -326,6 +332,11 @@ def _add_box_parsers(subparsers, parents) -> None:
         help="Switch the machine type of a stopped box; it stays until changed again.",
     )
     p.add_argument(
+        "--dash",
+        action="store_true",
+        help="Open the live dashboard (fal dev dash) once the box is ready.",
+    )
+    p.add_argument(
         "--timeout",
         type=_positive_int,
         default=1800,
@@ -430,6 +441,8 @@ def _add_box_parsers(subparsers, parents) -> None:
 # Each registers its commands on the `fal dev` subparsers.
 SUBCOMMANDS: List[Callable[[argparse._SubParsersAction, list], None]] = [
     _add_box_parsers,
+    dev_app.add_parser,
+    dev_dash.add_parser,
 ]
 
 

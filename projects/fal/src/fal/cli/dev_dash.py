@@ -3,28 +3,21 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import json
-import os
-import re
 
-NAME_ENV = "DEVBOX_NAME"
+from fal.dev import config
+
 # Each refresh is a runner exec; faster than this only loads the box and the API.
 MIN_INTERVAL = 1.0
 
 
-def _default_name() -> str:
-    """$DEVBOX_NAME, else the OS username; resolved only when the command runs."""
-    if os.environ.get(NAME_ENV):
-        return os.environ[NAME_ENV]
-    try:
-        user = getpass.getuser()
-    except (KeyError, OSError) as exc:
-        raise SystemExit(f"could not tell your username; pass a box name ({exc})")
-    name = re.sub(r"[^a-z0-9-]+", "-", user.lower()).strip("-")[:40]
-    if not name:
-        raise SystemExit(f"cannot make a box name from user {user!r}; pass one")
-    return name
+def _box_name(value: str) -> str:
+    if not config.NAME_PATTERN.fullmatch(value):
+        raise argparse.ArgumentTypeError(
+            f"{value!r} is not a valid box name: "
+            "use lowercase letters, digits and dashes"
+        )
+    return value
 
 
 def _interval(value: str) -> float:
@@ -34,25 +27,33 @@ def _interval(value: str) -> float:
     return seconds
 
 
-def _team(args) -> str | None:
-    if getattr(args, "team", None):
-        return args.team
+def show(box, console, interval: float = 3.0) -> None:
+    """Run the dashboard for a `fal.dev.box.Box` until q or Ctrl-C."""
     from fal.config import Config
+    from fal.dev.box import Box
+    from fal.dev.dash import FalBox
+    from fal.dev.dash_tui import run_dashboard
 
-    return Config().get_internal("team")
+    # The team names the account in the dashboard; the box itself needs none.
+    team = box.team or Config().get_internal("team")
+    view = FalBox.from_box(Box(box.name, host=box.host, team=team))
+    run_dashboard(view, interval=interval, console=console)
 
 
 def _dash(args) -> None:
+    from fal.config import Config
+    from fal.dev.box import Box
     from fal.dev.dash import FalBox, Poller
     from fal.dev.dash_tui import print_once, run_dashboard
 
-    name = args.name or _default_name()
-    box = FalBox(
-        name,
-        args.app or f"devbox-{name}",
-        team=_team(args),
-        host=getattr(args, "host", None),
+    from .dev import resolve_name
+
+    # The team names the account in the dashboard; the box itself needs none.
+    team = args.team or Config().get_internal("team")
+    box = FalBox.from_box(
+        Box(resolve_name(args), host=args.host, team=team),
         idle_minutes=args.idle_minutes,
+        app_name=args.app,
     )
     if args.json:
         poller = Poller(box)
@@ -91,8 +92,12 @@ def add_parser(subparsers, parents=()) -> None:
     parser.add_argument(
         "name",
         nargs="?",
+        type=_box_name,
         default=None,
-        help=f"Box name (default: ${NAME_ENV} or your OS username).",
+        help=(
+            "Box name (default: the box this folder last used, else $FAL_DEV_NAME "
+            "or your OS username)."
+        ),
     )
     parser.add_argument("--app", help="App name of the box (default: devbox-<name>).")
     parser.add_argument(

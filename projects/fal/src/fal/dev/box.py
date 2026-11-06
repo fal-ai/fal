@@ -391,8 +391,8 @@ class Box:
                 "or rerun `fal dev down`"
             )
 
-    def hold(self, hours: float) -> None:
-        """Keep the box up past the idle timeout, e.g. for a long unattended job."""
+    def hold(self, hours: float) -> bool:
+        """Keep the box up past the idle timeout; False if a longer hold was kept."""
         if not 0 < hours <= config.MAX_HOLD_HOURS:
             raise DevError(
                 f"hours must be more than 0 and at most {config.MAX_HOLD_HOURS}"
@@ -403,7 +403,7 @@ class Box:
         # Re-arm the box in case the watchdog has just started shutting it down.
         self.scale(1)
         until = int(time.time() + hours * 3600)
-        command = f"echo {until} > {config.HOLD_FILE}"
+        command = config.hold_command(until)
         code, output = self.run(live[0].runner_id, ["sh", "-c", command])
         if code != 0:
             raise DevError(
@@ -412,6 +412,7 @@ class Box:
         # An idle shutdown that was already under way may have landed after the re-arm.
         if not self.armed():
             self.scale(1)
+        return config.HOLD_KEPT not in output.split()
 
     def status(self) -> list[str]:
         runners = self.runners()

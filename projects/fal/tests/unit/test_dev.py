@@ -457,3 +457,78 @@ def test_push_reports_a_restarted_box(tmp_path):
 
     with pytest.raises(hot.HotTokenRejected, match="restarted"):
         box.push(tmp_path, "/work/x", ["infer.py"])
+
+
+def test_dash_probe_defaults_match_the_box_layout():
+    """dash_probe.py runs on the box as a standalone script, so it repeats these."""
+    from fal.dev.dash_probe import DEFAULTS
+
+    assert DEFAULTS["local_work"] == config.LOCAL_WORK
+    assert DEFAULTS["snapshot"] == config.SNAPSHOT_FILE
+    assert DEFAULTS["lease"] == config.LEASE_FILE
+    assert DEFAULTS["hold_file"] == config.HOLD_FILE
+    assert DEFAULTS["admin_key_env"] == config.ADMIN_KEY_SECRET
+    assert DEFAULTS["claude_config_dir"] == config.CLAUDE_CONFIG_SUBDIR
+    assert DEFAULTS["claude_tmux"] == config.CLAUDE_TMUX_SESSION
+    assert DEFAULTS["hot_tmux"] == config.HOT_TMUX_SESSION
+    assert DEFAULTS["hot_port"] == config.HOT_PORT
+    assert DEFAULTS["hot_log"] == config.HOT_LOG
+    assert DEFAULTS["gpu_busy_pct"] == config.GPU_BUSY_PCT
+    assert DEFAULTS["idle_state_file"] == config.IDLE_STATE_FILE
+    assert DEFAULTS["save_stamp"] == config.SAVE_STAMP
+    assert DEFAULTS["warning_file"] == config.WARNING_FILE
+    # A new key must be pinned here too (workspace is per box; check_dirty a flag).
+    assert len(DEFAULTS) == 16
+
+
+def test_dash_box_shares_the_box_client():
+    from fal.dev.dash import FalBox
+
+    box = _box([])
+    dash_box = FalBox.from_box(box, idle_minutes=30)
+
+    assert dash_box.app_name == "devbox-klein"
+    assert dash_box._client is box.client
+    assert dash_box.idle_minutes == 30
+    assert dash_box.save_command == config.SAVE_COMMAND
+    assert dash_box.probe_config["workspace"] == "/data/devboxes/klein"
+
+
+def test_hold_command_never_shortens_a_longer_hold(tmp_path):
+    import subprocess
+
+    hold = tmp_path / "hold"
+    run = lambda until: subprocess.run(  # noqa: E731
+        ["sh", "-c", config.hold_command(until, str(hold))],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    assert run(100) == ""
+    assert hold.read_text().strip() == "100"
+    assert run(50).strip() == config.HOLD_KEPT
+    assert hold.read_text().strip() == "100"
+    assert run(200) == ""
+    assert hold.read_text().strip() == "200"
+
+
+def test_published_idle_state_is_what_the_dash_reads(monkeypatch, tmp_path):
+    from fal.dev.dash import idle_view
+
+    module = runpy.run_path(str(BOX_APP))
+    path = tmp_path / "idle.json"
+    monkeypatch.setattr(config, "IDLE_STATE_FILE", str(path))
+    module["_publish_idle_state"](1000.0, ["hot request"])
+
+    view = idle_view(
+        {"idle_state": json.loads(path.read_text())},
+        idle_minutes=None,
+        runner_started=None,
+        claude_counts=False,
+        now=1060.0,
+    )
+    assert view.source == "watchdog"
+    assert view.reasons == ["hot request"]
+    # On/off comes from the box's warnings, never from this file.
+    assert "watchdog" not in json.loads(path.read_text())
+    assert view.remaining_seconds == 60 * 60 - 60
