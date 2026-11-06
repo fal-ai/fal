@@ -88,11 +88,14 @@ def project_paths(
     return local, remote_dir(local, remote)
 
 
-def scan(root: Path) -> dict[str, float]:
-    """Modification time of every small file under root that is worth syncing."""
+def scan(root: Path, withheld: list[Path] | None = None) -> dict[str, float]:
+    """Modification time of every small file under root that is worth syncing.
+
+    Secret-like files, which are never synced, are appended to ``withheld``.
+    """
     found = {}
     skip_dirs = files.SKIP_DIRS | {OUTPUT_DIR}
-    for rel in files.walk(root, skip_dirs=skip_dirs, hidden=False):
+    for rel in files.walk(root, skip_dirs=skip_dirs, hidden=False, withheld=withheld):
         try:
             stat = (root / rel).stat()
         except OSError:
@@ -223,17 +226,17 @@ class HotBox:
         )
 
     def push(self, root: Path, remote: str, rels: list[str]) -> list[str]:
-        files = {}
+        contents = {}
         for rel in rels:
             try:
                 if (root / rel).is_symlink():
                     continue  # became a link since the scan
-                files[rel] = (root / rel).read_text()
+                contents[rel] = (root / rel).read_text()
             except (OSError, UnicodeDecodeError):
                 continue  # deleted since the scan, or binary
-        if not files:
+        if not contents:
             return []
-        status, info = self.json("files", {"dir": remote, "files": files})
+        status, info = self.json("files", {"dir": remote, "files": contents})
         if status == 403:
             raise HotTokenRejected(
                 "the box restarted since this command began; "

@@ -23,6 +23,7 @@ from fal.dev.remote.protocol import (
     MAX_REPEAT,
     MAX_WARMUPS,
     REQUEST_TIMEOUT_SECONDS,
+    number,
 )
 
 MAX_RESPONSE_BYTES = 20 * 1024 * 1024
@@ -32,19 +33,6 @@ ARTIFACTS = (app_profile.TRACE_NAME, app_profile.OPS_NAME)
 # A batch of runs ends within this, inside the box's request timeout.
 RUNS_BUDGET_SECONDS = 3300
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
-
-
-def number(payload: dict, key: str, default: float, low: float, high: float) -> Any:
-    """``payload[key]`` as a number in [low, high]: an int when ``default`` is one."""
-    value = payload.get(key, default)
-    kind = "an integer" if isinstance(default, int) else "a number"
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{key} must be {kind}")
-    if isinstance(default, int) and not isinstance(value, int):
-        raise ValueError(f"{key} must be {kind}")
-    if not low <= value <= high:
-        raise ValueError(f"{key} must be between {low} and {high}")
-    return value
 
 
 def _timeout(payload: dict) -> float:

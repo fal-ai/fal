@@ -572,6 +572,20 @@ def test_hot_restart_runs_on_the_box_not_through_the_app():
         model.hot_restart(box, "runner-abc")
 
 
+def test_a_failed_cost_lookup_on_another_host_names_the_platform_url(monkeypatch):
+    box = FakeBox()
+    box.host = "api.dev.example"
+    poller = Poller(box)
+    poller.poll_once(cost=False)
+
+    def fail(box, uptime):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(model, "fetch_cost", fail)
+    poller.refresh_cost()
+    assert "FAL_PLATFORM_URL" in poller.snapshot.errors["cost"]
+
+
 def test_a_failed_first_cost_lookup_shows_nothing_rather_than_stale():
     poller = Poller(FakeBox())
     poller.update(state=_state(), state_at=time.time())
@@ -590,16 +604,15 @@ def test_a_failed_first_cost_lookup_shows_nothing_rather_than_stale():
 def test_cost_follows_the_runner_across_a_down_and_up(monkeypatch):
     box = FakeBox()
     poller = Poller(box)
-    poller._cost_in_background = False
     monkeypatch.setattr(model, "fetch_cost", lambda box, uptime: Cost(9.0, 4.5))
-    poller.poll_once()
+    poller.poll_once(cost=False)
     poller.refresh_cost()
     assert poller.snapshot.cost == Cost(9.0, 4.5)
 
     # Down: the cost of the old run goes with it.
     box.code = "stopped"
     poller.refresh_state()
-    poller.poll_once()
+    poller.poll_once(cost=False)
     assert poller.snapshot.cost is None
 
     # Up again on another runner: an answer for the old runner is discarded.
@@ -607,13 +620,13 @@ def test_cost_follows_the_runner_across_a_down_and_up(monkeypatch):
         box.code = "running"
         box.runner_id = "runner-new"
         poller.refresh_state()
-        poller.poll_once()
+        poller.poll_once(cost=False)
         return Cost(99.0, 4.5)
 
     box.code = "running"
     box.runner_id = "runner-old"
     poller.refresh_state()
-    poller.poll_once()
+    poller.poll_once(cost=False)
     monkeypatch.setattr(model, "fetch_cost", answer_for_the_old_runner)
     poller.refresh_cost()
 

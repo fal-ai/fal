@@ -210,11 +210,15 @@ def sync_files(
             f"[yellow]Not synced (over {MAX_FILE_BYTES >> 20} MiB)[/]: "
             f"{escape(', '.join(skipped[:8]))}"
         )
-    if withheld and full:
+    withheld.sort()
+    if withheld and (full or withheld != session.withheld):
         console.print(
             "[yellow]Not synced (key or credential files)[/]: "
             f"{escape(', '.join(withheld[:8]))}"
         )
+    if withheld != session.withheld:
+        session.withheld = withheld
+        session.save()
     manifest = sync.manifest(files)
     changed, deleted = sync.diff({} if full else session.manifest, manifest)
     if not changed and not deleted and not full:
@@ -363,8 +367,9 @@ def replay_overlay(session: Session) -> None:
         )
     except DevError as exc:
         console.print(
-            "[red]Could not install the dependency overlay[/] (it is kept for the "
-            f"next boot): {escape(index_hint(redact(str(exc)), session.account))}"
+            "[red]Could not install the dependency overlay[/]; the app starts "
+            "without it. The recorded overlay is kept and retried on the next "
+            f"boot: {escape(index_hint(redact(str(exc)), session.account))}"
         )
 
 

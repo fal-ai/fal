@@ -36,7 +36,7 @@ def key_account() -> Account | None:
     """The account an API key belongs to; None when you are logged in as a user."""
     from fal.auth import current_user_info, key_credentials
     from fal.exceptions import FalServerlessException
-    from fal.sdk import FalServerlessKeyCredentials, _is_permission_denied
+    from fal.sdk import FalServerlessKeyCredentials, is_permission_denied
 
     key = key_credentials()
     if not key:
@@ -46,13 +46,17 @@ def key_account() -> Account | None:
         nickname = current_user_info(headers)["nickname"]
     except FalServerlessException as exc:
         # A key without permission to read its account still works.
-        if not _is_permission_denied(exc.__cause__):
+        if not is_permission_denied(exc.__cause__):
             raise DevError(
                 f"could not read the API key's account: {exc.__cause__ or exc}"
             ) from exc
         nickname = None
     except OSError as exc:
         raise DevError(f"could not read the API key's account: {exc}") from exc
+    except (KeyError, TypeError, ValueError) as exc:
+        raise DevError(
+            f"could not read the API key's account: unexpected response ({exc!r})"
+        ) from exc
     return Account(nickname, False, via_key=True)
 
 
@@ -113,10 +117,12 @@ def confirm_deploy(
     host: str | None,
     *,
     yes: bool,
+    name: str | None = None,
 ) -> None:
     """Before deploying box app `app`, have the user accept a team with production apps.
 
-    Asked once per box and team: the answer is remembered.
+    Asked once per box and team: the answer is remembered. `name` is the box as
+    the user knows it, when that differs from the app's name.
     """
     if yes or account.personal:
         return
@@ -133,9 +139,10 @@ def confirm_deploy(
     shown = ", ".join(apps[:SHOWN_APPS])
     shown += f" and {len(apps) - SHOWN_APPS} more" if len(apps) > SHOWN_APPS else ""
     owner = f"{account.runs_as} has production apps ({shown})"
+    box = f"{name} ({app})" if name else app
     if not sys.stdin.isatty():
-        raise DevError(f"{owner}; pass --yes to deploy {app} anyway")
-    log(f"warning: {owner}. {app} would be deployed next to them.")
+        raise DevError(f"{owner}; pass --yes to deploy {box} anyway")
+    log(f"warning: {owner}. {box} would be deployed next to them.")
     if not Confirm.ask("Continue?", default=False, console=Console(stderr=True)):
         raise DevError("cancelled")
     with contextlib.suppress(OSError):

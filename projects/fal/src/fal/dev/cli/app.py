@@ -15,24 +15,54 @@ from fal.api.client import SyncServerlessClient
 from fal.console import console
 from fal.dev.app import bench, client, deploy
 from fal.dev.app.session import Session, find_session, session_name, slug
+from fal.dev.box import log
 from fal.dev.errors import DevError
 from fal.dev.remote.protocol import BODY_TAIL_CHARS, check_session_env, redact
 from fal.dev.state import STATE_DIR
-from fal.dev.team import announce, confirm_deploy, resolve_account
+from fal.dev.team import announce, confirm_deploy, key_account, resolve_account
 
 PROFILES_DIR = STATE_DIR / "profiles"
 
 
-def _session(args) -> Session:
-    """The named session, with the account it runs as announced on stderr."""
+def _check_account(session: Session) -> None:
+    """Refuse to act on a box started under an API key without that key's account.
+
+    A login would reach fal as another account. When the key's account name
+    cannot be read the check is presence-only: any API key passes.
+    """
+    if not session.account.via_key:
+        return
+    current = key_account()
+    if current is None:
+        raise DevError(
+            f"{session.name} was started with an API key: set FAL_KEY to use it"
+        )
+    started, now = session.account.team, current.team
+    if started and now and started.lower() != now.lower():
+        raise DevError(
+            f"{session.name} was started with the API key of {started!r}, "
+            f"but FAL_KEY belongs to {now!r}"
+        )
+
+
+def _session(args, *, acts_as_account: bool = False) -> Session:
+    """The named session, with the account it runs as announced on stderr.
+
+    Commands that act on the box as its account pass `acts_as_account`; the
+    ones that only look at it or stop it (status, logs, stop) never refuse.
+    """
     session = find_session(args.name)
+    if acts_as_account:
+        _check_account(session)
     announce(session.account)
+    if args.team and args.team.lower() != (session.account.team or "").lower():
+        log(f"--team {args.team} is ignored: the box keeps its team")
     return session
 
 
 def _booted(args) -> Session:
     """The named session, booted again if its box was replaced."""
-    session = _session(args)
+    session = _session(args, acts_as_account=True)
     with client.explain_index_refusal(session.account):
         client.ensure_booted(session)
     return session
@@ -475,7 +505,7 @@ def cmd_deps_status(args):
 
 
 def cmd_restart(args):
-    session = _session(args)
+    session = _session(args, acts_as_account=True)
     started = time.perf_counter()
     with client.explain_index_refusal(session.account):
         client.restart(session, sync_first=args.sync)

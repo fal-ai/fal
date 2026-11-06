@@ -55,6 +55,8 @@ class Session:
     # Extra environment variable names the app process gets the box name in.
     session_env: list[str] = dataclasses.field(default_factory=list)
     manifest: dict[str, str] = dataclasses.field(default_factory=dict)
+    # Files the last sync withheld as key or credential files, to announce a change.
+    withheld: list[str] = dataclasses.field(default_factory=list)
     # The box's dependency overlay, installed again on a new runner.
     overlay: dict[str, Any] = dataclasses.field(default_factory=dict)
 

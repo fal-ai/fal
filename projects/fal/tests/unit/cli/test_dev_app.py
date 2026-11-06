@@ -18,7 +18,7 @@ from fal.dev.app import deploy
 from fal.dev.app import sync as app_sync
 from fal.dev.app.session import NAME_PREFIX, Session, session_name
 from fal.dev.errors import DevError
-from fal.dev.remote import proxy
+from fal.dev.remote import protocol, proxy
 from fal.dev.remote import reload as app_reload
 from fal.dev.remote.child import DevAppServer
 from fal.dev.remote.holder import DevAppHolder, make_holder
@@ -495,7 +495,7 @@ def test_log_buffer_returns_what_came_after_a_line_number(capsys):
 )
 def test_request_numbers_are_checked(key, value):
     with pytest.raises(ValueError, match=key):
-        proxy.number({key: value}, key, 1 if key != "timeout" else 1.0, 0, 100)
+        protocol.number({key: value}, key, 1 if key != "timeout" else 1.0, 0, 100)
 
 
 def test_start_help_says_synced_source_is_shared_with_the_team(capsys):

@@ -26,8 +26,16 @@ def _project(args) -> tuple[str | None, str]:
 
 def _push(args, hot_box: hot.HotBox, local: str, remote: str) -> None:
     root = Path(local)
-    written = hot_box.push(root, remote, sorted(hot.scan(root)))
+    withheld: list[Path] = []
+    written = hot_box.push(root, remote, sorted(hot.scan(root, withheld)))
     args.console.print(f"synced {len(written)} changed files to {escape(remote)}")
+    if withheld:
+        names = ", ".join(path.as_posix() for path in sorted(withheld)[:3])
+        more = f" and {len(withheld) - 3} more" if len(withheld) > 3 else ""
+        args.console.print(
+            f"skipped {len(withheld)} secret-like files, never synced: "
+            f"{escape(names)}{more}"
+        )
 
 
 def _call(hot_box: hot.HotBox, action: str, payload: dict | None = None) -> dict:

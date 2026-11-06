@@ -376,7 +376,9 @@ def test_scan_never_picks_up_secrets(tmp_path):
         path.parent.mkdir(exist_ok=True)
         path.write_text("secret")
 
-    assert sorted(hot.scan(tmp_path)) == ["infer.py", "secrets.py"]
+    withheld: list[Path] = []
+    assert sorted(hot.scan(tmp_path, withheld)) == ["infer.py", "secrets.py"]
+    assert "server.pem" in {p.as_posix() for p in withheld}
 
 
 def test_walk_leaves_out_skipped_folders_and_secrets(tmp_path):
@@ -406,6 +408,10 @@ def test_walk_leaves_out_skipped_folders_and_secrets(tmp_path):
         (("home", ".aws", "config"), True),
         (("secrets.json",), True),
         (("secrets.py",), False),
+        (("secrets", "x.py"), False),
+        (("credentials", "a.yaml"), True),
+        (("credentials.py",), False),
+        (("secrets",), True),
         (("src", "keyboard.py"), False),
     ],
 )
@@ -1071,3 +1077,24 @@ def test_push_leaves_out_a_file_that_became_a_symlink(tmp_path):
     box.push(tmp_path, "/work/x", ["infer.py", "other.py"])
 
     assert list(box.post.call_args.args[1]["files"]) == ["infer.py"]
+
+
+def test_the_probe_as_installed_on_the_box_satisfies_the_dashboard(tmp_path):
+    import shutil
+    import subprocess
+    import sys
+
+    from fal.dev.dash.model import parse_probe
+
+    for script in (REMOTE / "probe.py", REMOTE / "signals.py", Path(config.__file__)):
+        shutil.copy(script, tmp_path / script.name)
+    settings = json.dumps({"workspace": str(tmp_path), "check_dirty": False})
+    output = subprocess.run(
+        [sys.executable, str(tmp_path / "probe.py"), settings],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=tmp_path,
+    ).stdout
+
+    assert parse_probe(output).keys() >= {"gpus", "activity", "work", "hot"}

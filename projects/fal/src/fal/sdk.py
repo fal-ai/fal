@@ -308,7 +308,7 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
         return original_credentials
 
 
-def _is_permission_denied(error: BaseException | None) -> bool:
+def is_permission_denied(error: BaseException | None) -> bool:
     if not isinstance(error, HTTPError) or error.code != 403:
         return False
     try:
@@ -346,7 +346,7 @@ def get_credentials(
                 user_info = current_user_info(credentials.to_headers())
             except FalServerlessException as exc:
                 # The key may lack account:settings:read; it still works.
-                if not _is_permission_denied(exc.__cause__):
+                if not is_permission_denied(exc.__cause__):
                     raise
                 console.print(f"Ignoring explicit team {_team} because key is used.")
             else:

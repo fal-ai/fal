@@ -28,7 +28,9 @@ def _cleanup_on_hangup() -> None:
 
 
 def _confirm_deploy(box, args) -> None:
-    confirm_deploy(box.client, box.account, box.app, box.host, yes=args.yes)
+    confirm_deploy(
+        box.client, box.account, box.app, box.host, yes=args.yes, name=box.name
+    )
 
 
 def cmd_deploy(args):
@@ -43,7 +45,7 @@ def cmd_deploy(args):
         dockerfile=args.dockerfile,
         team_data=args.team_data,
     )
-    args.console.print(escape(message))
+    print(message)
 
 
 def cmd_up(args):
@@ -72,7 +74,7 @@ def cmd_down(args):
 
 def cmd_status(args):
     for line in get_box(args).status():
-        args.console.print(escape(line))
+        print(line)
 
 
 def cmd_shell(args):

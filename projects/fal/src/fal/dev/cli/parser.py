@@ -24,6 +24,10 @@ TEAM_HELP = (
     "The team the box runs as. Changes the team remembered for the box; without "
     "it, the remembered team, else your personal account."
 )
+SSH_CONFIG_TEAM_HELP = (
+    "Write --team into the entry's ProxyCommand. Nothing is remembered until "
+    "ssh-proxy runs."
+)
 YES_HELP = (
     "Deploy into a team that has production apps without asking (needed when "
     "there is no terminal to ask on)."
@@ -135,12 +139,15 @@ def add(
     *,
     handler: str | None = None,
     extra_parents: tuple = (),
+    team_help: str | None = None,
     **kwargs,
 ) -> argparse.ArgumentParser:
     """Add command `cmd`, run by `cmd_<handler>` (default: the command's name)."""
     kwargs.setdefault("description", help_text)
-    # Commands after `start` use the team their box was started with.
-    team_help = argparse.SUPPRESS if module == "app" and cmd != "start" else TEAM_HELP
+    if team_help is None:
+        # Commands after `start` use the team their box was started with.
+        after_start = module == "app" and cmd != "start"
+        team_help = argparse.SUPPRESS if after_start else TEAM_HELP
     parser = subparsers.add_parser(
         cmd,
         help=help_text,
@@ -208,7 +215,8 @@ def _add_box_commands(subparsers, parents) -> None:
         default=config.DEFAULT_IDLE_MINUTES,
         help=(
             "Minutes without input or GPU use before the box stops itself "
-            "(default: %(default)s)."
+            "(default: %(default)s). A box whose GPU cannot be queried, such as a "
+            "CPU machine type, never stops itself: stop it with `fal dev down`."
         ),
     )
     p.add_argument("--no-save", action="store_true", help=no_save_help)
@@ -283,7 +291,9 @@ def _add_box_commands(subparsers, parents) -> None:
     )
 
     add_box(
-        "ssh-config", "Print an ~/.ssh/config entry for Cursor / VS Code Remote-SSH."
+        "ssh-config",
+        "Print an ~/.ssh/config entry for Cursor / VS Code Remote-SSH.",
+        team_help=SSH_CONFIG_TEAM_HELP,
     )
     p = add_box(
         "ssh-proxy",

@@ -56,8 +56,8 @@ def _production(monkeypatch, apps):
     return asked
 
 
-def _confirm(client, account=RED, app="devbox-klein", yes=False):
-    team.confirm_deploy(client, account, app, "api.example", yes=yes)
+def _confirm(client, account=RED, app="devbox-klein", yes=False, name="klein"):
+    team.confirm_deploy(client, account, app, "api.example", yes=yes, name=name)
 
 
 def test_a_box_runs_as_the_personal_account_even_with_a_default_team(monkeypatch):
@@ -122,6 +122,15 @@ def test_a_key_that_cannot_read_its_account_is_unnamed(monkeypatch):
 )
 def test_other_failures_to_read_the_key_account_are_errors(monkeypatch, error):
     _key_lookup(monkeypatch, error)
+
+    with pytest.raises(DevError, match="could not read the API key's account"):
+        key_account()
+
+
+@pytest.mark.parametrize("body", [{}, [], "acme"])
+def test_a_malformed_key_account_reply_is_an_error(monkeypatch, body):
+    monkeypatch.setattr("fal.auth.key_credentials", lambda: ("id", "secret"))
+    monkeypatch.setattr("fal.auth.current_user_info", lambda headers: body)
 
     with pytest.raises(DevError, match="could not read the API key's account"):
         key_account()
@@ -246,7 +255,7 @@ def test_a_team_with_production_apps_must_be_confirmed(monkeypatch, capsys):
     assert len(asks) == 1
     err = capsys.readouterr().err
     assert "team red has production apps (flux, api)" in err
-    assert "devbox-klein would be deployed next to them" in err
+    assert "klein (devbox-klein) would be deployed next to them" in err
 
 
 def test_declining_the_confirmation_deploys_nothing(monkeypatch):
@@ -266,7 +275,8 @@ def test_without_a_terminal_the_confirmation_needs_yes(monkeypatch):
     with pytest.raises(DevError) as info:
         _confirm(MagicMock())
     assert str(info.value) == (
-        "team red has production apps (flux); pass --yes to deploy devbox-klein anyway"
+        "team red has production apps (flux); "
+        "pass --yes to deploy klein (devbox-klein) anyway"
     )
 
 
@@ -344,6 +354,7 @@ def test_a_confirmation_is_remembered_for_the_box_and_team(monkeypatch):
 
 def _fake_box(deployed):
     box = MagicMock(app="devbox-klein", host="api.example", account=RED)
+    box.name = "klein"
     box.app_info.return_value = object() if deployed else None
     return box
 
@@ -365,7 +376,7 @@ def test_deploy_confirms_before_deploying(monkeypatch, events):
 
     box_commands.cmd_deploy(parse_args(["dev", "deploy", "--yes"]))
 
-    assert events == [("confirm", {"yes": True}), "deploy"]
+    assert events == [("confirm", {"yes": True, "name": "klein"}), "deploy"]
 
 
 def test_up_confirms_only_when_it_has_to_deploy(monkeypatch, events):
@@ -377,7 +388,7 @@ def test_up_confirms_only_when_it_has_to_deploy(monkeypatch, events):
 
     monkeypatch.setattr(box_commands, "get_box", lambda args: _fake_box(False))
     box_commands.cmd_up(args)
-    assert events == [("confirm", {"yes": False})]
+    assert events == [("confirm", {"yes": False, "name": "klein"})]
 
 
 @pytest.mark.parametrize("command", ["deploy", "up", "app start x.py"])

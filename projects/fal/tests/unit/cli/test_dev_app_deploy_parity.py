@@ -7,6 +7,7 @@ import io
 import os
 import sys
 import tarfile
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -612,7 +613,7 @@ def test_object_store_keeps_checked_copies(tmp_path, roomy, monkeypatch):
     assert not store.get(fifo_digest, tmp_path / "fifo.py")
 
     # Nothing bigger than the sync's file limit is copied out.
-    big = b"x" * (app_objects.MAX_OBJECT_BYTES + 1)
+    big = b"x" * (app_objects.MAX_FILE_BYTES + 1)
     big_digest = hashlib.sha256(big).hexdigest()
     store.path(big_digest).parent.mkdir(exist_ok=True)
     store.path(big_digest).write_bytes(big)
@@ -740,6 +741,87 @@ def _uploaded(archive: str) -> list[str]:
         return sorted(tar.getnames())
 
 
+def test_calls_to_the_box_switch_request_io_storage_off(tmp_path, monkeypatch):
+    import httpx
+
+    import fal.sdk
+
+    session = _session(tmp_path, "a.py")
+    sent = {}
+
+    def post(url, **kwargs):
+        sent.update(kwargs)
+        return httpx.Response(200, json={})
+
+    monkeypatch.setattr("fal.dev.transport.httpx.post", post)
+    monkeypatch.setattr(
+        fal.sdk,
+        "get_credentials",
+        lambda team: SimpleNamespace(to_headers=lambda: {"Authorization": "Key k"}),
+    )
+    app_session.call(session, "status")
+
+    assert sent["headers"]["X-Fal-Store-IO"] == "0"
+    assert sent["json"]["token"] == "t"
+
+
+@pytest.mark.parametrize(
+    "account, key, team, acts, outcome",
+    [
+        (Account("me", True), None, "red", True, "--team red is ignored"),
+        (Account("me", True), None, "ME", True, ""),
+        (
+            Account("acme", False, via_key=True),
+            Account("ACME", False, True),
+            None,
+            True,
+            "",
+        ),
+        (Account("acme", False, via_key=True), None, None, True, "set FAL_KEY"),
+        (
+            Account("acme", False, via_key=True),
+            Account("other", False, True),
+            None,
+            True,
+            "belongs to 'other'",
+        ),
+        (
+            Account(None, False, via_key=True),
+            Account("any", False, True),
+            None,
+            True,
+            "",
+        ),
+        # Looking at or stopping a box is never refused.
+        (Account("acme", False, via_key=True), None, None, False, ""),
+        (
+            Account("acme", False, via_key=True),
+            Account("other", False, True),
+            None,
+            False,
+            "",
+        ),
+    ],
+)
+def test_a_started_box_keeps_its_account(
+    tmp_path, monkeypatch, capsys, account, key, team, acts, outcome
+):
+    from fal.dev.cli import app as dev_app
+
+    session = _session(tmp_path, "a.py")
+    session.account = account
+    monkeypatch.setattr(dev_app, "find_session", lambda name: session)
+    monkeypatch.setattr(dev_app, "key_account", lambda: key)
+    args = SimpleNamespace(name=None, team=team)
+
+    if outcome in ("set FAL_KEY", "belongs to 'other'"):
+        with pytest.raises(DevError, match=outcome):
+            dev_app._session(args, acts_as_account=acts)
+    else:
+        assert dev_app._session(args, acts_as_account=acts) is session
+        assert outcome in capsys.readouterr().err
+
+
 def test_sync_uploads_only_what_the_store_lacks(tmp_path, monkeypatch):
     session = _session(tmp_path, "a.py", "b.py", "c.py")
     monkeypatch.setattr(app_session, "SESSIONS_DIR", tmp_path / "sessions")
@@ -824,6 +906,26 @@ def test_sync_falls_back_to_uploading(tmp_path, monkeypatch):
     )
     result = client.sync_files(session, full=True, reload=False)
     assert result.placed == 0
+
+
+def test_sync_announces_withheld_files_once_per_change(tmp_path, monkeypatch, capsys):
+    session = _session(tmp_path, "a.py", "server.pem")
+    monkeypatch.setattr(app_session, "SESSIONS_DIR", tmp_path / "sessions")
+    monkeypatch.setattr(client, "call", lambda *a, **k: {"placed": []})
+
+    def announced() -> bool:
+        return "server.pem" in capsys.readouterr().out
+
+    client.sync_files(session, reload=False)
+    assert announced()
+    client.sync_files(session, reload=False)
+    assert not announced()
+    (tmp_path / "tree" / "tls.key").write_text("k")
+    client.sync_files(session, reload=False)
+    assert announced()
+    # A full sync (a new runner) says it again.
+    client.sync_files(session, full=True, reload=False)
+    assert announced()
 
 
 def test_a_sync_that_needs_a_rebuild_is_repeated(tmp_path, monkeypatch):
@@ -914,7 +1016,7 @@ def test_session_env_never_overrides_what_the_sdk_reads():
     names = set()
     for path in Path(fal.__file__).parent.rglob("*.py"):
         for line in path.read_text(errors="ignore").splitlines():
-            if "environ" in line or "getenv" in line:
+            if any(read in line for read in ("environ", "getenv", "bool_envvar(")):
                 names.update(re.findall(r"[\"'](FAL_[A-Z0-9_]+)[\"']", line))
     assert names
     for name in sorted(names):
@@ -946,7 +1048,12 @@ def test_start_with_a_bad_layout_is_a_400_and_leaves_the_app_running(
     holder._child.phase = "ready"
     swapped = []
     monkeypatch.setattr(holder._child, "replace_sdk", swapped.append)
-    for bad in ({"layout": "nope"}, {"session_env": "LD_PRELOAD"}):
+    for bad in (
+        {"layout": "nope"},
+        {"session_env": "LD_PRELOAD"},
+        {"module": 5},
+        {"class_name": "-c"},
+    ):
         with pytest.raises(HTTPException) as info:
             asyncio.run(
                 holder.dev_start(
@@ -964,6 +1071,32 @@ def test_start_with_a_bad_layout_is_a_400_and_leaves_the_app_running(
         asyncio.run(holder._run({"token": "t"}, broken))
     assert info.value.status_code == 400
     assert "KeyError" in "\n".join(holder._log_buffer.lines)
+
+
+def test_files_reload_includes_files_the_box_placed(tmp_path):
+    import asyncio
+
+    from fal.dev.remote.holder import DevAppHolder
+
+    reloaded = []
+    holder = object.__new__(DevAppHolder)
+    holder._fal_dev_token = "t"
+    holder._log_buffer = LogBuffer()
+    holder._placed = set()
+    holder._placed_lock = threading.Lock()
+    holder._tree = SimpleNamespace(
+        place=lambda files: ["a.py"],
+        sync=lambda **kwargs: (["b.py"], ["c.py"]),
+    )
+    answers = [{"action": "error"}, {"action": "reload"}, {"action": "reload"}]
+    holder._child = SimpleNamespace(
+        reload=lambda files: reloaded.append(files) or answers.pop(0)
+    )
+    asyncio.run(holder.dev_place({"token": "t", "files": {"a.py": ["0" * 64, False]}}))
+    for _ in range(3):
+        asyncio.run(holder.dev_files({"token": "t", "reload": True}))
+    # A failed reload keeps the placed file for the next one.
+    assert reloaded == [["b.py", "c.py", "a.py"]] * 2 + [["b.py", "c.py"]]
 
 
 def test_an_old_session_file_is_called_out(tmp_path, monkeypatch, capsys):

@@ -457,6 +457,14 @@ def test_redact_hides_credentials_and_keeps_refs():
     assert redact("git+https://github.com/o/r.git@v1") == (
         "git+https://github.com/o/r.git@v1"
     )
+    # Only the conventional ssh `git` user is kept.
+    assert redact("ssh://ghp_xxx@host/r") == "ssh://***@host/r"
+    assert redact("xssh://sekret@h") == "xssh://***@h"
+    assert redact("https://git@host/r") == "https://***@host/r"
+    assert redact("git+ssh://git@github.com/o/r.git@v1") == (
+        "git+ssh://git@github.com/o/r.git@v1"
+    )
+    assert redact("ssh://u:pw@host/r.git") == "ssh://***@host/r.git"
     assert redact("https://h.example/x?a=1&token=abc&Password=p%20q") == (
         "https://h.example/x?a=1&token=***&Password=***"
     )

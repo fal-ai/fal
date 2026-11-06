@@ -296,7 +296,9 @@ class Box:
                 live[0].runner_id, [config.SAVE_COMMAND], timeout=SAVE_TIMEOUT_SECONDS
             )
         except DevError as exc:
-            raise DevError(f"could not save {config.LOCAL_WORK} ({exc}); {guidance}")
+            raise DevError(
+                f"could not save {config.LOCAL_WORK} ({exc}); {guidance}"
+            ) from exc
         output = " ".join(output.split())
         if code != 0:
             raise DevError(

@@ -40,6 +40,7 @@ from fal.dev.remote.protocol import (
     ROUTE_PREFIX,
     STOPPED_PHASES,
     TOKEN_FIELD,
+    number,
     redact,
 )
 from fal.dev.remote.tree import SourceTree
@@ -57,6 +58,10 @@ REQUEST_ERRORS = (
 )
 
 
+# Reload answers that mean the app did not take the changed files.
+NOT_RELOADED = ("rebuild", "error", "not_running")
+
+
 class DevAppHolder:
     """Mixed in ahead of the user's app class by ``make_holder``."""
 
@@ -68,6 +73,9 @@ class DevAppHolder:
         self._child = ChildProcess(STATE_ROOT / self._fal_dev_session, self._log_buffer)
         self._child.src.mkdir(parents=True, exist_ok=True)
         self._tree = SourceTree(self._child.src, Store.open(), self._log_buffer.emit)
+        # Files `place` copied since the last `files` call, which reloads them.
+        self._placed: set[str] = set()
+        self._placed_lock = threading.Lock()
         # One profile at a time: arming replaces any armed profile.
         self._profile_lock = threading.Lock()
         print(f"[fal dev] box ready, session {self._fal_dev_session}", flush=True)
@@ -128,6 +136,12 @@ class DevAppHolder:
     def _start(self, payload: dict[str, Any]) -> dict[str, Any]:
         # `start` checks these again, but only after the SDK swap has stopped
         # the running app.
+        for key in ("module", "class_name"):
+            value = payload.get(key)
+            if value is not None and (
+                not isinstance(value, str) or value.startswith("-")
+            ):
+                raise ValueError(f"{key} must be a name, not {value!r}")
         self._child.check_start(payload.get("layout"), payload.get("session_env"))
         if payload.get("sdk_archive"):
             self._child.replace_sdk(payload["sdk_archive"])
@@ -143,7 +157,10 @@ class DevAppHolder:
         return self._child.status()
 
     def _place(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return {"placed": self._tree.place(payload.get("files") or {})}
+        placed = self._tree.place(payload.get("files") or {})
+        with self._placed_lock:
+            self._placed.update(placed)
+        return {"placed": placed}
 
     def _files(self, payload: dict[str, Any]) -> dict[str, Any]:
         written, deleted = self._tree.sync(
@@ -153,7 +170,13 @@ class DevAppHolder:
         )
         result: dict[str, Any] = {"written": written, "deleted": deleted}
         if payload.get("reload"):
-            result["reload"] = self._child.reload(written + deleted)
+            with self._placed_lock:
+                placed = sorted(self._placed)
+            result["reload"] = self._child.reload(written + deleted + placed)
+            # Kept for the next reload unless this one took them.
+            if result["reload"].get("action") not in NOT_RELOADED:
+                with self._placed_lock:
+                    self._placed.difference_update(placed)
         return result
 
     def _request(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -224,10 +247,8 @@ class DevAppHolder:
     def _logs(self, payload: dict[str, Any]) -> dict[str, Any]:
         after = None
         if payload.get("after") is not None:
-            after = proxy.number(payload, "after", 0, 0, 2**62)
-        return self._log_buffer.since(
-            after, proxy.number(payload, "lines", 200, 0, 2**31)
-        )
+            after = number(payload, "after", 0, 0, 2**62)
+        return self._log_buffer.since(after, number(payload, "lines", 200, 0, 2**31))
 
     @fal.endpoint(f"{ROUTE_PREFIX}status")
     async def dev_status(self, payload: Any = Body(...)) -> dict[str, Any]:

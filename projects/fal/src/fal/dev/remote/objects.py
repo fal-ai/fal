@@ -40,7 +40,8 @@ CHUNK = 1024 * 1024
 # Stop adding objects when the team's volume gets this full: /data also holds
 # the team's weights and caches.
 MIN_FREE_BYTES = 20 * 1024**3
-MAX_OBJECT_BYTES = MAX_FILE_BYTES
+# Files waiting to be stored; more are dropped, as storing is best effort.
+KEEP_QUEUE_SIZE = 256
 TMP_MAX_AGE_SECONDS = 3600
 # An object nobody has used for this long is deleted.
 OBJECT_MAX_AGE_SECONDS = 30 * 24 * 3600
@@ -121,7 +122,7 @@ class Store:
 
         Best effort: a full or failing volume never fails the sync.
         """
-        if len(data) > MAX_OBJECT_BYTES:
+        if len(data) > MAX_FILE_BYTES:
             return None
         digest = hashlib.sha256(data).hexdigest()
         try:
@@ -169,11 +170,11 @@ class Store:
                 with tmp.open("wb") as writer:
                     for block in iter(lambda: reader.read(CHUNK), b""):
                         size += len(block)
-                        if size > MAX_OBJECT_BYTES:
+                        if size > MAX_FILE_BYTES:
                             break
                         hashed.update(block)
                         writer.write(block)
-            if size > MAX_OBJECT_BYTES or hashed.hexdigest() != digest:
+            if size > MAX_FILE_BYTES or hashed.hexdigest() != digest:
                 tmp.unlink(missing_ok=True)
                 # Drop the damaged object, so the next put replaces it.
                 source.unlink(missing_ok=True)
@@ -195,11 +196,12 @@ class Keeper:
     def __init__(self, store: Store, log: Callable[[str], None]) -> None:
         self.store = store
         self.log = log
-        self.queue: queue.SimpleQueue[bytes] = queue.SimpleQueue()
+        self.queue: queue.Queue[bytes] = queue.Queue(KEEP_QUEUE_SIZE)
         threading.Thread(target=self._run, daemon=True).start()
 
     def keep(self, data: bytes) -> None:
-        self.queue.put(data)
+        with contextlib.suppress(queue.Full):
+            self.queue.put_nowait(data)
 
     def _run(self) -> None:
         # Whatever fails, the worker stays alive for the next file.

@@ -64,6 +64,7 @@ _SERVICE_ACCOUNT = ("service_account", "service-account", "serviceaccount")
 _SECRET_JSON_SUFFIXES = (".tfvars.json", "-key.json", "_key.json")
 _SECRET_JSON_PREFIXES = ("client_secret", "client-secret")
 _SECRET_STEMS = ("secrets.", "secret.")
+_BARE_SECRET_NAMES = {"credentials", "secrets", "secret"}
 
 
 def secret_like(parts: tuple[str, ...]) -> bool:
@@ -80,7 +81,7 @@ def secret_like(parts: tuple[str, ...]) -> bool:
         or (name.startswith(_SECRET_STEMS) and not code)
         or name in _SECRET_NAMES
         or (name.startswith(_SERVICE_ACCOUNT) and name.endswith(".json"))
-        or name == "credentials"
+        or name in _BARE_SECRET_NAMES
         or (name.startswith("credentials.") and not code)
         or (name.startswith(_SECRET_JSON_PREFIXES) and name.endswith(".json"))
         or ".tfstate." in name  # backups
@@ -91,12 +92,17 @@ def secret_like(parts: tuple[str, ...]) -> bool:
 
 
 def walk(
-    root: Path, *, skip_dirs: Collection[str] = SKIP_DIRS, hidden: bool = True
+    root: Path,
+    *,
+    skip_dirs: Collection[str] = SKIP_DIRS,
+    hidden: bool = True,
+    withheld: list[Path] | None = None,
 ) -> Iterator[Path]:
     """The files under root that may be uploaded, as paths relative to it.
 
-    With hidden=False, dot files and dot folders are left out too. Symlinks are
-    never followed, so a link cannot pull in a file from outside the folder.
+    With hidden=False, dot files and dot folders are left out too. Secret-like
+    files are appended to ``withheld``. Symlinks are never followed, so a link
+    cannot pull in a file from outside the folder.
     """
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [
@@ -108,9 +114,10 @@ def walk(
         ]
         for filename in filenames:
             path = (Path(dirpath) / filename).relative_to(root)
-            if (
-                (hidden or not filename.startswith("."))
-                and not secret_like(path.parts)
-                and not (root / path).is_symlink()
-            ):
+            if not hidden and filename.startswith("."):
+                continue
+            if secret_like(path.parts):
+                if withheld is not None:
+                    withheld.append(path)
+            elif not (root / path).is_symlink():
                 yield path

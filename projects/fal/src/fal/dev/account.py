@@ -7,8 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Account:
-    # What fal is given as the team. None only when an API key picks the
-    # account and its name could not be read.
+    # The account's name. `fal_team` is what fal is given: None under an API key.
     team: str | None
     personal: bool
     via_key: bool = False

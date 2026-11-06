@@ -247,12 +247,22 @@ class Poller:
         self._next_state = 0.0
         self._next_logs = 0.0
         self._next_cost = 0.0
-        self._cost_in_background = True
         self._state_requested = False
 
-    def update(self, errors: dict[str, str | None] | None = None, **changes) -> None:
-        """Replace snapshot fields; a None in `errors` clears that source's error."""
+    def update(
+        self,
+        errors: dict[str, str | None] | None = None,
+        *,
+        if_runner: str | None = None,
+        **changes,
+    ) -> None:
+        """Replace snapshot fields; a None in `errors` clears that source's error.
+
+        With `if_runner`, nothing changes unless that is still the runner.
+        """
         with self._lock:
+            if if_runner and self.snapshot.runner_id != if_runner:
+                return
             merged: dict[str, str | None] = {**self.snapshot.errors, **(errors or {})}
             self.snapshot = replace(
                 self.snapshot,
@@ -270,7 +280,8 @@ class Poller:
         self._state_requested = True
         self._wake.set()
 
-    def poll_once(self) -> None:
+    def poll_once(self, cost: bool = True) -> None:
+        """Refresh what is due; `cost` starts the usage lookup in a thread when due."""
         now = time.time()
         if now >= self._next_state or self._state_requested:
             self._state_requested = False
@@ -330,7 +341,7 @@ class Poller:
             except Exception as exc:
                 self.update(errors={"logs": _short(exc)})
             self._next_logs = now + LOG_INTERVAL
-        if self._cost_in_background and now >= self._next_cost:
+        if cost and now >= self._next_cost:
             self._next_cost = now + COST_INTERVAL
             # In its own thread: a slow answer must not hold up the probe.
             threading.Thread(target=self.refresh_cost, daemon=True).start()
@@ -345,10 +356,12 @@ class Poller:
         try:
             cost = fetch_cost(self.box, uptime)
         except Exception as exc:
-            changes: dict[str, Any] = {
-                "cost_stale": True,
-                "errors": {"cost": _short(exc)},
-            }
+            reason = _short(exc)
+            if self.box.host:
+                reason += (
+                    " (on another host, point FAL_PLATFORM_URL at its platform API)"
+                )
+            changes: dict[str, Any] = {"cost_stale": True, "errors": {"cost": reason}}
         else:
             changes = {
                 "cost": cost,
@@ -357,15 +370,13 @@ class Poller:
                 "errors": {"cost": None},
             }
         # The runner may have been replaced while the platform was answering.
-        if self.snapshot.runner_id == runner_id:
-            self.update(**changes)
+        self.update(if_runner=runner_id, **changes)
 
     def prime(self) -> None:
         """Poll until the first probe: the first poll may only find the runner."""
-        self._cost_in_background = False
-        self.poll_once()
+        self.poll_once(cost=False)
         if self.snapshot.probe is None:
-            self.poll_once()
+            self.poll_once(cost=False)
         self.refresh_cost()
 
     def run(self) -> None:
