@@ -724,12 +724,14 @@ FOLLOW_STREAM_OVERLAP = timedelta(seconds=30)
 def _log_key(log: dict) -> tuple:
     # History and stream may format the same timestamp differently (offset
     # style or sub-second precision), so compare parsed times at ms precision.
-    ts = log.get("timestamp")
-    try:
-        parsed = _to_aware_utc(_parse_ts(ts))
-        ts = parsed.replace(microsecond=parsed.microsecond // 1000 * 1000)
-    except Exception:
-        pass
+    raw = log.get("timestamp")
+    ts: object = raw
+    if isinstance(raw, str):
+        try:
+            parsed = _to_aware_utc(_parse_ts(raw))
+            ts = parsed.replace(microsecond=parsed.microsecond // 1000 * 1000)
+        except Exception:
+            pass
     return (ts, log.get("message"))
 
 
