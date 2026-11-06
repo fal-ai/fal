@@ -38,6 +38,8 @@ def render_scene(phase, palette, width=480, height=270):
 class VideoApp(fal.wma.App):
     machine_type = "XS"
     requirements = ["pydantic>=2,<3", "numpy>=1.24,<3"]
+    # Remove this configuration to stream without saving a recording.
+    recording = fal.wma.RecordingConfig(segment_seconds=30, finalization_timeout=45)
     min_concurrency = 0
     max_concurrency = 1
     max_multiplexing = 2
@@ -100,7 +102,7 @@ class VideoApp(fal.wma.App):
         session.create_task(expire())
         return fal.wma.AiortcPeer(
             session,
-            lambda pc: pc.addTrack(SceneTrack()),
+            lambda pc: pc.addTrack(session.record_video(SceneTrack(), fps=30)),
             rtc_configuration=RTCConfiguration(iceServers=servers),
             disconnected_grace_seconds=10,
         )
