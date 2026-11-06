@@ -418,8 +418,8 @@ def open_shell(box: Box, runner_id: str) -> None:
     process would swallow the next key.
     """
     command = [sys.executable, "-m", "fal", "runners", "shell", runner_id]
-    if box.team:
-        command += ["--team", box.team]
+    if box.account.fal_team:
+        command += ["--team", box.account.fal_team]
     if box.host:
         command += ["--host", box.host]
     subprocess.run(command, check=False)

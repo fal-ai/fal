@@ -23,8 +23,8 @@ import grpc
 
 from fal.api.client import SyncServerlessClient
 from fal.cli.runners import recent_logs, shell_session
-from fal.config import Config
 from fal.dev import config
+from fal.dev.account import Account
 from fal.dev.errors import DevError
 from fal.sdk import AliasInfo, RunnerInfo, RunnerState
 
@@ -130,14 +130,12 @@ class BoxState:
 
 
 class Box:
-    def __init__(
-        self, name: str, *, host: str | None = None, team: str | None = None
-    ) -> None:
+    def __init__(self, name: str, *, host: str | None = None, account: Account) -> None:
         self.name = name
         self.app = config.app_name(name)
         self.host = host
-        self.team = team or Config().get_internal("team")
-        self.client = SyncServerlessClient(host=host, team=self.team)
+        self.account = account
+        self.client = SyncServerlessClient(host=host, team=account.fal_team)
         self._stub = None
         self._auth: dict[str, str] = {}
         self._auth_at = 0.0
@@ -147,7 +145,7 @@ class Box:
         from fal.sdk import get_credentials
 
         if time.time() - self._auth_at > AUTH_TTL_SECONDS:
-            self._auth = get_credentials(team=self.team).to_headers()
+            self._auth = get_credentials(team=self.account.fal_team).to_headers()
             self._auth_at = time.time()
         return self._auth
 

@@ -122,8 +122,8 @@ def _owner(box: Box) -> str:
     """The account the box's app belongs to, for its fal.run URL."""
     from fal.api.deploy import _get_user
 
-    if box.team:
-        return box.team
+    if box.account.team:
+        return box.account.team
     return _get_user(box.client._create_rest_client()).username
 
 

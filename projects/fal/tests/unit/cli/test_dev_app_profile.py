@@ -8,9 +8,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 import fal
+from fal.dev.account import Account
 from fal.dev.remote import profile as app_profile
 from fal.dev.remote import proxy
 from fal.dev.remote.child import DevAppServer
+
+pytestmark = pytest.mark.usefixtures("dev_account")
 
 APP_SOURCE = """
 from __future__ import annotations
@@ -228,6 +231,7 @@ def _profile_session(tmp_path, monkeypatch):
         class_name="Demo",
         run_url="https://fal.run/me/dev-demo-me",
         token="t",
+        account=Account("me", True),
     ).save()
 
 

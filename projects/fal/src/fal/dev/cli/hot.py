@@ -17,10 +17,10 @@ from fal.dev.errors import DevError
 def _project(args) -> tuple[str | None, str]:
     """The local project folder and its folder on the box, remembered per folder."""
     cwd = Path.cwd()
-    remembered = state.load(cwd, args.host, args.team)
+    remembered = state.load(cwd, args.host)
     local, remote = hot.project_paths(args.local, args.dir, remembered)
     with contextlib.suppress(OSError):
-        state.update(cwd, args.host, args.team, hot_local=local, hot_dir=remote)
+        state.update(cwd, args.host, hot_local=local, hot_dir=remote)
     return local, remote
 
 

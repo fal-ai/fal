@@ -14,6 +14,8 @@ from fal.dev.cli import box as box_commands
 from fal.dev.cli.common import default_name, resolve_name
 from fal.sdk import RunnerState
 
+pytestmark = pytest.mark.usefixtures("dev_account")
+
 
 @pytest.fixture(autouse=True)
 def state_dir(monkeypatch, tmp_path):
@@ -150,8 +152,8 @@ def test_resolve_name_remembers_explicit_name_per_folder(monkeypatch, tmp_path):
     assert resolve_name(_ns(name="klein")) == "klein"
     assert resolve_name(_ns()) == "klein"
 
-    # Another folder, team or host does not see it.
-    assert resolve_name(_ns(team="other")) == "someone"
+    # Another folder or host does not see it.
+    assert resolve_name(_ns(host="other.example")) == "someone"
     other = tmp_path / "other"
     other.mkdir()
     monkeypatch.chdir(other)
@@ -227,7 +229,7 @@ def _runner(runner_id, state, uptime):
 
 @pytest.fixture
 def fake_box(monkeypatch):
-    box = MagicMock(app="devbox-k", host=None, team=None)
+    box = MagicMock(app="devbox-k", host=None)
     box.require_runner.return_value = "r1"
     monkeypatch.setattr(box_commands, "get_box", lambda args: box)
     return box

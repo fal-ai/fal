@@ -4,12 +4,15 @@ import pytest
 
 from fal.cli.main import parse_args
 from fal.cli.parser import FalParserExit
+from fal.dev.account import Account
 from fal.dev.app import bench as app_bench
 from fal.dev.app import client
 from fal.dev.app import session as app_session
 from fal.dev.app.session import Session
 from fal.dev.errors import DevError
 from fal.dev.remote import proxy
+
+pytestmark = pytest.mark.usefixtures("dev_account")
 
 
 def _session(**kwargs) -> Session:
@@ -21,6 +24,7 @@ def _session(**kwargs) -> Session:
         "class_name": "Demo",
         "run_url": "https://fal.run/me/dev-demo-me",
         "token": "t",
+        "account": Account("me", True),
         "machine_type": "GPU-H100",
         "manifest": {"demo_app.py": "abc"},
     }

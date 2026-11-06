@@ -9,6 +9,7 @@ import pytest
 
 from fal.dev import box as box_module
 from fal.dev import config, files, hot, state
+from fal.dev.account import Account
 from fal.dev.box import (
     BOX_APP,
     REMOTE,
@@ -32,7 +33,7 @@ def _runner(runner_id, state=RunnerState.RUNNING, uptime=60, machine="GPU-H100")
 
 
 def _box(runners=(), min_concurrency=1, deployed=True):
-    box = Box("klein", team="my-team")
+    box = Box("klein", account=Account("my-team", False))
     box.client = MagicMock()
     box.client.apps.runners.return_value = list(runners)
     app = MagicMock(alias="devbox-klein", min_concurrency=min_concurrency)
@@ -47,31 +48,34 @@ def _box(runners=(), min_concurrency=1, deployed=True):
 def test_state_round_trip(monkeypatch, tmp_path):
     monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
 
-    state.update(tmp_path, "host", "team", name="klein", hot_dir="/work/k")
-    state.update(tmp_path, "host", "team", hot_dir=None)
+    state.update(tmp_path, "host", name="klein", hot_dir="/work/k")
+    state.update(tmp_path, "host", hot_dir=None)
 
-    data = state.load(tmp_path, "host", "team")
+    data = state.load(tmp_path, "host")
     assert data["name"] == "klein"
     assert "hot_dir" not in data
-    assert state.load(tmp_path, "host", "other-team") == {}
+    assert state.load(tmp_path, "other-host") == {}
+    assert state.load(tmp_path / "sub", "host") == {}
 
 
-def test_project_key_depends_on_project_and_connection(tmp_path):
-    key = state.project_key(tmp_path, "host", "team")
+def test_box_state_is_kept_per_box_and_host(monkeypatch, tmp_path):
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
 
-    assert key == state.project_key(tmp_path, "host", "team")
-    assert key != state.project_key(tmp_path, "other-host", "team")
-    assert key != state.project_key(tmp_path, "host", "other-team")
-    assert key != state.project_key(tmp_path / "sub", "host", "team")
+    state.update_box("devbox-a", "host", team="red")
+    state.update_box("devbox-b", "host", team="blue")
+
+    assert state.load_box("devbox-a", "host")["team"] == "red"
+    assert state.load_box("devbox-b", "host")["team"] == "blue"
+    assert state.load_box("devbox-a", "other-host") == {}
 
 
 def test_state_ignores_corrupt_file(monkeypatch, tmp_path):
     monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
-    path = state._path(tmp_path, None, None)
+    path = state._folder(tmp_path, None)
     path.parent.mkdir(parents=True)
     path.write_text("not json")
 
-    assert state.load(tmp_path, None, None) == {}
+    assert state.load(tmp_path, None) == {}
 
 
 # --- box ---
@@ -191,15 +195,6 @@ def test_run_reuses_its_connection_and_rebuilds_it_once_after_expiry(monkeypatch
     assert len(stubs) == 2
     assert [stub for stub, _ in used] == [stubs[0], stubs[1], stubs[1]]
     assert used[0][1] == box_module.RUN_TIMEOUT_SECONDS
-
-
-def test_box_uses_the_default_team(monkeypatch):
-    monkeypatch.setattr(
-        box_module, "Config", lambda: MagicMock(get_internal=lambda key: "my-team")
-    )
-
-    assert Box("klein").team == "my-team"
-    assert Box("klein", team="other").team == "other"
 
 
 def test_require_runner():
@@ -703,11 +698,11 @@ def test_wait_ready_rides_out_a_network_blip(monkeypatch):
 
 def test_state_update_skips_unchanged_writes(monkeypatch, tmp_path):
     monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
-    state.update(tmp_path, None, None, name="klein")
-    path = state._path(tmp_path, None, None)
+    state.update(tmp_path, None, name="klein")
+    path = state._folder(tmp_path, None)
     before = path.stat().st_mtime_ns
 
-    state.update(tmp_path, None, None, name="klein")
+    state.update(tmp_path, None, name="klein")
 
     assert path.stat().st_mtime_ns == before
 

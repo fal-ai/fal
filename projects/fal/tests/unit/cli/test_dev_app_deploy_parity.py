@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from fal.cli.main import parse_args
+from fal.dev.account import Account
 from fal.dev.app import client, deploy
 from fal.dev.app import session as app_session
 from fal.dev.app import sync as app_sync
@@ -23,6 +24,8 @@ from fal.dev.remote import tree as app_tree
 from fal.dev.remote.objects import Store
 from fal.dev.remote.process import ChildProcess, LogBuffer
 from fal.dev.remote.tree import SourceTree
+
+pytestmark = pytest.mark.usefixtures("dev_account")
 
 APP_SOURCE = """
 import fal
@@ -305,6 +308,7 @@ def test_start_ignores_the_pyproject_team(repo, monkeypatch):
     assert calls["explicit_root"] is False
     session = app_session.find_session(None)
     assert session.name.startswith("dev-demo-")
+    assert session.account == Account("mine", False)
     assert session.module == "pkg.models.app"
     assert session.paths == [".", "pkg/models"]
     assert session.workdir == "pkg/models"
@@ -402,7 +406,8 @@ def test_holder_refuses_a_bad_layout_without_changing_state(tmp_path):
 def test_an_index_that_refuses_the_box_is_explained(monkeypatch):
     from fal.dev.cli import app as dev_app
 
-    monkeypatch.setattr(dev_app, "_booted", lambda args: None)
+    session = SimpleNamespace(account=Account("mine", False))
+    monkeypatch.setattr(dev_app, "_booted", lambda args: session)
     errors = iter(
         [
             DevError(
@@ -421,6 +426,7 @@ def test_an_index_that_refuses_the_box_is_explained(monkeypatch):
     with pytest.raises(DevError, match="fal_wheels_access") as info:
         dev_app.cmd_deps_install(args)
     assert "--team" in str(info.value)
+    assert "runs as team mine" in str(info.value)
     assert "401 Unauthorized" in str(info.value)
     # Other failures, and a refused CLI key, are passed through as they are.
     for _ in range(2):
@@ -439,7 +445,46 @@ def test_an_index_that_refuses_the_box_is_explained(monkeypatch):
     ],
 )
 def test_other_401s_get_no_index_hint(message):
-    assert client.index_hint(message) == message
+    assert client.index_hint(message, Account(None, True)) == message
+
+
+def test_start_runs_as_the_remembered_team_else_your_personal_account(
+    repo, monkeypatch, capsys
+):
+    from fal.dev.cli import app as dev_app
+
+    seen = []
+    monkeypatch.setattr(
+        deploy,
+        "deploy_box",
+        lambda *a, **k: deploy.DeployedBox(
+            "Demo", "u", deploy.Layout(repo, ["."], ".", ".", [])
+        ),
+    )
+    monkeypatch.setattr(deploy, "box_exists", lambda *a, **k: False)
+    monkeypatch.setattr(app_session, "SESSIONS_DIR", repo / ".sessions")
+    monkeypatch.setattr(client, "boot", lambda session: {"app": {}})
+    monkeypatch.setattr(
+        dev_app, "confirm_deploy", lambda *a, **k: seen.append((a[1], k["yes"]))
+    )
+    start = ["dev", "app", "start", "demo", "--name", "box"]
+
+    dev_app.cmd_start(parse_args(start))
+    assert app_session.find_session("box").account == Account("me", True)
+
+    dev_app.cmd_start(parse_args([*start, "--team", "mine", "--replace", "--yes"]))
+    dev_app.cmd_start(parse_args([*start, "--replace"]))
+    assert app_session.find_session("box").account == Account("mine", False)
+    assert seen == [
+        (Account("me", True), False),
+        (Account("mine", False), True),
+        (Account("mine", False), False),
+    ]
+    assert capsys.readouterr().err.splitlines() == [
+        "Team: personal (me)",
+        "Team: mine",
+        "Team: mine",
+    ]
 
 
 def test_start_explains_an_index_that_refuses_the_environment_build(repo, monkeypatch):
@@ -453,7 +498,10 @@ def test_start_explains_an_index_that_refuses_the_environment_build(repo, monkey
 
     monkeypatch.setattr(deploy, "start_box", refuse)
     args = parse_args(["dev", "app", "start", "demo", "--team", "mine"])
-    with pytest.raises(DevError, match="fal_wheels_access"):
+    with pytest.raises(DevError, match="(?s)fal_wheels_access.*runs as team mine"):
+        dev_app.cmd_start(args)
+    args = parse_args(["dev", "app", "start", "demo", "--name", "other"])
+    with pytest.raises(DevError, match="runs as your personal account"):
         dev_app.cmd_start(args)
 
 
@@ -683,6 +731,7 @@ def _session(tmp_path, *names) -> Session:
         class_name="A",
         run_url="https://fal.run/me/dev-x",
         token="t",
+        account=Account("me", True),
     )
 
 

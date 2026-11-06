@@ -13,6 +13,7 @@ from fal.cli.runners import print_logs, shell_session
 from fal.dev.box import FINAL_STATES, newest_first, ssh_config
 from fal.dev.cli.common import get_box, resolve_name
 from fal.dev.errors import DevError
+from fal.dev.team import confirm_deploy
 
 
 def _interrupt(signum, frame):
@@ -26,8 +27,13 @@ def _cleanup_on_hangup() -> None:
         signal.signal(signal.SIGHUP, _interrupt)
 
 
+def _confirm_deploy(box, args) -> None:
+    confirm_deploy(box.client, box.account, box.app, box.host, yes=args.yes)
+
+
 def cmd_deploy(args):
     box = get_box(args)
+    _confirm_deploy(box, args)
     message = box.deploy(
         machine_type=args.machine_type,
         num_gpus=args.num_gpus,
@@ -43,6 +49,8 @@ def cmd_deploy(args):
 def cmd_up(args):
     _cleanup_on_hangup()
     box = get_box(args)
+    if box.app_info() is None:
+        _confirm_deploy(box, args)
     runner = box.up(args.timeout, args.machine_type)
     args.console.print(
         f"ready: runner {runner.runner_id} ({escape(str(runner.machine_type))})"
@@ -132,4 +140,5 @@ def cmd_ssh_config(args):
 
 def cmd_ssh_proxy(args):
     _cleanup_on_hangup()
-    return get_box(args).ssh_proxy(args.timeout)
+    # Editors show stderr on every connect, so the account is not announced.
+    return get_box(args, quiet=True).ssh_proxy(args.timeout)

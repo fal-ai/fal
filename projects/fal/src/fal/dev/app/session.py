@@ -2,8 +2,8 @@
 
 A session is one dev box for one app. Its state (box URL, token, the manifest of
 the last sync) lives in ``~/.fal/dev/apps/<name>.json``. The box is a private
-app deployed under the user's team; requests go to its ``/__fal_dev/*`` routes
-on fal.run.
+app deployed under the account it was started as; requests go to its
+``/__fal_dev/*`` routes on fal.run.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from typing import Any
 
 import httpx
 
+from fal.dev.account import Account
 from fal.dev.errors import DevError
 from fal.dev.remote.protocol import ROUTE_PREFIX, TOKEN_FIELD
 from fal.dev.state import STATE_DIR
@@ -39,7 +40,7 @@ class Session:
     class_name: str
     run_url: str
     token: str
-    team: str | None = None
+    account: Account
     host: str | None = None
     environment: str | None = None
     machine_type: str | None = None
@@ -56,6 +57,10 @@ class Session:
     manifest: dict[str, str] = dataclasses.field(default_factory=dict)
     # The box's dependency overlay, installed again on a new runner.
     overlay: dict[str, Any] = dataclasses.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.account, dict):
+            self.account = Account(**self.account)
 
     @property
     def path(self) -> Path:
@@ -137,7 +142,7 @@ def call(
         response = post_json(
             f"{session.run_url}{ROUTE_PREFIX}{action}",
             {**(payload or {}), TOKEN_FIELD: session.token},
-            get_credentials(team=session.team).to_headers(),
+            get_credentials(team=session.account.fal_team).to_headers(),
             timeout=timeout,
         )
     except httpx.HTTPError as exc:

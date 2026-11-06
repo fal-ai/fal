@@ -15,6 +15,7 @@ from typing import Any
 from rich.markup import escape
 
 from fal.console import console
+from fal.dev.account import Account
 from fal.dev.app import sync
 from fal.dev.app.session import Session, call
 from fal.dev.errors import DevError
@@ -46,25 +47,27 @@ PLACE_MIN_BYTES = 256 * 1024
 # uv's text for a package index that refused the box's credentials. Only uv
 # prints this, so other 401s (a model hub, the fal API) do not match.
 AUTH_REFUSED = re.compile(r"HTTP status client error \((401|403)\b")
-INDEX_AUTH_HINT = (
-    "If this is fal's private package index, the team needs the "
-    "`fal_wheels_access` grant; run with `--team <team that has it>`."
-)
 
 
-def index_hint(message: str) -> str:
+def index_hint(message: str, account: Account) -> str:
     """The message, with what to do about it if a package index said no."""
-    return f"{message}\n{INDEX_AUTH_HINT}" if AUTH_REFUSED.search(message) else message
+    if not AUTH_REFUSED.search(message):
+        return message
+    return (
+        f"{message}\nIf this is fal's private package index, the account needs the "
+        f"`fal_wheels_access` grant. This box runs as {account.runs_as}; start it "
+        "with `--team <team that has the grant>` to change that."
+    )
 
 
 @contextlib.contextmanager
-def explain_index_refusal() -> Iterator[None]:
+def explain_index_refusal(account: Account) -> Iterator[None]:
     """Add what to do about it to an error from a package index that said no."""
     try:
         yield
     except Exception as exc:
         if AUTH_REFUSED.search(str(exc)):
-            raise DevError(index_hint(str(exc))) from exc
+            raise DevError(index_hint(str(exc), account)) from exc
         raise
 
 
@@ -361,7 +364,7 @@ def replay_overlay(session: Session) -> None:
     except DevError as exc:
         console.print(
             "[red]Could not install the dependency overlay[/] (it is kept for the "
-            f"next boot): {escape(index_hint(redact(str(exc))))}"
+            f"next boot): {escape(index_hint(redact(str(exc)), session.account))}"
         )
 
 

@@ -7,12 +7,15 @@ from types import SimpleNamespace
 import pytest
 
 from fal.cli.main import parse_args
+from fal.dev.account import Account
 from fal.dev.app import client
 from fal.dev.app import session as app_session
 from fal.dev.errors import DevError
 from fal.dev.remote import deps as app_deps
 from fal.dev.remote.holder import DevAppHolder
 from fal.dev.remote.process import ChildProcess, LogBuffer
+
+pytestmark = pytest.mark.usefixtures("dev_account")
 
 
 def _dist(target: Path, name: str, version: str) -> None:
@@ -335,6 +338,7 @@ def _cli_session(tmp_path, monkeypatch, box):
         class_name="Demo",
         run_url="https://fal.run/me/dev-demo-me",
         token="t",
+        account=Account("me", True),
     ).save()
 
 

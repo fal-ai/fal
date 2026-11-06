@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from fal.dev.account import Account
 from fal.dev.app.session import NAME_PREFIX, Session, find_session
 from fal.dev.errors import DevError
 from fal.dev.files import SKIP_DIRS
@@ -269,7 +270,7 @@ def start_box(
     replace: bool,
     keep_alive: int,
     machine_type: str | None,
-    team: str | None,
+    account: Account,
     host: str | None,
     environment: str | None,
     session_env: list[str],
@@ -283,12 +284,12 @@ def start_box(
     except DevError:
         existing = None
     ours = existing is not None and (
-        existing.team,
+        existing.account.team,
         existing.host,
         existing.environment,
         existing.file_path,
-    ) == (team, host, environment, str(file))
-    exists = box_exists(name, team=team, host=host, environment=environment)
+    ) == (account.team, host, environment, str(file))
+    exists = box_exists(name, team=account.fal_team, host=host, environment=environment)
     if exists and not ours and not replace:
         raise DevError(
             f"An app named {name!r} already exists and was not started from this "
@@ -305,7 +306,7 @@ def start_box(
         token=token,
         keep_alive=keep_alive,
         machine_type=machine_type,
-        team=team,
+        team=account.fal_team,
         host=host,
         environment=environment,
     )
@@ -318,7 +319,7 @@ def start_box(
         class_name=deployed.class_name,
         run_url=deployed.run_url,
         token=token,
-        team=team,
+        account=account,
         host=host,
         environment=environment,
         machine_type=machine_type,
@@ -344,7 +345,7 @@ def stop_box(session: Session) -> tuple[list[str], bool]:
 
     if not session.name.startswith(NAME_PREFIX):
         raise DevError(f"Refusing to delete {session.name!r}: not a dev box.")
-    client = get_client(session.host or GRPC_HOST, session.team)
+    client = get_client(session.host or GRPC_HOST, session.account.fal_team)
     killed = []
     with client.connect() as connection:
         try:

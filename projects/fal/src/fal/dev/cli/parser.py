@@ -20,6 +20,15 @@ EXPERIMENTAL = "(experimental) "
 
 DEFAULT_KEEP_ALIVE = 1800
 
+TEAM_HELP = (
+    "The team the box runs as. Changes the team remembered for the box; without "
+    "it, the remembered team, else your personal account."
+)
+YES_HELP = (
+    "Deploy into a team that has production apps without asking (needed when "
+    "there is no terminal to ask on)."
+)
+
 # Each dashboard refresh is a runner exec; faster only loads the box and the API.
 MIN_INTERVAL = 1.0
 
@@ -113,6 +122,10 @@ def _command(module: str, handler: str) -> Callable[[argparse.Namespace], object
     return run
 
 
+def _add_yes(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--yes", action="store_true", help=YES_HELP)
+
+
 def add(
     subparsers,
     module: str,
@@ -126,8 +139,14 @@ def add(
 ) -> argparse.ArgumentParser:
     """Add command `cmd`, run by `cmd_<handler>` (default: the command's name)."""
     kwargs.setdefault("description", help_text)
+    # Commands after `start` use the team their box was started with.
+    team_help = argparse.SUPPRESS if module == "app" and cmd != "start" else TEAM_HELP
     parser = subparsers.add_parser(
-        cmd, help=help_text, parents=[*parents, *extra_parents], **kwargs
+        cmd,
+        help=help_text,
+        parents=[*parents, *extra_parents],
+        team_help=team_help,
+        **kwargs,
     )
     parser.set_defaults(func=_command(module, handler or cmd.replace("-", "_")))
     return parser
@@ -136,7 +155,9 @@ def add(
 def _group(subparsers, cmd: str, help_text: str, parents: list, **kwargs):
     """Add a command that only holds subcommands; returns their subparsers."""
     kwargs.setdefault("description", help_text)
-    parser = subparsers.add_parser(cmd, help=help_text, parents=parents, **kwargs)
+    parser = subparsers.add_parser(
+        cmd, help=help_text, parents=parents, team_help=TEAM_HELP, **kwargs
+    )
     return parser.add_subparsers(
         title="Commands",
         metavar="command",
@@ -203,6 +224,7 @@ def _add_box_commands(subparsers, parents) -> None:
         "--dockerfile",
         help="Your own image, based on the default (see fal/dev/remote/Dockerfile).",
     )
+    _add_yes(p)
     p.add_argument(
         "--team-data",
         action="store_true",
@@ -227,6 +249,7 @@ def _add_box_commands(subparsers, parents) -> None:
         action="store_true",
         help="Open the live dashboard (fal dev dash) once the box is ready.",
     )
+    _add_yes(p)
     p.add_argument(
         "--timeout",
         type=positive_int,
@@ -361,6 +384,7 @@ def _add_app_commands(subparsers, parents) -> None:
         "pyproject.toml's tool.fal.apps table (as with `fal deploy`).",
     )
     p.add_argument("--machine-type", help="Override the app's machine type.")
+    _add_yes(p)
     p.add_argument(
         "--root",
         help="Source tree to sync and import from (defaults to the folder holding "

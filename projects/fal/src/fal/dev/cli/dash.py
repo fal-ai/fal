@@ -24,7 +24,7 @@ def _info(box: Box, snapshot: Snapshot) -> dict | None:
     return {
         "name": box.name,
         "app_name": box.app,
-        "team": box.team,
+        "team": box.account.team,
         "machine_type": state.machine_type,
         "state": state.code,
         "runner_id": runner.runner_id if runner else None,

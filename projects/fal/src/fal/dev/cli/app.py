@@ -11,21 +11,29 @@ from typing import Any
 
 from rich.markup import escape
 
-from fal.config import Config
+from fal.api.client import SyncServerlessClient
 from fal.console import console
 from fal.dev.app import bench, client, deploy
 from fal.dev.app.session import Session, find_session, session_name, slug
 from fal.dev.errors import DevError
 from fal.dev.remote.protocol import BODY_TAIL_CHARS, check_session_env, redact
 from fal.dev.state import STATE_DIR
+from fal.dev.team import announce, confirm_deploy, resolve_account
 
 PROFILES_DIR = STATE_DIR / "profiles"
 
 
+def _session(args) -> Session:
+    """The named session, with the account it runs as announced on stderr."""
+    session = find_session(args.name)
+    announce(session.account)
+    return session
+
+
 def _booted(args) -> Session:
     """The named session, booted again if its box was replaced."""
-    session = find_session(args.name)
-    with client.explain_index_refusal():
+    session = _session(args)
+    with client.explain_index_refusal(session.account):
         client.ensure_booted(session)
     return session
 
@@ -51,20 +59,28 @@ def cmd_start(args):
     else:
         default_name = args.app_ref[0]
     name = session_name(args.name, default_name)
-    # Pin the team now, so a later `fal team set` cannot retarget the session.
-    # A team in pyproject.toml is where the app is deployed for real; the box
-    # always goes to the caller's own team.
-    team = args.team or Config().get_internal("team")
-    if app_data.team and app_data.team != team:
+    # The account is pinned in the session, so a later `fal account set` cannot
+    # retarget it. A team in pyproject.toml is where the app is deployed for
+    # real; the box goes to the account chosen with --team, else your own.
+    account = resolve_account(args.team, name, args.host)
+    announce(account)
+    if app_data.team and app_data.team != account.team:
         console.print(
             escape(
                 f"Ignoring team {app_data.team!r} from pyproject.toml: the box is "
-                f"deployed to {team or 'your personal account'}."
+                f"deployed to {account.runs_as}."
             )
         )
+    confirm_deploy(
+        SyncServerlessClient(host=args.host, team=account.fal_team),
+        account,
+        name,
+        args.host,
+        yes=args.yes,
+    )
     console.print(f"Deploying dev box [bold]{escape(name)}[/] ...")
     started = time.perf_counter()
-    with client.explain_index_refusal():
+    with client.explain_index_refusal(account):
         session = deploy.start_box(
             file,
             class_name,
@@ -75,7 +91,7 @@ def cmd_start(args):
             replace=args.replace,
             keep_alive=args.keep_alive,
             machine_type=args.machine_type,
-            team=team,
+            account=account,
             host=args.host,
             environment=args.env,
             session_env=session_env,
@@ -412,7 +428,7 @@ def cmd_deps_install(args):
         "restart": args.restart,
     }
     console.print(f"Installing {escape(' '.join(args.packages))} into the overlay ...")
-    with client.explain_index_refusal():
+    with client.explain_index_refusal(session.account):
         result = client.deps_call(session, payload)
     if not result["pins"]:
         reason = escape(str(result.get("reason", "already satisfied")))
@@ -459,15 +475,15 @@ def cmd_deps_status(args):
 
 
 def cmd_restart(args):
-    session = find_session(args.name)
+    session = _session(args)
     started = time.perf_counter()
-    with client.explain_index_refusal():
+    with client.explain_index_refusal(session.account):
         client.restart(session, sync_first=args.sync)
     console.print(f"[green]Ready[/] after {time.perf_counter() - started:.1f}s.")
 
 
 def cmd_logs(args):
-    session = find_session(args.name)
+    session = _session(args)
     logs = client.logs(session, lines=args.lines)
     client.print_log_lines(logs["lines"])
     after = logs["total"]
@@ -479,12 +495,12 @@ def cmd_logs(args):
 
 
 def cmd_status(args):
-    session = find_session(args.name)
+    session = _session(args)
     info: dict[str, Any] = {
         "session": session.name,
         "app": f"{session.file_path}::{session.class_name}",
         "box": session.run_url,
-        "team": session.team,
+        "team": session.account.team,
     }
     try:
         info["remote"] = client.status(session)
@@ -494,7 +510,7 @@ def cmd_status(args):
 
 
 def cmd_stop(args):
-    session = find_session(args.name)
+    session = _session(args)
     killed, existed = deploy.stop_box(session)
     session.delete()
     deleted = "deleted the app" if existed else "the app was already gone"

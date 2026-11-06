@@ -14,6 +14,7 @@ from rich.console import Console
 
 from fal import flags
 from fal.dev import config
+from fal.dev.account import Account
 from fal.dev.box import BoxState
 from fal.dev.dash import model
 from fal.dev.dash.model import (
@@ -80,7 +81,7 @@ def _state(code="running", runner_id="runner-abc") -> BoxState:
 class FakeBox:
     name = "troy"
     app = "devbox-troy"
-    team = None
+    account = Account(None, False, via_key=True)
     host = None
 
     def __init__(self, probe=None, code="running"):

@@ -172,7 +172,7 @@ def header(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
             style=f"bold {STATE_STYLES[state.code]}",
         ),
         Text(box.app),
-        Text(box.team or "personal", style=MUTED),
+        Text(str(box.account), style=MUTED),
         Text(f"{num_gpus or 1}x {state.machine_type or '?'}"),
         Text(f"up {duration(_uptime(snapshot, now))}"),
     ]

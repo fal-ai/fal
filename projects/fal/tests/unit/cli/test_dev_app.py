@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 import fal
 from fal.cli.main import parse_args
+from fal.dev.account import Account
 from fal.dev.app import deploy
 from fal.dev.app import sync as app_sync
 from fal.dev.app.session import NAME_PREFIX, Session, session_name
@@ -23,6 +24,8 @@ from fal.dev.remote.child import DevAppServer
 from fal.dev.remote.holder import DevAppHolder, make_holder
 from fal.dev.remote.process import ChildProcess, LogBuffer
 from fal.dev.remote.tree import SourceTree, extract
+
+pytestmark = pytest.mark.usefixtures("dev_account")
 
 APP_SOURCE = """
 import fal
@@ -409,6 +412,7 @@ def test_stop_box_refuses_non_dev_apps():
         class_name="App",
         run_url="https://example.invalid",
         token="t",
+        account=Account("me", True),
     )
     with pytest.raises(DevError):
         deploy.stop_box(session)
