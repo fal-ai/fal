@@ -36,6 +36,7 @@ from fal.dev.remote import proxy
 from fal.dev.remote.objects import Store
 from fal.dev.remote.process import CHILD_ERRORS, ChildProcess, LogBuffer, child_call
 from fal.dev.remote.protocol import (
+    NOT_RELOADED,
     REQUEST_TIMEOUT_SECONDS,
     ROUTE_PREFIX,
     STOPPED_PHASES,
@@ -56,10 +57,6 @@ REQUEST_ERRORS = (
     http.client.HTTPException,
     DevError,
 )
-
-
-# Reload answers that mean the app did not take the changed files.
-NOT_RELOADED = ("rebuild", "error", "not_running")
 
 
 class DevAppHolder:

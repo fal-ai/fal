@@ -22,6 +22,7 @@ from fal.dev.errors import DevError
 from fal.dev.remote.protocol import (
     MAX_FILE_BYTES,
     MAX_PLACE_FILES,
+    NOT_RELOADED,
     REQUEST_TIMEOUT_SECONDS,
     STOPPED_PHASES,
     redact,
@@ -241,7 +242,7 @@ def sync_files(
                 payload["all_files"] = sorted(files)
         answer = call(session, "files", payload, timeout=SLOW_TIMEOUT)
     reloaded = answer.get("reload") or {}
-    if reloaded.get("action") not in ("rebuild", "error", "not_running"):
+    if reloaded.get("action") not in NOT_RELOADED:
         # Otherwise keep the old manifest, so the next sync sends the files
         # again and repeats the warning.
         session.manifest = manifest

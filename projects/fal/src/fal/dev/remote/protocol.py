@@ -18,6 +18,8 @@ TOKEN_FIELD = "token"
 STARTING_PHASES = ("starting", "installing", "setup")
 # Phases in which no app process is running or coming up.
 STOPPED_PHASES = ("idle", "exited", "failed", "stopped")
+# Reload answers that mean the app did not take the changed files.
+NOT_RELOADED = ("rebuild", "error", "not_running")
 # The box's own limit on one request; the CLI waits a little longer.
 REQUEST_TIMEOUT_SECONDS = 3600
 # `request` and `profile` limits: the CLI checks them as flags, and the box
