@@ -771,24 +771,32 @@ def test_dashboard_decides_on_animation_before_live_replaces_stdout(monkeypatch)
     assert seen == [True] and len(calls) == 1
 
 
-def test_gpu_panel_shows_cpu_and_memory():
+def test_box_panel_shows_cpu_and_memory_apart_from_the_gpus():
+    from fal.dev.dash import view
+
     system = {
         "cpu_pct": 37.5,
         "cpus": 16,
         "mem_used_bytes": 24 * 2**30,
         "mem_total_bytes": 128 * 2**30,
     }
-    text = _frame(_snapshot(probe=_probe(system=system)))
+    probe = _probe(system=system)
+    text = _frame(_snapshot(probe=probe))
     assert re.search(r"cpu .* 38% +16 cores", text)
     assert re.search(r"ram .* 19% +24\.0/128 GiB", text)
+    assert "cores" not in _text(view.gpu_panel(probe))
+    assert "Box" in _text(view.system_panel(probe))
 
 
-def test_gpu_panel_without_system_readings_from_an_older_probe():
+def test_no_box_panel_for_an_older_probe_without_system_readings():
+    from fal.dev.dash import view
+
     probe = _probe()
     probe.pop("system", None)
     text = _frame(_snapshot(probe=probe))
     assert "cores" not in text
     assert "GPU" in text
+    assert view.system_panel(probe) is None
 
 
 def test_unknown_memory_use_is_not_shown_as_zero():
@@ -856,6 +864,13 @@ def test_disks_show_free_space_and_warn_when_low():
     view._add_system_rows(table, {"disks": disks})
     styles = [cell.style for cell in table.columns[3].cells]
     assert styles == [view.ERROR, ""]
+
+
+def test_a_network_volume_is_not_shown_as_petabytes_free():
+    disks = [{"paths": ["/data"], "free_bytes": 8705 * 2**40}]
+    text = _frame(_snapshot(probe=_probe(system=_system(), disks=disks)))
+    assert re.search(r"/data +network volume", text)
+    assert "TB free" not in text
 
 
 def test_no_disk_rows_from_an_older_probe():

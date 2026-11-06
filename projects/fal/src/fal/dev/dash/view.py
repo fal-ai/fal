@@ -67,6 +67,7 @@ LOGS_SHOWN = 8
 SPARK_WIDTH = 30
 # Free space below these turns a disk row yellow, then red.
 DISK_LOW_BYTES = (20 * 2**30, 5 * 2**30)
+NETWORK_VOLUME_BYTES = 2**50
 PROCESS_NAME_WIDTH = 20
 # Lines the platform logs for every runner exec, including the dashboard's own probes.
 NOISE_PREFIXES = ("Skipping authentication for /Isolate/",)
@@ -252,14 +253,14 @@ def sparkline(values: list[float], width: int = SPARK_WIDTH) -> Text:
     return Text(chars, style=ACCENT)
 
 
-def _history_rows(history: dict[str, list[tuple[float, float]]] | None) -> Table | None:
-    """Last few minutes of GPU and CPU use, under the bars."""
-    rows = [
-        (name, history[name]) for name in ("gpu", "cpu") if history and name in history
-    ]
-    rows = [(name, points) for name, points in rows if len(points) > 1]
-    if not rows:
+def _history_rows(
+    history: dict[str, list[tuple[float, float]]] | None, name: str
+) -> Table | None:
+    """Last few minutes of one reading ("gpu" or "cpu"), under its bars."""
+    points = (history or {}).get(name) or []
+    if len(points) < 2:
         return None
+    rows = [(name, points)]
     table = Table.grid(padding=(0, 1))
     for _ in range(3):
         table.add_column(no_wrap=True)
@@ -280,10 +281,7 @@ def gpu_panel(probe: dict, history: dict | None = None) -> RenderableType:
         table.add_column(no_wrap=True)
     if not gpus:
         note = Text(probe["gpu_error"] or "no GPUs reported", style=MUTED)
-        _add_system_rows(table, probe)
-        if not table.row_count:
-            return _panel(note, "GPU")
-        return _panel(Group(note, table, *_trend(history)), "GPU")
+        return _panel(note, "GPU")
     for gpu in gpus:
         util = gpu["util_pct"]
         power = gpu["power_w"]
@@ -302,15 +300,25 @@ def gpu_panel(probe: dict, history: dict | None = None) -> RenderableType:
                 style=MUTED,
             ),
         )
-    _add_system_rows(table, probe)
     title = Text.styled("GPU", style=TITLE) + Text(
         f"  {gpus[0]['name']}", style=f"default {MUTED}"
     )
-    return _panel(Group(table, *_trend(history)), title)
+    return _panel(Group(table, *_trend(history, "gpu")), title)
 
 
-def _trend(history: dict | None) -> list[RenderableType]:
-    trend = _history_rows(history)
+def system_panel(probe: dict, history: dict | None = None) -> RenderableType | None:
+    """The box's CPU, memory, network and disks; None from an older probe."""
+    table = Table.grid(padding=(0, 1))
+    for _ in range(5):
+        table.add_column(no_wrap=True)
+    _add_system_rows(table, probe)
+    if not table.row_count:
+        return None
+    return _panel(Group(table, *_trend(history, "cpu")), "Box")
+
+
+def _trend(history: dict | None, name: str) -> list[RenderableType]:
+    trend = _history_rows(history, name)
     return [trend] if trend else []
 
 
@@ -319,7 +327,7 @@ def _rate(bytes_per_second: float | None) -> Text:
 
 
 def _add_system_rows(table: Table, probe: dict) -> None:
-    """CPU, memory, network and disks under the GPU rows.
+    """CPU, memory, network and disks.
 
     Each is absent on a box deployed before the probe read it.
     """
@@ -331,11 +339,17 @@ def _add_system_rows(table: Table, probe: dict) -> None:
         free = disk["free_bytes"]
         warn, low = DISK_LOW_BYTES
         style = ERROR if free < low else WARNING if free < warn else ""
+        # A network volume reports its whole backend (petabytes), not a quota.
+        label = (
+            Text("network volume", style=MUTED)
+            if free >= NETWORK_VOLUME_BYTES
+            else Text(f"{size(free)} free", style=style)
+        )
         table.add_row(
             Text("+".join(disk["paths"]), style=MUTED),
             Text(""),
             Text(""),
-            Text(f"{size(free)} free", style=style),
+            label,
             Text(""),
         )
 
@@ -628,7 +642,13 @@ def body(
     if probe is None:
         panels = [
             _panel(Text("waiting for the box", style=MUTED), title)
-            for title in ("GPU", "Idle shutdown", "/work snapshot", "Connections")
+            for title in (
+                "GPU",
+                "Box",
+                "Idle shutdown",
+                "/work snapshot",
+                "Connections",
+            )
         ]
     else:
         view = idle_view(probe, _box_clock(snapshot, now))
@@ -638,8 +658,10 @@ def body(
             parts.append(hot_restart_panel(snapshot, now, animate))
         box_now = _box_clock(snapshot, now)
         optional = [processes_panel(probe), hot_panel(probe, box_now)]
+        system = system_panel(probe, snapshot.history)
         panels = [
             gpu_panel(probe, snapshot.history),
+            *([system] if system else []),
             idle_panel(snapshot, probe, view, now),
             *[panel for panel in optional if panel],
             # /work before Connections: it is what `d` acts on.
