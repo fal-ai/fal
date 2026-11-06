@@ -98,10 +98,11 @@ def test_benchmark_names_are_checked(home, tmp_path):
     assert app_bench.saved("dev-demo-me") == []
 
 
-def test_empty_benchmark_name_is_refused(home):
+def test_empty_benchmark_name_is_refused(home, capsys):
     make_session().save()
-    with pytest.raises(DevError):
-        make_request("--save", "")
+    # The command reports the DevError (see fal.dev.cli.error_panel) and exits 1.
+    assert make_request("--save", "") == 1
+    assert "Error:" in capsys.readouterr().err
 
 
 def test_compare_columns_fit_source_digests():

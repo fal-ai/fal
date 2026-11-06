@@ -199,7 +199,7 @@ def booting_panel(snapshot: Snapshot, now: float, animate: bool) -> RenderableTy
     state = snapshot.state
     label, expected = loading.STATES["gpu-runner"]
     runner = state.runner if state else None
-    phase = runner.state.value.lower() if runner else "requested"
+    phase = loading.runner_phase(runner.state.value.lower()) if runner else "requested"
     # A runner's uptime covers a wait that began before the dash opened.
     waited = _uptime(snapshot, now)
     if waited is None:

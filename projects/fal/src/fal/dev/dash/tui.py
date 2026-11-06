@@ -75,6 +75,7 @@ def run_dashboard(
     pending_down = 0.0
     pending_quit = False
     busy = threading.Lock()
+    idle_warning = model.IdleWarning()
 
     def act(label: str, func, *args) -> None:
         """Run a slow action without freezing the screen."""
@@ -113,6 +114,9 @@ def run_dashboard(
                     animating = animate and model.waits(poller.snapshot)
                     key = _read_key(fd, 1 / loading.FPS if animating else 1.0)
                     runner_id = poller.snapshot.runner_id
+                    if warning := idle_warning.check(poller.snapshot, time.time()):
+                        console.bell()
+                        poller.say(warning, seconds=60)
                     if key == "q":
                         if not busy.locked() or pending_quit:
                             break

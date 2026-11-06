@@ -14,6 +14,7 @@ from typing import Callable
 
 from fal.cli.parser import FalClientParser, RefAction, add_env_argument
 from fal.dev import config
+from fal.dev.errors import DevError
 from fal.dev.remote.protocol import MAX_PROFILE_WARMUPS, MAX_REPEAT, MAX_WARMUPS
 
 EXPERIMENTAL = "(experimental) "
@@ -120,7 +121,15 @@ def _command(module: str, handler: str) -> Callable[[argparse.Namespace], object
 
     def run(args: argparse.Namespace) -> object:
         implementation = importlib.import_module(f"fal.dev.cli.{module}")
-        return getattr(implementation, f"cmd_{handler}")(args)
+        try:
+            return getattr(implementation, f"cmd_{handler}")(args)
+        except DevError as exc:
+            from rich.console import Console
+
+            from fal.dev.cli import error_panel
+
+            error_panel.show(exc, Console(stderr=True))
+            return 1
 
     run.__name__ = f"{module}.{handler}"
     return run
@@ -685,7 +694,11 @@ def add_parser(main_subparsers, parents) -> None:
         "into, with hot reload of inference code."
     )
     parser = main_subparsers.add_parser(
-        "dev", description=dev_help, help=dev_help, parents=parents
+        "dev",
+        description=f"{dev_help} Waits animate on a terminal; set "
+        "FAL_DEV_NO_ANIMATION=1 for plain status lines.",
+        help=dev_help,
+        parents=parents,
     )
     subparsers = parser.add_subparsers(
         title="Commands",

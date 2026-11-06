@@ -44,6 +44,21 @@ STATES: dict[str, tuple[str, int]] = {
     "hot-restart": ("restarting the hot server: loading weights", 35),
 }
 
+# Runner states, as the platform names them, in words.
+RUNNER_PHASES = {
+    "pending": "queued",
+    "docker_pull": "pulling the image",
+    "setup": "starting the box",
+}
+# A wait at least this long ends with the terminal bell, for whoever looked away.
+BELL_SECONDS = 20
+
+
+def runner_phase(states: str) -> str:
+    """'docker_pull, setup' -> 'pulling the image, starting the box'."""
+    return ", ".join(RUNNER_PHASES.get(s.strip(), s.strip()) for s in states.split(","))
+
+
 # Named ANSI colors, as in the dash: the terminal's palette keeps them readable.
 BORDER = "bright_black"
 ACCENT = "cyan"
@@ -314,6 +329,10 @@ class Loading:
         self._closed = False
 
     @property
+    def started(self) -> bool:
+        return self._started
+
+    @property
     def elapsed(self) -> float:
         return self._clock() - self._start
 
@@ -407,6 +426,17 @@ class Loading:
             self._live.stop()
             self._live = None
             self._console = None
+
+    def done(self) -> None:
+        """Clear the wait after success; ring the bell if it was a long one."""
+        self.close()
+        if self._started and self.elapsed >= BELL_SECONDS:
+            try:
+                if self._stream.isatty():
+                    self._stream.write("\a")
+                    self._stream.flush()
+            except (AttributeError, ValueError, OSError):
+                pass
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()

@@ -696,7 +696,7 @@ def test_booting_box_shows_the_dust_panel_with_the_runner_state():
     state.runner.uptime = timedelta(seconds=42)
     text = _frame(Snapshot(state=state, state_at=NOW))
     assert "GPU" in text
-    assert "waiting for a GPU runner: pending  42s  typically ~1m40s" in text
+    assert "waiting for a GPU runner: queued  42s  typically ~1m40s" in text
 
 
 def test_hot_restart_shows_the_hot_server_panel():

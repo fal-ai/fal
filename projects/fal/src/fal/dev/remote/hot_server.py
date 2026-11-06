@@ -79,6 +79,7 @@ class Project:
         self.load_seconds = 0.0
         self.last_change = max(self.files.values(), default=time.time())
         self.last_reload: dict = {}
+        self.reload_reported = True  # the next result reports last_reload once
         self.last_infer: dict = {}
         self.restart_reason: str | None = None
 
@@ -118,6 +119,7 @@ class Project:
         self._import_infer()
         self.generation += 1
         ms = (time.time() - start) * 1000
+        self.reload_reported = False
         self.last_reload = {
             "files": changed,
             "ms": round(ms, 1),
@@ -193,13 +195,19 @@ class Project:
                 )
             infer_ms = (time.time() - start) * 1000
             self.last_infer = {"at": time.time(), "ms": round(infer_ms)}
+            # Under the lock: the code this request ran, not a reload after it.
+            headers = {
+                "X-Hot-Infer-Ms": f"{infer_ms:.0f}",
+                "X-Hot-Code-Version": str(self.generation),
+                # Time from the newest saved change to this result, as seen on the box.
+                "X-Hot-Since-Change-Ms": (
+                    f"{(time.time() - self.last_change) * 1000:.0f}"
+                ),
+            }
+            if not self.reload_reported and self.last_reload.get("ms") is not None:
+                headers["X-Hot-Reload-Ms"] = f"{self.last_reload['ms']:.0f}"
+                self.reload_reported = True
         content_type, body = encode(result)
-        headers = {
-            "X-Hot-Infer-Ms": f"{infer_ms:.0f}",
-            "X-Hot-Code-Version": str(self.generation),
-            # Time from the newest saved change to this result, as seen on the box.
-            "X-Hot-Since-Change-Ms": f"{(time.time() - self.last_change) * 1000:.0f}",
-        }
         log(
             f"infer {infer_ms:.0f} ms (code version {self.generation}) "
             f"params={json.dumps(params)[:200]}"

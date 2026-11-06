@@ -24,6 +24,8 @@ from fal.dev.box import Box, BoxState
 from fal.dev.errors import DevError
 
 HOLD_HOURS = 1.0
+# The dash rings and warns when an idle box is this close to stopping itself.
+IDLE_WARNING_SECONDS = 600
 LOG_MINUTES = 30
 LOG_LINES = 30
 STATE_INTERVAL = 15.0
@@ -240,6 +242,33 @@ def waits(snapshot: Snapshot) -> set[str]:
     if snapshot.runner_id and probe and fresh and probe["hot"].get("restarting"):
         found.add("hot-restart")
     return found
+
+
+class IdleWarning:
+    """Says once per idle stretch that the box is about to stop itself."""
+
+    def __init__(self, before: float = IDLE_WARNING_SECONDS) -> None:
+        self.before = before
+        self.warned = False
+
+    def check(self, snapshot: Snapshot, now: float) -> str | None:
+        probe = snapshot.probe
+        if not (probe and snapshot.probe_at and snapshot.runner_id):
+            return None
+        box_now = probe["now"] + (now - snapshot.probe_at)
+        view = idle_view(probe, box_now)
+        remaining = view.remaining_seconds
+        if view.watchdog != "on" or remaining is None or remaining > self.before:
+            self.warned = False  # activity came back: warn again next time
+            return None
+        if self.warned:
+            return None
+        self.warned = True
+        minutes = max(1, round(remaining / 60))
+        return (
+            f"idle: this box stops itself in about {minutes} min and saves /work; "
+            f"press h to hold it {HOLD_HOURS:g}h"
+        )
 
 
 class Poller:
