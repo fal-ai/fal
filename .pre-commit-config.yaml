@@ -39,7 +39,8 @@ repos:
             sdk\.py|
             toolkit/file/file\.py|
             toolkit/file/providers/fal\.py|
-            toolkit/file/_upload_policy\.py
+            toolkit/file/_upload_policy\.py|
+            _cuda_cache\.py
           )$
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.3.0

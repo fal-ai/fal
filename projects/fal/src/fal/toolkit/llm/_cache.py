@@ -9,16 +9,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, MutableMapping
 
+from fal._cuda_cache import CUDA_CACHE_MAXSIZE, nvidia_driver_version
 from fal.toolkit.utils.download_utils import FAL_PERSISTENT_DIR
 
 ENGINE_CACHE_ROOT = Path(FAL_PERSISTENT_DIR) / ".fal" / "engine_cache"
 HF_HOME_DIR = Path(FAL_PERSISTENT_DIR) / ".fal" / "hf"
 
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
-_DRIVER_RE = re.compile(r"Kernel Module\s+(?:for \S+\s+)?([\d.]+)")
-# The CUDA driver JIT cache defaults to 256 MB; vLLM's kernels overflow it.
-CUDA_CACHE_MAXSIZE = 4 << 30
-_DRIVER_VERSION_FILE = "/proc/driver/nvidia/version"
 # engine_cache_env values that are settings, not directories.
 NON_PATH_KEYS = frozenset({"CUDA_CACHE_MAXSIZE"})
 
@@ -178,16 +175,6 @@ def _advance_locked(
     return True
 
 
-def nvidia_driver_version() -> str:
-    """The loaded NVIDIA kernel driver version, or "" without a GPU."""
-    try:
-        with open(_DRIVER_VERSION_FILE) as f:
-            m = _DRIVER_RE.search(f.read())
-    except OSError:
-        return ""
-    return m.group(1) if m else ""
-
-
 def engine_cache_env(
     namespace: str = "default",
     *,
@@ -205,6 +192,9 @@ def engine_cache_env(
 
     The CUDA driver's PTX JIT cache is also kept, keyed by driver version
     (detected when ``driver`` is None), since a driver upgrade invalidates it.
+    ``fal.App`` already sets ``CUDA_CACHE_PATH`` before ``setup()`` (see
+    ``persist_cuda_cache``), and ``apply_engine_cache_env`` never overrides a
+    set variable, so inside an App that default wins over this namespaced path.
     """
     base = Path(root) if root is not None else ENGINE_CACHE_ROOT
     base = base / _slug(namespace)

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from fal._cuda_cache import nvidia_driver_version
 from fal.toolkit.llm import apply_engine_cache_env, engine_cache_env
-from fal.toolkit.llm._cache import nvidia_driver_version
 
 
 def test_engine_cache_env_namespaced(tmp_path):
@@ -70,5 +70,5 @@ def test_nvidia_driver_version(tmp_path, monkeypatch, text, expected):
     path = tmp_path / "version"
     if text is not None:
         path.write_text(text)
-    monkeypatch.setattr("fal.toolkit.llm._cache._DRIVER_VERSION_FILE", str(path))
+    monkeypatch.setattr("fal._cuda_cache._DRIVER_VERSION_FILE", str(path))
     assert nvidia_driver_version() == expected

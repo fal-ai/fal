@@ -18,6 +18,7 @@ import grpc.aio as async_grpc
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from fal._billing import BillingComponents, BillingDeclaration, check_declaration
+from fal._cuda_cache import apply_cuda_cache_env
 from fal._serialization import include_modules_from
 from fal._typing import EndpointT
 from fal.api import (
@@ -260,6 +261,17 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     fn.app_auth = cls.app_auth
 
     return fn
+
+
+def _persist_cuda_cache() -> None:
+    # Module-level import on purpose: fal ships pickle-by-value, and a lazy
+    # import of a module the payload never referenced fails on the runner.
+    try:
+        path = apply_cuda_cache_env()
+        if path:
+            print(f"CUDA JIT cache: {path}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"Warning: could not persist the CUDA JIT cache: {exc!r}")
 
 
 @dataclass
@@ -650,6 +662,10 @@ class App(BaseServable):
             Use `["/data"]` for full access, or specific subdirectories like
             `["/data/.cache"]`. When omitted (None), the server applies a default
             based on the user model.
+        persist_cuda_cache: Keep the CUDA driver's JIT cache on /data, keyed by
+            GPU model and driver version, so PTX-only kernels compile once
+            instead of on every boot. Set to False to opt out. Skipped on CPU
+            apps, without /data, and for CUDA_CACHE_PATH already in the env.
         volumes: Named volumes to mount, keyed by mount path. Each volume must
             already exist (`fal volumes create <name>`); `fal.Volume` is only a
             reference. A mount path is a single top-level directory. Cannot
@@ -696,6 +712,7 @@ class App(BaseServable):
     secrets: ClassVar[Optional[list[str]]] = None
     data_mounts: ClassVar[Optional[list[str]]] = None
     volumes: ClassVar[Optional[dict[str, Volume | str]]] = None
+    persist_cuda_cache: ClassVar[bool] = True
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -949,6 +966,9 @@ class App(BaseServable):
             fal_client.set_get_current_app(get_current_app)
         except (ImportError, AttributeError):
             pass
+
+        if self.persist_cuda_cache:
+            _persist_cuda_cache()
 
         _print_python_packages()
         setup_started_at = time.perf_counter()
