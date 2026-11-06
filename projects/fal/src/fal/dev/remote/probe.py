@@ -74,6 +74,14 @@ def _hot():
     return hot
 
 
+def _system():
+    """CPU and memory; None rather than failing the whole probe."""
+    try:
+        return signals.system()
+    except Exception:
+        return None
+
+
 def _idle_state():
     """The watchdog's own view, as it last published it."""
     try:
@@ -136,6 +144,7 @@ def probe(workspace, check_dirty):
         "now": now,
         "gpus": gpus,
         "gpu_error": gpu_error,
+        "system": _system(),
         "activity": {
             "ssh_sessions": signals.ssh_sessions(),
             "gpu_busy": signals.gpu_busy(gpus, config.GPU_BUSY_PCT),

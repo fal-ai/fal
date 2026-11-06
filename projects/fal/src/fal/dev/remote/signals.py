@@ -7,6 +7,7 @@ Standard library only: the probe runs on the box's plain python3.
 import glob
 import os
 import subprocess
+import time
 
 GPU_FIELDS = [
     "index",
@@ -108,6 +109,112 @@ def gpus():
             }
         )
     return found, None
+
+
+CGROUP = "/sys/fs/cgroup"
+
+
+def _first_line(path):
+    try:
+        with open(path) as f:
+            return f.readline().strip()
+    except OSError:
+        return None
+
+
+def _cpu_usage_usec(root):
+    """CPU time the container has used (microseconds), None if not readable."""
+    try:
+        with open(os.path.join(root, "cpu.stat")) as f:
+            for line in f:
+                key, _, value = line.partition(" ")
+                if key == "usage_usec":
+                    return int(value)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def _cpu_limit(root):
+    """How many CPUs the container may use: its cgroup quota, else the visible CPUs."""
+    quota, _, period = (_first_line(os.path.join(root, "cpu.max")) or "").partition(" ")
+    if quota.isdigit() and period.isdigit() and int(period):
+        return int(quota) / int(period)
+    if hasattr(os, "sched_getaffinity"):
+        return float(len(os.sched_getaffinity(0)))
+    return float(os.cpu_count() or 0)
+
+
+def _working_set(root):
+    """Container memory without reclaimable file cache, None if not readable.
+
+    memory.current counts the page cache, which fills up after any big download
+    and is dropped before an OOM; inactive_file is the part of it that goes first.
+    """
+    current = num(_first_line(os.path.join(root, "memory.current")))
+    if current is None:
+        return None
+    try:
+        with open(os.path.join(root, "memory.stat")) as f:
+            for line in f:
+                key, _, value = line.partition(" ")
+                if key == "inactive_file":
+                    return max(current - int(value), 0)
+    except (OSError, ValueError):
+        pass
+    return current
+
+
+def _meminfo():
+    """(used, total) bytes from /proc/meminfo: the host's view."""
+    fields = {}
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                key, _, rest = line.partition(":")
+                fields[key] = int(rest.split()[0]) * 1024
+    except (OSError, ValueError, IndexError):
+        return None, None
+    total = fields.get("MemTotal")
+    available = fields.get("MemAvailable")
+    if total is None or available is None:
+        return None, None
+    return total - available, total
+
+
+def system(sample_seconds=0.25, root=CGROUP):
+    """CPU and memory of the box's container, as its cgroup (v2) limits them.
+
+    CPU percent is of the container's CPU limit, sampled over `sample_seconds`.
+    Without a cgroup v2 controller, memory falls back to /proc/meminfo and CPU
+    percent is None.
+    """
+    cpus = _cpu_limit(root)
+    before = _cpu_usage_usec(root)
+    cpu_pct = None
+    if before is not None and cpus:
+        start = time.monotonic()
+        time.sleep(sample_seconds)
+        after = _cpu_usage_usec(root)
+        elapsed = time.monotonic() - start
+        if after is not None and elapsed > 0:
+            cpu_pct = round(
+                min((after - before) / 1e6 / elapsed / cpus * 100, 100.0), 1
+            )
+    used = _working_set(root)
+    host_used, host_total = _meminfo()
+    if used is None:
+        used, total = host_used, host_total
+    else:
+        limit = num(_first_line(os.path.join(root, "memory.max")))
+        # "max" (no cgroup limit) leaves the host's memory as the ceiling.
+        total = limit if limit is not None else host_total
+    return {
+        "cpu_pct": cpu_pct,
+        "cpus": num(round(cpus, 2)) if cpus else None,
+        "mem_used_bytes": used,
+        "mem_total_bytes": total,
+    }
 
 
 def gpu_busy(readings, threshold):

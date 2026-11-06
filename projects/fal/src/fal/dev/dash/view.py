@@ -225,13 +225,15 @@ def hot_restart_panel(snapshot: Snapshot, now: float, animate: bool) -> Renderab
 
 def gpu_panel(probe: dict) -> RenderableType:
     gpus = probe["gpus"]
-    if not gpus:
-        return _panel(
-            Text(probe["gpu_error"] or "no GPUs reported", style=MUTED), "GPU"
-        )
     table = Table.grid(padding=(0, 1))
     for _ in range(5):
         table.add_column(no_wrap=True)
+    if not gpus:
+        note = Text(probe["gpu_error"] or "no GPUs reported", style=MUTED)
+        if not probe.get("system"):
+            return _panel(note, "GPU")
+        _add_system_rows(table, probe["system"])
+        return _panel(Group(note, table), "GPU")
     for gpu in gpus:
         util = gpu["util_pct"]
         power = gpu["power_w"]
@@ -250,10 +252,37 @@ def gpu_panel(probe: dict) -> RenderableType:
                 style=MUTED,
             ),
         )
+    _add_system_rows(table, probe.get("system"))
     title = Text.styled("GPU", style=TITLE) + Text(
         f"  {gpus[0]['name']}", style=f"default {MUTED}"
     )
     return _panel(table, title)
+
+
+def _add_system_rows(table: Table, system: dict | None) -> None:
+    """CPU and memory under the GPU rows; absent on a box deployed before them."""
+    if not system:
+        return
+    cpu = system.get("cpu_pct")
+    cpus = system.get("cpus")
+    table.add_row(
+        Text("cpu", style=MUTED),
+        _bar(cpu),
+        Text(f"{round(cpu) if cpu is not None else '-':>3}%"),
+        Text(f"{cpus:g} cores" if cpus else "", style=MUTED),
+        Text(""),
+    )
+    used = system.get("mem_used_bytes")
+    total = system.get("mem_total_bytes")
+    known = used is not None and bool(total)
+    pct = used / total * 100 if known else None
+    table.add_row(
+        Text("ram", style=MUTED),
+        _bar(pct),
+        Text(f"{round(pct) if pct is not None else '-':>3}%"),
+        Text(f"{used / 2**30:.1f}/{total / 2**30:.0f} GiB" if known else "-"),
+        Text(""),
+    )
 
 
 def idle_panel(

@@ -769,3 +769,49 @@ def test_dashboard_decides_on_animation_before_live_replaces_stdout(monkeypatch)
     monkeypatch.setattr(tui, "render", lambda *a, **k: k["animate"])
     tui.run_dashboard(FakeDashBox())
     assert seen == [True] and len(calls) == 1
+
+
+def test_gpu_panel_shows_cpu_and_memory():
+    system = {
+        "cpu_pct": 37.5,
+        "cpus": 16,
+        "mem_used_bytes": 24 * 2**30,
+        "mem_total_bytes": 128 * 2**30,
+    }
+    text = _frame(_snapshot(probe=_probe(system=system)))
+    assert re.search(r"cpu .* 38% +16 cores", text)
+    assert re.search(r"ram .* 19% +24\.0/128 GiB", text)
+
+
+def test_gpu_panel_without_system_readings_from_an_older_probe():
+    probe = _probe()
+    probe.pop("system", None)
+    text = _frame(_snapshot(probe=probe))
+    assert "cores" not in text
+    assert "GPU" in text
+
+
+def test_unknown_memory_use_is_not_shown_as_zero():
+    system = {
+        "cpu_pct": None,
+        "cpus": 4,
+        "mem_used_bytes": None,
+        "mem_total_bytes": 2**34,
+    }
+    text = _frame(_snapshot(probe=_probe(system=system)))
+    assert re.search(r"ram .* -% +-", text)
+    assert "0.0/16 GiB" not in text
+
+
+def test_cpu_and_memory_still_show_when_the_gpus_cannot_be_read():
+    system = {
+        "cpu_pct": 50.0,
+        "cpus": 8,
+        "mem_used_bytes": 2**33,
+        "mem_total_bytes": 2**35,
+    }
+    probe = _probe(gpus=[], gpu_error="nvidia-smi failed", system=system)
+    text = _frame(_snapshot(probe=probe))
+    assert "nvidia-smi failed" in text
+    assert re.search(r"cpu .* 50% +8 cores", text)
+    assert re.search(r"ram .* 25% +8\.0/32 GiB", text)
