@@ -124,6 +124,7 @@ class Project:
             "files": changed,
             "ms": round(ms, 1),
             "ok": self.error is None,
+            "at": time.time(),
         }
         log(
             f"reloaded ({', '.join(changed)}) in {ms:.0f} ms, "

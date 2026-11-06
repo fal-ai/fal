@@ -6,12 +6,14 @@ select(); that is all the dashboard needs, without a full TUI framework.
 
 from __future__ import annotations
 
+import argparse
 import os
 import select
 import sys
 import threading
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 from rich.console import Console
 from rich.live import Live
@@ -50,6 +52,18 @@ def _read_key(fd: int, timeout: float) -> str | None:
     if data.startswith(b"\x1b"):
         return None
     return data[:1].decode(errors="ignore").lower()
+
+
+def _show_output(path: Path, console: Console) -> bool:
+    """Draw an image in the terminal; False if this terminal cannot show images."""
+    from fal.dev.media import preview, term_media
+
+    term = term_media.terminal_for(argparse.Namespace(preview=None, play=False))
+    if term.protocol == term_media.OFF:
+        return False
+    console.print(Text(f"{path}", style="dim"))
+    preview.show_paths([(str(path), "")], term)
+    return True
 
 
 def print_once(box: Box, console: Console | None = None) -> None:
@@ -159,6 +173,25 @@ def run_dashboard(
                             except Exception as exc:
                                 poller.say(f"shell failed: {exc}")
                         live.start()
+                    elif key == "o":
+                        image = model.latest_output(box)
+                        if not image:
+                            poller.say(
+                                "no image in hot-out/ here; "
+                                "`fal dev hot run` saves its results there"
+                            )
+                        else:
+                            live.stop()
+                            with _restored(fd):
+                                try:
+                                    if _show_output(image, console):
+                                        console.input("press Enter to return ")
+                                    else:
+                                        model.open_externally(image)
+                                        poller.say(f"opened {image.name}")
+                                except Exception as exc:
+                                    poller.say(f"open failed: {exc}")
+                            live.start()
                     elif key == "h" and runner_id:
                         act("holding", model.hold, box)
                     elif key == "r" and runner_id:

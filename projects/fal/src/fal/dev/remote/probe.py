@@ -16,6 +16,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 
@@ -74,10 +75,47 @@ def _hot():
     return hot
 
 
-def _system():
-    """CPU and memory; None rather than failing the whole probe."""
+def _gpu_memory():
     try:
-        return signals.system()
+        return signals.gpu_memory_by_pid()
+    except Exception:
+        return {}
+
+
+def _system(gpus_answered=True):
+    """CPU, memory, network, busiest processes; None rather than failing the probe.
+
+    Per-process GPU memory is skipped when nvidia-smi just failed or found no
+    GPU: a stuck driver would otherwise cost the probe another timeout.
+    """
+    gpu_memory = {}
+    # nvidia-smi runs while system() sleeps through its sample, so a healthy
+    # driver adds no time and a stuck one at most GPU_MEMORY_TIMEOUT.
+    reader = threading.Thread(
+        target=lambda: gpu_memory.update(_gpu_memory()), daemon=True
+    )
+    if gpus_answered:
+        reader.start()
+    try:
+        reading = signals.system()
+    except Exception:
+        return None
+    if gpus_answered:
+        reader.join(timeout=signals.GPU_MEMORY_TIMEOUT)
+    for process in reading.get("processes") or []:
+        if process["pid"] in gpu_memory:
+            process["gpu_mib"] = gpu_memory[process["pid"]]
+    return reading
+
+
+def _disks():
+    """Space on /work, /data and the root filesystem.
+
+    /data is already read for the snapshot and lease, so a stuck volume
+    adds no new way for the probe to hang.
+    """
+    try:
+        return signals.disks([config.LOCAL_WORK, config.VOLUME_MOUNT, "/"])
     except Exception:
         return None
 
@@ -144,7 +182,8 @@ def probe(workspace, check_dirty):
         "now": now,
         "gpus": gpus,
         "gpu_error": gpu_error,
-        "system": _system(),
+        "system": _system(gpus_answered=bool(gpus)),
+        "disks": _disks(),
         "activity": {
             "ssh_sessions": signals.ssh_sessions(),
             "gpu_busy": signals.gpu_busy(gpus, config.GPU_BUSY_PCT),

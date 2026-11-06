@@ -815,3 +815,315 @@ def test_cpu_and_memory_still_show_when_the_gpus_cannot_be_read():
     assert "nvidia-smi failed" in text
     assert re.search(r"cpu .* 50% +8 cores", text)
     assert re.search(r"ram .* 25% +8\.0/32 GiB", text)
+
+
+def _system(**changes) -> dict:
+    return {
+        "cpu_pct": 10.0,
+        "cpus": 8,
+        "mem_used_bytes": 2**33,
+        "mem_total_bytes": 2**35,
+        **changes,
+    }
+
+
+def test_disks_show_free_space_and_warn_when_low():
+    from fal.dev.dash import view
+
+    disks = [
+        {
+            "paths": ["/work", "/"],
+            "used_bytes": 6 * 2**40,
+            "total_bytes": 7 * 2**40,
+            "free_bytes": 3 * 2**30,
+        },
+        {
+            "paths": ["/data"],
+            "used_bytes": 1,
+            "total_bytes": 2**53,
+            "free_bytes": 500 * 2**30,
+        },
+    ]
+    probe = _probe(system=_system(), disks=disks)
+    text = _frame(_snapshot(probe=probe))
+    assert re.search(r"/work\+/ +3\.0 GB free", text)
+    assert re.search(r"/data +500\.0 GB free", text)
+    assert "%" not in "".join(line for line in text.splitlines() if "free" in line)
+
+    table = view.Table.grid()
+    for _ in range(5):
+        table.add_column()
+    view._add_system_rows(table, {"disks": disks})
+    styles = [cell.style for cell in table.columns[3].cells]
+    assert styles == [view.ERROR, ""]
+
+
+def test_no_disk_rows_from_an_older_probe():
+    probe = _probe(system=_system())
+    probe.pop("disks", None)
+    assert "/data" not in _frame(_snapshot(probe=probe))
+
+
+def test_network_rates_show_next_to_cpu_and_memory():
+    system = _system(net_in_bps=2_621_440, net_out_bps=512)
+    text = _frame(_snapshot(probe=_probe(system=system)))
+    assert re.search(r"net +in 2\.5 MB/s +out 512 B/s", text)
+    assert "net" not in _frame(_snapshot(probe=_probe(system=_system())))
+
+
+def test_top_processes_show_cpu_memory_and_gpu_memory():
+    processes = [
+        {
+            "pid": 1,
+            "name": "serve.py",
+            "cpu_pct": 212.4,
+            "rss_bytes": 3 * 2**30,
+            "gpu_mib": 20480,
+        },
+        {"pid": 2, "name": "[/x]", "cpu_pct": 0.0, "rss_bytes": 4096},
+    ]
+    text = _frame(_snapshot(probe=_probe(system=_system(processes=processes))))
+    assert "Top processes" in text
+    assert re.search(r"serve\.py +212% +3\.0 GB +20\.0 GB", text)
+    assert re.search(r"\[/x\] +0% +4\.0 KB +-", text)
+    assert "Top processes" not in _frame(_snapshot(probe=_probe(system=_system())))
+
+
+def test_sparkline_scales_percent_to_eight_levels():
+    from fal.dev.dash import view
+
+    assert view.sparkline([0, 50, 100]).plain == "▁▅█"
+    assert view.sparkline([200, -5]).plain == "█▁"
+    # More readings than columns are averaged down, newest last.
+    long = view.sparkline([0.0] * 50 + [100.0] * 50, width=10).plain
+    assert long == "▁" * 5 + "█" * 5
+
+
+def test_sparkline_falls_back_to_ascii(monkeypatch):
+    from fal.console import icons
+    from fal.dev.dash import view
+
+    monkeypatch.setattr(icons, "default_console", _console_with_encoding("ascii"))
+    assert view.sparkline([0, 100]).plain == "_#"
+
+
+def test_history_keeps_five_minutes_and_skips_unknown_readings():
+    probe = _probe(system=_system(cpu_pct=40.0))
+    history = model.record_history({}, probe, NOW)
+    assert history == {"gpu": [(NOW, 37)], "cpu": [(NOW, 40.0)]}
+    later = model.record_history(history, probe, NOW + 301)
+    assert later["gpu"] == [(NOW + 301, 37)]
+    # Not mutated: the view reads the old dict while the poller builds the new.
+    assert history["gpu"] == [(NOW, 37)]
+    no_cpu = model.record_history({}, _probe(system=_system(cpu_pct=None)), NOW)
+    assert "cpu" not in no_cpu
+
+
+def test_history_uses_the_busiest_gpu():
+    gpus = [{"util_pct": 5}, {"util_pct": 90}, {"util_pct": None}]
+    assert model.record_history({}, _probe(gpus=gpus), NOW)["gpu"] == [(NOW, 90)]
+
+
+def test_panel_draws_sparklines_once_there_is_a_trend():
+    history = {"gpu": [(NOW - 60, 0), (NOW, 100)], "cpu": [(NOW, 50)]}
+    text = _frame(_snapshot(probe=_probe(system=_system()), history=history))
+    assert re.search(r"gpu +▁█ +1m 00s", text)
+    # One reading is not a trend.
+    assert "cpu ▅" not in text
+
+
+def test_poller_records_history_and_forgets_it_with_the_runner():
+    box = FakeDashBox(_probe(system=_system(cpu_pct=30.0)))
+    poller = Poller(box)
+    poller.poll_once()
+    poller.poll_once()
+    assert len(poller.snapshot.history["gpu"]) == 2
+    assert len(poller.snapshot.history["cpu"]) == 2
+    box.runner_id = "runner-new"
+    poller.refresh_state()
+    poller.poll_once()
+    assert len(poller.snapshot.history["gpu"]) == 1
+    box.code = "stopped"
+    poller.refresh_state()
+    poller.poll_once()
+    assert poller.snapshot.history == {}
+
+
+def test_estimated_cost_is_marked_and_needs_a_known_price(monkeypatch):
+    hidden = _snapshot(cost_hidden=True)
+    assert "est." not in _frame(hidden)  # no price list ships: no guess
+    monkeypatch.setattr(model, "LIST_PRICES", {"GPU-H100": 5.0})
+    text = _frame(hidden)
+    assert "~$5.00 est. at $5.00/h" in text
+    # Usage the platform reports wins over a guess.
+    real = _snapshot(cost=Cost(spent=4.5, per_hour=4.5))
+    assert "est." not in _frame(real)
+    monkeypatch.setattr(model, "LIST_PRICES", {"GPU-A100": 5.0})
+    assert "est." not in _frame(hidden)
+
+
+def test_estimate_cost_is_uptime_at_the_list_price(monkeypatch):
+    monkeypatch.setattr(model, "LIST_PRICES", {"GPU-H100": 4.0})
+    assert model.estimate_cost("GPU-H100", 1800) == Cost(2.0, 4.0)
+    assert model.estimate_cost("GPU-H100", None) is None
+    assert model.estimate_cost(None, 60) is None
+
+
+def test_hot_panel_shows_state_reload_infer_and_error():
+    hot = {
+        "last_reload": {"files": ["infer.py"], "ms": 9.4, "ok": False, "at": NOW - 30},
+        "last_infer": {"at": NOW - 90, "ms": 571},
+        "error": "NameError: pipe",
+    }
+    text = _frame(_snapshot(_probe(hot=hot)))
+    assert "Hot reload" in text
+    assert "infer.py in 9.4 ms, 30s ago  (import failed)" in text
+    assert "571 ms, 1m 30s ago" in text
+    assert "NameError: pipe" in text
+    assert re.search(r"state +ready · code v3", text)
+    # Said once, in its own panel, not again under Connections.
+    assert text.count("code v3") == 1
+
+
+def test_hot_panel_copes_with_a_reload_that_has_no_time():
+    text = _frame(_snapshot())
+    assert "infer.py in 9.4 ms" in text
+    assert "ms," not in text.split("last reload")[1].splitlines()[0]
+
+
+def test_no_hot_panel_while_the_hot_server_is_not_running():
+    text = _frame(_snapshot(_probe(hot={"running": False})))
+    assert "Hot reload" not in text
+    assert re.search(r"hot reload +not running", text)
+
+
+def test_footer_lists_the_open_key_even_without_a_runner():
+    text = _frame(_snapshot(code="stopped"))
+    assert "o open output" in text
+
+
+def test_latest_output_is_the_newest_image_in_hot_out(monkeypatch, tmp_path):
+    import os
+
+    from fal.dev import state
+
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
+    out = tmp_path / "proj" / "hot-out"
+    out.mkdir(parents=True)
+    for name, age in [("old.png", 300), ("new.jpg", 10), ("notes.txt", 0)]:
+        (out / name).write_text("x")
+        os.utime(out / name, (NOW - age, NOW - age))
+    assert model.latest_output(FakeDashBox(), tmp_path / "proj") == out / "new.jpg"
+    assert model.latest_output(FakeDashBox(), tmp_path) is None
+
+
+def test_latest_output_also_looks_in_the_remembered_hot_project(monkeypatch, tmp_path):
+    from fal.dev import state
+
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
+    project = tmp_path / "project"
+    (project / "hot-out").mkdir(parents=True)
+    (project / "hot-out" / "a.png").write_text("x")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    state.update(elsewhere, None, hot_local=str(project))
+    assert model.latest_output(FakeDashBox(), elsewhere) == project / "hot-out/a.png"
+
+
+@pytest.mark.parametrize(
+    "platform,command",
+    [("darwin", "open"), ("linux", "xdg-open")],
+)
+def test_open_externally_uses_the_systems_viewer(monkeypatch, platform, command):
+    started = []
+    monkeypatch.setattr(model.sys, "platform", platform)
+    monkeypatch.setattr(
+        model.subprocess, "Popen", lambda args, **kwargs: started.append(args)
+    )
+    model.open_externally(Path("/tmp/a.png"))
+    assert started == [[command, "/tmp/a.png"]]
+
+
+def _drive_dashboard(monkeypatch, keys, **patches):
+    """Run the dash loop with scripted keys; returns what the footer was told."""
+    import contextlib
+
+    from fal.dev.dash import tui
+
+    said = []
+
+    class _Live:
+        def __init__(self, renderable, **kwargs):
+            self.stops = 0
+
+        def start(self):
+            pass
+
+        def stop(self):
+            self.stops += 1
+
+        def update(self, frame, refresh=False):
+            pass
+
+    script = iter(keys)
+    monkeypatch.setattr(tui.os, "name", "posix")
+    monkeypatch.setattr(tui.sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(tui.sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(tui.sys.stdin, "fileno", lambda: 0, raising=False)
+    monkeypatch.setattr(tui, "_cbreak", lambda fd: contextlib.nullcontext())
+    monkeypatch.setattr(tui, "_restored", lambda fd: contextlib.nullcontext())
+    monkeypatch.setattr(tui, "Live", _Live)
+    monkeypatch.setattr(tui, "_read_key", lambda fd, timeout: next(script))
+    monkeypatch.setattr(tui, "render", lambda *a, **k: "frame")
+    monkeypatch.setattr(tui.model.Poller, "start", lambda self: None)
+    monkeypatch.setattr(
+        tui.model.Poller, "say", lambda self, m, seconds=10: said.append(m)
+    )
+    for name, value in patches.items():
+        monkeypatch.setattr(tui, name, value)
+    tui.run_dashboard(FakeDashBox())
+    return said
+
+
+def test_o_opens_the_latest_output_in_the_system_viewer(monkeypatch):
+    opened = []
+    monkeypatch.setattr(model, "latest_output", lambda box: Path("hot-out/a.png"))
+    monkeypatch.setattr(model, "open_externally", opened.append)
+    said = _drive_dashboard(
+        monkeypatch, ["o", "q"], _show_output=lambda path, console: False
+    )
+    assert opened == [Path("hot-out/a.png")]
+    assert said == ["opened a.png"]
+
+
+def test_o_previews_inline_when_the_terminal_can_draw_images(monkeypatch):
+    shown, opened = [], []
+    monkeypatch.setattr(model, "latest_output", lambda box: Path("hot-out/a.png"))
+    monkeypatch.setattr(model, "open_externally", opened.append)
+    monkeypatch.setattr(Console, "input", lambda self, prompt="": "")
+
+    def show(path, console):
+        shown.append(path)
+        return True
+
+    _drive_dashboard(monkeypatch, ["o", "q"], _show_output=show)
+    assert shown == [Path("hot-out/a.png")] and opened == []
+
+
+def test_o_says_where_images_come_from_when_there_are_none(monkeypatch):
+    monkeypatch.setattr(model, "latest_output", lambda box: None)
+    said = _drive_dashboard(monkeypatch, ["o", "q"])
+    assert said and "hot-out/" in said[0] and "fal dev hot run" in said[0]
+
+
+def test_o_reports_a_viewer_that_fails(monkeypatch):
+    monkeypatch.setattr(model, "latest_output", lambda box: Path("hot-out/a.png"))
+
+    def fail(path):
+        raise model.DevError("no viewer")
+
+    monkeypatch.setattr(model, "open_externally", fail)
+    said = _drive_dashboard(
+        monkeypatch, ["o", "q"], _show_output=lambda path, console: False
+    )
+    assert said == ["open failed: no viewer"]

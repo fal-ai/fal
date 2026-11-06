@@ -7,7 +7,9 @@ often. Polling never counts as activity for the idle watchdog (see the probe).
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -15,6 +17,7 @@ import threading
 import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 import httpx
@@ -31,6 +34,13 @@ LOG_LINES = 30
 STATE_INTERVAL = 15.0
 LOG_INTERVAL = 10.0
 COST_INTERVAL = 60.0
+HISTORY_SECONDS = 300.0
+# Output images `fal dev hot run` saves next to the project, newest last.
+OUTPUT_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+# List price in USD per runner-hour by machine type, for the cost estimate shown
+# when this login cannot read usage. The SDK ships no price list and none is
+# invented here: a machine type missing from this table gets no estimate.
+LIST_PRICES: dict[str, float] = {}
 # Warnings the box writes when its idle watchdog cannot stop it.
 WATCHDOG_OFF_PATTERNS = (
     "idle shutdown is off",
@@ -201,6 +211,38 @@ def fetch_cost(box: Box, runner_uptime: float) -> Cost | None:
     return Cost(spent, rates[0] if rates else None)
 
 
+def estimate_cost(machine_type: str | None, uptime: float | None) -> Cost | None:
+    """Runner uptime at the machine type's list price; None without a known price."""
+    price = LIST_PRICES.get(machine_type or "")
+    if price is None or uptime is None:
+        return None
+    return Cost(price * uptime / 3600, price)
+
+
+# Rolling readings, by series name: (local time, percent), oldest first.
+History = dict[str, list[tuple[float, float]]]
+
+
+def record_history(history: History, probe: dict, at: float) -> History:
+    """`history` plus the probe's GPU and CPU readings, trimmed to the last 5 minutes.
+
+    Returns a new dict: the view reads snapshots from another thread.
+    """
+    readings: dict[str, float | None] = {}
+    utils = [g["util_pct"] for g in probe["gpus"] if g["util_pct"] is not None]
+    readings["gpu"] = max(utils) if utils else None
+    readings["cpu"] = (probe.get("system") or {}).get("cpu_pct")
+    cutoff = at - HISTORY_SECONDS
+    kept: History = {}
+    for name, value in readings.items():
+        points = [p for p in history.get(name, []) if p[0] >= cutoff]
+        if value is not None:
+            points.append((at, value))
+        if points:
+            kept[name] = points
+    return kept
+
+
 @dataclass
 class Snapshot:
     """Everything the view draws; replaced as a whole by the poller."""
@@ -210,6 +252,8 @@ class Snapshot:
     probe: dict | None = None
     probe_at: float | None = None  # local clock
     probe_ms: float | None = None
+    # GPU and CPU percent of the current runner over the last HISTORY_SECONDS.
+    history: History = field(default_factory=dict)
     logs: list[dict] = field(default_factory=list)
     # The cost of cost_runner's run; None until the platform has answered.
     cost: Cost | None = None
@@ -349,13 +393,14 @@ class Poller:
                 cost_runner=runner_id,
                 cost_hidden=False,
                 cost_stale=False,
+                history={},
                 errors={"cost": None},
             )
             self._next_cost = 0.0
         if not runner_id:
             if self.snapshot.probe is not None or self.snapshot.logs:
                 # A stopped box has no live state; drop the last runner's.
-                self.update(probe=None, probe_at=None, logs=[])
+                self.update(probe=None, probe_at=None, logs=[], history={})
             return
         # Walking /work for unsaved changes is the probe's only costly part;
         # do it every tenth refresh.
@@ -378,6 +423,7 @@ class Poller:
                 probe=probe,
                 probe_at=time.time(),
                 probe_ms=(time.time() - start) * 1000,
+                history=record_history(self.snapshot.history, probe, time.time()),
                 errors={"probe": None},
             )
         except Exception as exc:
@@ -469,6 +515,54 @@ def hot_restart(box: Box, runner_id: str) -> str:
     if code != 0:
         raise DevError("is the hot server running?")
     return "hot server restarting; the model reloads"
+
+
+def latest_output(box: Box, cwd: Path | None = None) -> Path | None:
+    """The newest image `fal dev hot run` saved, None if there is none.
+
+    Results come back over HTTP and are written on this machine, never on the
+    box: in hot-out/ of the folder the dash runs in, and of the project that
+    folder last used `fal dev hot` with.
+    """
+    from fal.dev import hot, state
+
+    cwd = cwd or Path.cwd()
+    folders = [cwd]
+    with contextlib.suppress(OSError):
+        project = state.load(cwd, box.host).get("hot_local")
+        if project:
+            folders.append(Path(project))
+    newest: tuple[float, Path] | None = None
+    for folder in folders:
+        try:
+            candidates = list((folder / hot.OUTPUT_DIR).iterdir())
+        except OSError:
+            continue
+        for path in candidates:
+            if path.suffix.lower() not in OUTPUT_SUFFIXES:
+                continue
+            try:
+                stamp = path.stat().st_mtime
+            except OSError:
+                continue
+            if newest is None or stamp > newest[0]:
+                newest = (stamp, path)
+    return newest[1] if newest else None
+
+
+def open_externally(path: Path) -> None:
+    """Open a file in the system's viewer, for terminals that cannot draw images."""
+    if sys.platform == "darwin":
+        command = ["open", str(path)]
+    elif sys.platform.startswith("win"):
+        os.startfile(path)  # type: ignore[attr-defined]
+        return
+    else:
+        command = ["xdg-open", str(path)]
+    try:
+        subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError as exc:
+        raise DevError(f"could not open {path.name}: {exc}") from exc
 
 
 def open_shell(box: Box, runner_id: str) -> None:
