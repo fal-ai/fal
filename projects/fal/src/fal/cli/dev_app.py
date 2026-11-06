@@ -96,7 +96,9 @@ def _wait_ready(session, *, after: int | None = None, timeout: float = 3600) -> 
     raise DevAppError("Timed out waiting for setup() to finish.")
 
 
-def _collect(session, skipped: list[str] | None = None):
+def _collect(
+    session, skipped: list[str] | None = None, withheld: list[str] | None = None
+):
     from fal.dev import app_sync
 
     return app_sync.collect(
@@ -104,21 +106,92 @@ def _collect(session, skipped: list[str] | None = None):
         skipped,
         ignore=session.ignore,
         ignore_base=session.ignore_base,
+        withheld=withheld,
     )
 
 
-def _sync(session, *, full: bool = False, reload: bool = True) -> dict[str, Any] | None:
+def _place_from_store(
+    session, files, manifest: dict[str, str]
+) -> dict[str, str] | None:
+    """Have the box copy the files its team's object store already holds.
+
+    Returns the manifest of the files now in place (the rest must be sent),
+    or None when the box has no store.
+    """
+    from fal.dev import app_sync
+    from fal.dev.app_session import DevAppError, call
+
+    try:
+        found = call(
+            session,
+            "objects",
+            {"action": "missing", "digests": sorted(set(manifest.values()))},
+            timeout=600,
+        )
+    except DevAppError as exc:
+        # 404: a box from before the object store. Anything else: say so.
+        if "(404)" not in str(exc):
+            _console().print(f"[yellow]Object store skipped[/]: {escape(str(exc))}")
+        return None
+    if not found.get("enabled"):
+        return None
+    missing = set(found["missing"])
+    executable: dict[str, bool] = {}
+    for rel, digest in manifest.items():
+        if digest in missing:
+            continue
+        try:
+            executable[rel] = bool(files[rel].stat().st_mode & 0o111)
+        except OSError:
+            continue  # gone since collect; the sync sorts it out
+    placed: dict[str, str] = {}
+    for batch in app_sync.batches(
+        files, sorted(executable), PLACE_BATCH_BYTES, PLACE_BATCH
+    ):
+        entries = {rel: [manifest[rel], executable[rel]] for rel in batch}
+        try:
+            result = call(
+                session, "objects", {"action": "place", "files": entries}, timeout=600
+            )
+        except DevAppError as exc:
+            # Whatever was not placed is uploaded instead.
+            _console().print(
+                f"[yellow]Object store place failed[/]: {escape(str(exc))}"
+            )
+            continue
+        placed.update({rel: manifest[rel] for rel in result["placed"]})
+    return placed
+
+
+PLACE_BATCH = 2000
+PLACE_BATCH_BYTES = 512 * 1024 * 1024
+
+
+def _sync(
+    session, *, full: bool = False, reload: bool = True, from_store: bool = False
+) -> dict[str, Any] | None:
     from fal.dev import app_sync
     from fal.dev.app_session import call
 
     skipped: list[str] = []
-    files = _collect(session, skipped)
+    withheld: list[str] = []
+    files = _collect(session, skipped, withheld)
     if skipped:
         _console().print(
             f"[yellow]Not synced (over 10 MiB)[/]: {', '.join(skipped[:8])}"
         )
+    if withheld and full:
+        _console().print(
+            "[yellow]Not synced (key or credential files)[/]: "
+            f"{escape(', '.join(withheld[:8]))}"
+        )
     manifest = app_sync.manifest(files)
     previous = {} if full else session.manifest
+    placed = None
+    if full and from_store:
+        stored = _place_from_store(session, files, manifest)
+        if stored is not None:
+            previous, placed = stored, len(stored)
     changed, deleted = app_sync.diff(previous, manifest)
     if not changed and not deleted and not full:
         return None
@@ -144,6 +217,7 @@ def _sync(session, *, full: bool = False, reload: bool = True) -> dict[str, Any]
         session.save()
     result["changed"] = changed
     result["deleted"] = deleted
+    result["placed"] = placed
     return result
 
 
@@ -189,7 +263,17 @@ def _boot(session) -> dict:
     from fal.dev import app_sync
     from fal.dev.app_session import call
 
-    _sync(session, full=True, reload=False)
+    started = time.perf_counter()
+    result = _sync(session, full=True, reload=False, from_store=True) or {}
+    uploaded = len(result.get("changed", []))
+    elapsed = time.perf_counter() - started
+    if result.get("placed") is None:
+        _console().print(f"Source: {uploaded} file(s) uploaded ({elapsed:.1f}s).")
+    else:
+        _console().print(
+            f"Source: {result['placed']} file(s) copied from the team's object "
+            f"store on the box, {uploaded} uploaded ({elapsed:.1f}s)."
+        )
     _replay_overlay(session)
     sdk = app_sync.sdk_files()
     after = call(session, "logs", {"lines": 0}, timeout=600)["total"]
@@ -260,7 +344,7 @@ def _ensure_booted(session) -> bool:
         return False
     _console().print(
         "[yellow]The box is on a new runner[/] (idle shutdown or replacement): "
-        "uploading the source and running setup() again."
+        "syncing the source and running setup() again."
     )
     _boot(session)
     return True

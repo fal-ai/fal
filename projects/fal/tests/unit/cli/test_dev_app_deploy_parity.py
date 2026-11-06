@@ -1,6 +1,7 @@
 """`fal dev app` runs an app the way `fal deploy` ships it: pyproject.toml refs,
 app_files layouts, package indexes, shared caches and synced trees."""
 
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -465,3 +466,244 @@ def test_start_saves_session_env(repo, monkeypatch):
     with pytest.raises(ValueError, match="cannot set"):
         dev_app._start(args)
     assert not deployed
+
+
+@pytest.fixture
+def roomy(monkeypatch):
+    """The store's free-space floor, off: test disks are small."""
+    from fal.dev import app_objects
+
+    monkeypatch.setattr(app_objects, "MIN_FREE_BYTES", 0)
+
+
+def test_object_store_keeps_checked_copies(tmp_path, roomy, monkeypatch):
+    import hashlib
+
+    from fal.dev import app_objects
+    from fal.dev.app_objects import Store
+
+    assert Store.open(tmp_path / "missing") is None
+    store = Store.open(tmp_path)
+    assert store is not None
+    source = tmp_path / "a.py"
+    source.write_text("print(1)\n")
+    digest = store.put(source)
+    assert digest == hashlib.sha256(b"print(1)\n").hexdigest()
+    assert store.missing([digest, "0" * 64]) == ["0" * 64]
+
+    target = tmp_path / "src" / "pkg" / "a.py"
+    assert store.get(digest, target, executable=True)
+    assert target.read_text() == "print(1)\n"
+    assert target.stat().st_mode & 0o111
+
+    # A damaged object counts as missing, is never copied out, and is dropped
+    # so the next put repairs it.
+    store.path(digest).write_text("tampered")
+    assert not store.get(digest, tmp_path / "other.py")
+    assert not (tmp_path / "other.py").exists()
+    assert store.missing([digest]) == [digest]
+    assert store.put(source) == digest
+    assert store.get(digest, tmp_path / "other.py")
+
+    # Links planted in the store are never followed.
+    planted = tmp_path / "planted.py"
+    planted.write_text("print(2)\n")
+    planted_digest = hashlib.sha256(b"print(2)\n").hexdigest()
+    store.path(planted_digest).parent.mkdir(exist_ok=True)
+    store.path(planted_digest).symlink_to(planted)
+    assert store.missing([planted_digest]) == [planted_digest]
+    assert not store.get(planted_digest, tmp_path / "x.py")
+
+    # A FIFO planted in the store neither hangs nor gets copied.
+    fifo_digest = "f" * 64
+    store.path(fifo_digest).parent.mkdir(exist_ok=True)
+    os.mkfifo(store.path(fifo_digest))
+    assert not store.get(fifo_digest, tmp_path / "fifo.py")
+
+    # Nothing bigger than the sync's file limit is copied out.
+    big = b"x" * (app_objects.MAX_OBJECT_BYTES + 1)
+    big_digest = hashlib.sha256(big).hexdigest()
+    store.path(big_digest).parent.mkdir(exist_ok=True)
+    store.path(big_digest).write_bytes(big)
+    assert not store.get(big_digest, tmp_path / "big.bin")
+    assert not (tmp_path / "big.bin").exists()
+
+    # A nearly full volume is left alone.
+    monkeypatch.setattr(app_objects, "MIN_FREE_BYTES", 1 << 62)
+    assert store.put(planted) is None
+    with pytest.raises(ValueError):
+        store.path("../../etc/passwd")
+
+
+def test_holder_places_stored_files_and_stores_synced_ones(tmp_path, roomy):
+    from fal.dev import app_holder, app_sync
+    from fal.dev.app_objects import Store
+
+    (tmp_path / "data").mkdir()
+    store = Store.open(tmp_path / "data")
+    assert store is not None
+    child = app_holder._ChildProcess(tmp_path / "session")
+    child.store = store
+    local = tmp_path / "local"
+    (local / "pkg").mkdir(parents=True)
+    (local / "pkg" / "a.py").write_text("A = 1\n")
+    files = app_sync.collect(local)
+    manifest = app_sync.manifest(files)
+
+    # Nothing stored yet: everything is missing, nothing placed.
+    found = app_holder._objects(
+        child, {"action": "missing", "digests": list(manifest.values())}
+    )
+    assert found == {"enabled": True, "missing": sorted(manifest.values())}
+
+    # A synced file is queued for the store, and the worker keeps it...
+    archive = app_sync.pack(files, ["pkg/a.py"])
+    child.remember(app_holder._extract(archive, child.src))
+    store.put(child.keep.get_nowait())
+    assert child.keep.empty()
+    # ...so a fresh runner can copy it into place.
+    fresh = app_holder._ChildProcess(tmp_path / "fresh")
+    fresh.store = store
+    placed = app_holder._objects(
+        fresh,
+        {"action": "place", "files": {"pkg/a.py": [manifest["pkg/a.py"], False]}},
+    )
+    assert placed["placed"] == ["pkg/a.py"]
+    assert (fresh.src / "pkg" / "a.py").read_text() == "A = 1\n"
+    assert "pkg/a.py" in fresh.synced
+    with pytest.raises(ValueError, match="refusing"):
+        app_holder._objects(
+            fresh, {"action": "place", "files": {"../x": [manifest["pkg/a.py"], 0]}}
+        )
+
+    child.store = None
+    assert app_holder._objects(child, {"action": "missing"}) == {"enabled": False}
+
+
+def test_boot_uploads_only_what_the_store_lacks(tmp_path, monkeypatch):
+    from fal.cli import dev_app
+    from fal.dev import app_session
+    from fal.dev.app_session import Session
+
+    root = tmp_path / "tree"
+    root.mkdir()
+    for name in ("a.py", "b.py", "c.py"):
+        (root / name).write_text(name)
+    session = Session(
+        name="dev-x",
+        app_name="dev-x",
+        file_path=str(root / "a.py"),
+        root=str(root),
+        module="a",
+        class_name="A",
+        run_url="https://fal.run/me/dev-x",
+        token="t",
+    )
+    monkeypatch.setattr(app_session, "SESSIONS_DIR", tmp_path / "sessions")
+    calls = []
+
+    def call(session, action, payload=None, *, timeout=60):
+        calls.append((action, payload))
+        if action == "objects" and payload["action"] == "missing":
+            from fal.dev import app_sync
+
+            digests = app_sync.manifest(app_sync.collect(root))
+            return {"enabled": True, "missing": [digests["c.py"]]}
+        if action == "objects":
+            return {"enabled": True, "placed": sorted(payload["files"]), "missing": []}
+        return {}
+
+    monkeypatch.setattr(app_session, "call", call)
+    result = dev_app._sync(session, full=True, reload=False, from_store=True)
+    assert result["placed"] == 2
+    assert result["changed"] == ["c.py"]
+    files_call = [p for action, p in calls if action == "files"][0]
+    assert files_call["full"] is True
+    assert files_call["all_files"] == ["a.py", "b.py", "c.py"]
+    assert session.manifest.keys() == {"a.py", "b.py", "c.py"}
+
+    # A box without the store (or an older one) gets the whole tree.
+    calls.clear()
+
+    def old_box(session, action, payload=None, *, timeout=60):
+        if action == "objects":
+            raise app_session.DevAppError("objects failed (404): Not Found")
+        return {}
+
+    monkeypatch.setattr(app_session, "call", old_box)
+    result = dev_app._sync(session, full=True, reload=False, from_store=True)
+    assert result["changed"] == ["a.py", "b.py", "c.py"]
+
+
+def test_boot_falls_back_to_uploading(tmp_path, monkeypatch):
+    """No store, a failed place, or a damaged object: those files are sent."""
+    from fal.cli import dev_app
+    from fal.dev import app_session, app_sync
+    from fal.dev.app_session import DevAppError, Session
+
+    root = tmp_path / "tree"
+    root.mkdir()
+    for name in ("a.py", "b.py", "c.py"):
+        (root / name).write_text(name)
+    session = Session(
+        "dev-x", "dev-x", str(root / "a.py"), str(root), "a", "A", "u", "t"
+    )
+    monkeypatch.setattr(app_session, "SESSIONS_DIR", tmp_path / "sessions")
+    monkeypatch.setattr(dev_app, "PLACE_BATCH", 1)
+    places = []
+
+    def call(session, action, payload=None, *, timeout=60):
+        if action == "objects" and payload["action"] == "missing":
+            return {"enabled": True, "missing": []}
+        if action == "objects":
+            places.append(sorted(payload["files"]))
+            (rel,) = payload["files"]
+            if rel == "b.py":
+                raise DevAppError("objects failed (400): disk error")
+            if rel == "c.py":
+                return {"enabled": True, "placed": [], "missing": ["c.py"]}
+            return {"enabled": True, "placed": [rel], "missing": []}
+        return {}
+
+    monkeypatch.setattr(app_session, "call", call)
+    result = dev_app._sync(session, full=True, reload=False, from_store=True)
+    # One file per place request, as PLACE_BATCH says.
+    assert places == [["a.py"], ["b.py"], ["c.py"]]
+    assert result["placed"] == 1
+    assert result["changed"] == ["b.py", "c.py"]
+
+    def no_store(session, action, payload=None, *, timeout=60):
+        if action == "objects":
+            return {"enabled": False}
+        return {}
+
+    monkeypatch.setattr(app_session, "call", no_store)
+    result = dev_app._sync(session, full=True, reload=False, from_store=True)
+    assert result["placed"] is None
+    assert result["changed"] == sorted(app_sync.collect(root))
+
+
+def test_sync_never_sends_keys_or_credentials(tmp_path):
+    for name in ("app.py", "server.pem", "tls.key", "credentials.json", "id_ed25519"):
+        (tmp_path / name).write_text("x")
+    for name in (
+        "conf/.npmrc",
+        ".aws/credentials",
+        "certs/ca.p8",
+        ".SSH/config",
+        "deploy/kubeconfig",
+        "conf/secrets.yaml",
+    ):
+        (tmp_path / name).parent.mkdir(exist_ok=True)
+        (tmp_path / name).write_text("x")
+    # Not even through a link with an innocent name.
+    (tmp_path / "ok.txt").symlink_to(tmp_path / "server.pem")
+    withheld: list[str] = []
+    (tmp_path / "settings").mkdir()
+    (tmp_path / "settings" / "secrets.py").write_text("x")
+    assert sorted(app_sync.collect(tmp_path, withheld=withheld)) == [
+        "app.py",
+        "settings/secrets.py",
+    ]
+    assert "server.pem" in withheld
+    assert ".aws/credentials" in withheld

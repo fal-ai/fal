@@ -24,6 +24,7 @@ import http.client
 import io
 import json
 import os
+import queue
 import re
 import shutil
 import signal
@@ -42,12 +43,14 @@ from fastapi import Body
 
 import fal
 from fal.app import App
-from fal.dev import app_deps, app_profile
+from fal.dev import app_deps, app_objects, app_profile
 
 CHILD_PORT = 8181
 STATE_ROOT = Path("/tmp/fal-dev-app")
 MAX_RESPONSE_BYTES = 20 * 1024 * 1024
 MAX_WARMUPS = 50
+MAX_PLACE_FILES = 5000
+MAX_DIGESTS = 200_000
 MAX_REPEAT = 100
 MAX_PROFILE_WARMUPS = 10
 # Profile folders kept on the runner; older ones are deleted.
@@ -203,8 +206,33 @@ class _ChildProcess:
         self.pending_reload = False
         # Files written by syncs, so a full sync only prunes what it put there.
         self.synced: set[str] = set()
+        # Every synced file is also kept here, for the next box to copy, by one
+        # worker so a reload never waits on /data.
+        try:
+            self.store = app_objects.Store.open()
+        except Exception as exc:  # the store is optional; the box is not
+            print(f"[fal dev] object store unavailable: {exc}", flush=True)
+            self.store = None
+        self.keep: queue.SimpleQueue[Path] = queue.SimpleQueue()
+        if self.store is not None:
+            threading.Thread(target=self._keep, daemon=True).start()
         self.log: collections.deque[str] = collections.deque(maxlen=LOG_LINES)
         self.log_total = 0
+
+    def remember(self, written: list[str]) -> None:
+        """Queue synced files for the team's object store."""
+        if self.store is not None:
+            for rel in written:
+                self.keep.put(self.src / rel)
+
+    def _keep(self) -> None:
+        assert self.store is not None
+        while True:
+            path = self.keep.get()
+            try:
+                self.store.put(path)
+            except Exception as exc:  # keep the worker alive for the next file
+                self._emit(f"[fal dev] could not store {path.name}: {exc}")
 
     def _emit(self, line: str) -> None:
         with self.log_lock:
@@ -756,6 +784,39 @@ def _deps(child: _ChildProcess, payload: dict) -> dict[str, Any]:
     return result
 
 
+def _objects(child: _ChildProcess, payload: dict) -> dict[str, Any]:
+    """Which files the team's object store lacks, or copy the rest into place."""
+    store = child.store
+    if store is None:
+        return {"enabled": False}
+    action = payload.get("action")
+    if action == "missing":
+        digests = payload.get("digests") or []
+        if not isinstance(digests, list) or len(digests) > MAX_DIGESTS:
+            raise ValueError(f"digests must be a list of at most {MAX_DIGESTS}")
+        return {"enabled": True, "missing": store.missing([str(d) for d in digests])}
+    if action != "place":
+        raise ValueError(f"unknown objects action {action!r}")
+    files = payload.get("files") or {}
+    if not isinstance(files, dict) or len(files) > MAX_PLACE_FILES:
+        raise ValueError(f"files must map at most {MAX_PLACE_FILES} paths")
+    entries = []
+    # Check every entry before placing any.
+    for raw, entry in sorted(files.items()):
+        if not isinstance(entry, list) or len(entry) != 2:
+            raise ValueError(f"expected [digest, executable] for {raw!r}")
+        store.path(str(entry[0]))
+        entries.append((str(_rel(raw)), str(entry[0]), bool(entry[1])))
+    placed, missing = [], []
+    for rel, digest, executable in entries:
+        if store.get(digest, child.src / rel, executable):
+            placed.append(rel)
+        else:
+            missing.append(rel)
+    child.synced.update(placed)
+    return {"enabled": True, "placed": placed, "missing": missing}
+
+
 def _int(payload: dict, key: str, default: int | None) -> int | None:
     value = payload.get(key, default)
     if value is None:
@@ -863,6 +924,7 @@ class DevAppHolder:
             if payload.get("archive"):
                 written = _extract(payload["archive"], child.src)
             child.synced.update(written)
+            child.remember(written)
             result: dict[str, Any] = {"written": written, "deleted": deleted}
             if payload.get("reload"):
                 result["reload"] = child.reload(written + deleted)
@@ -870,6 +932,14 @@ class DevAppHolder:
 
         try:
             return await asyncio.to_thread(sync)
+        except REQUEST_ERRORS as exc:
+            raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @fal.endpoint(f"{ROUTE_PREFIX}objects")
+    async def dev_objects(self, payload: Any = Body(...)) -> dict[str, Any]:
+        payload = self._check(payload)
+        try:
+            return await asyncio.to_thread(_objects, self._child, payload)
         except REQUEST_ERRORS as exc:
             raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
 
