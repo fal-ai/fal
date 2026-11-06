@@ -1484,6 +1484,8 @@ def test_non_agent_app_keeps_offload_and_hints_off(monkeypatch):
         ("LlamaForCausalLM", "NousResearch/Hermes-3-Llama-3.1-8B", None),
         ("Qwen2ForCausalLM", "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B", None),
         ("Qwen2ForCausalLM", "Qwen/Qwen2.5-7B-Instruct", "hermes"),
+        ("Qwen3_5ForConditionalGeneration", "Qwen/Qwen3.8-27B-FP8", "qwen3_coder"),
+        ("Qwen3_5ForConditionalGeneration", "org/merged-27b", None),
     ],
 )
 def test_agent_tool_parser_same_architecture_exceptions(arch, model_id, parser):
@@ -1520,3 +1522,115 @@ def test_agent_offload_without_cgroup_limit_sizes_from_fal_ram_not_host(
         60 * (1 << 30) * 0.7
     )
     assert "no container memory limit is readable" in capsys.readouterr().out
+
+
+# Qwen3.8 (Qwen3_5ForConditionalGeneration): multimodal config, text model in
+# text_config, served FP8.
+QWEN38_27B = {
+    "architectures": ["Qwen3_5ForConditionalGeneration"],
+    "text_config": {
+        "hidden_size": 5120,
+        "num_hidden_layers": 64,
+        "num_attention_heads": 24,
+        "num_key_value_heads": 4,
+        "head_dim": 256,
+        "intermediate_size": 17408,
+        "vocab_size": 248320,
+        "max_position_embeddings": 262144,
+    },
+    "quantization_config": FP8_QUANT,
+}
+QWEN38_ID = "Qwen/Qwen3.8-27B-FP8"
+
+
+def test_agent_profile_qwen38_flags():
+    args = _rtx(config=QWEN38_27B, model_id=QWEN38_ID, profile="agent")
+    assert _flag_value(args, "--tool-call-parser") == "qwen3_coder"
+    assert "--enable-auto-tool-choice" in args
+    assert _flag_value(args, "--reasoning-parser") == "qwen3"
+    assert "--language-model-only" in args
+    kwargs = json.loads(_flag_value(args, "--default-chat-template-kwargs"))
+    assert kwargs == {"reasoning_effort": "low"}
+    # Window comes from text_config, capped at 128k.
+    assert _flag_value(args, "--max-model-len") == "131072"
+    assert _flag_value(args, "--gpu-memory-utilization") == "0.92"
+    # Already FP8: no online quantization on top.
+    assert "--quantization" not in _rtx(
+        config=QWEN38_27B, model_id=QWEN38_ID, profile="agent", fp8_weights=True
+    )
+    assert merge_engine_args(args, args) == args
+
+
+def test_qwen38_flags_are_agent_and_vllm_only():
+    for profile in ("throughput", "latency", "max_throughput"):
+        args = _rtx(config=QWEN38_27B, model_id=QWEN38_ID, profile=profile)
+        for flag in (
+            "--reasoning-parser",
+            "--language-model-only",
+            "--default-chat-template-kwargs",
+            "--gpu-memory-utilization",
+        ):
+            assert flag not in args, (profile, flag)
+    sglang = _rtx("sglang", QWEN38_27B, model_id=QWEN38_ID, profile="agent")
+    assert "--reasoning-parser" not in sglang
+
+
+def test_qwen38_user_flags_win():
+    preset = _rtx(config=QWEN38_27B, model_id=QWEN38_ID, profile="agent")
+    user = [
+        "--default-chat-template-kwargs",
+        '{"reasoning_effort": "high"}',
+        "--no-language-model-only",
+        "--reasoning-parser=deepseek_r1",
+    ]
+    merged = merge_engine_args(preset, user)
+    assert merged.count("--default-chat-template-kwargs") == 1
+    assert _flag_value(merged, "--default-chat-template-kwargs") == user[1]
+    assert "--language-model-only" not in merged
+    assert "--reasoning-parser" not in merged
+    assert merged[-len(user) :] == user
+
+
+@pytest.mark.parametrize("model_id", ["Qwen/Qwen3.8-27B", "qwen/qwen3.8-27b-fp8"])
+def test_qwen38_agent_checkpoint_is_fp8_on_one_rtx(model_id):
+    def pick(machine=RTX_MACHINE, profile="agent", **kw):
+        return _presets.checkpoint_for("vllm", machine, model_id, profile=profile, **kw)
+
+    assert pick() == QWEN38_ID
+    assert pick(fp8_weights=False) is None
+    assert pick(profile="throughput") is None
+    assert pick(machine=Machine("H100", H100_NAME, 81559, 1)) is None
+    assert pick(machine=Machine(PRO6000, PRO6000_NAME, 97887, 2)) is None
+
+
+@pytest.mark.parametrize(
+    "model_id", ["org/merged-27b", "someone/Qwen3.8-27B-abliterated"]
+)
+def test_qwen38_finetune_gets_no_arch_flags(model_id):
+    args = _rtx(config=QWEN38_27B, model_id=model_id, profile="agent")
+    for flag in (
+        "--reasoning-parser",
+        "--language-model-only",
+        "--default-chat-template-kwargs",
+    ):
+        assert flag not in args, flag
+
+
+def test_qwen38_checkpoint_fallback_and_bf16_paths():
+    bf16 = {k: v for k, v in QWEN38_27B.items() if k != "quantization_config"}
+    # Checkpoint unavailable: the recipe goes, the architecture flags stay.
+    args = _rtx(
+        config=bf16,
+        model_id="Qwen/Qwen3.8-27B",
+        profile="agent",
+        skip_checkpoint=QWEN38_ID,
+    )
+    assert "--gpu-memory-utilization" not in args
+    assert _flag_value(args, "--reasoning-parser") == "qwen3"
+    # bf16 weights with fp8_weights: online FP8 plus the same flags.
+    args = _rtx(
+        config=bf16, model_id="Qwen/Qwen3.8-27B", profile="agent", fp8_weights=True
+    )
+    assert _flag_value(args, "--quantization") == "fp8"
+    assert _flag_value(args, "--gpu-memory-utilization") == "0.92"
+    assert "--language-model-only" in args

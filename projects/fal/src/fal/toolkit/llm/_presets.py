@@ -30,6 +30,9 @@ _PREFIX_CACHING_FLAG = "--enable-prefix-caching"
 _AUTO_TOOL_FLAG = "--enable-auto-tool-choice"
 _TOOL_PARSER_FLAG = "--tool-call-parser"
 _MAX_MODEL_LEN_FLAG = "--max-model-len"
+_REASONING_PARSER_FLAG = "--reasoning-parser"
+_LANGUAGE_ONLY_FLAG = "--language-model-only"
+_TEMPLATE_KWARGS_FLAG = "--default-chat-template-kwargs"
 _BOOLEAN_FLAGS = frozenset(
     {
         _ALL_REDUCE_FLAG,
@@ -37,6 +40,7 @@ _BOOLEAN_FLAGS = frozenset(
         _PROMPT_DETAILS_FLAG,
         _PREFIX_CACHING_FLAG,
         _AUTO_TOOL_FLAG,
+        _LANGUAGE_ONLY_FLAG,
     }
 )
 
@@ -63,6 +67,9 @@ _FLAG_GROUPS: Dict[str, str] = {
     _AUTO_TOOL_FLAG: "auto_tool",
     _TOOL_PARSER_FLAG: "tool_parser",
     _MAX_MODEL_LEN_FLAG: "max_model_len",
+    _REASONING_PARSER_FLAG: "reasoning_parser",
+    _LANGUAGE_ONLY_FLAG: "language_only",
+    _TEMPLATE_KWARGS_FLAG: "template_kwargs",
     "--pipeline-parallel-size": "pp",
     "--pp-size": "pp",
     "-pp": "pp",
@@ -103,16 +110,21 @@ AGENT_MAX_MODEL_LEN = 131072
 AGENT_KV_CPU_OFFLOAD = 0.7
 # vLLM --tool-call-parser per model family, matched on architecture. Families
 # not listed get no parser (a note is printed) rather than a wrong one.
+# Qwen3.8 dense; other versions on this architecture are untested.
+_QWEN3_5 = "Qwen3_5ForConditionalGeneration"
 _QWEN_ARCHS = frozenset(
     {
         "Qwen2ForCausalLM",
         "Qwen3ForCausalLM",
         "Qwen3MoeForCausalLM",
         "Qwen3NextForCausalLM",
+        _QWEN3_5,
     }
 )
 _TOOL_PARSERS: Tuple[Tuple[FrozenSet[str], str], ...] = (
     (frozenset({"GptOssForCausalLM"}), "openai"),
+    # Qwen3.5 and later chat templates emit <tool_call><function=...> XML.
+    (frozenset({_QWEN3_5}), "qwen3_coder"),
     (
         frozenset(
             {
@@ -123,6 +135,24 @@ _TOOL_PARSERS: Tuple[Tuple[FrozenSet[str], str], ...] = (
             }
         ),
         "hermes",
+    ),
+)
+# More agent profile flags per architecture, for the publisher's own models
+# only (Hub id prefix), since a fine-tune may change the chat template or
+# rely on vision. Qwen3.8 thinks at xhigh effort unless asked otherwise; low
+# effort halved the thinking tokens on the longest agent task at the same
+# pass rate. omp never sends reasoning_effort, so the server default is low
+# (a request can still raise it). The checkpoint is multimodal: the agent
+# profile serves text only.
+_AGENT_ARCH_ARGS: Tuple[Tuple[FrozenSet[str], str, Mapping[str, str]], ...] = (
+    (
+        frozenset({_QWEN3_5}),
+        "qwen/",
+        {
+            _REASONING_PARSER_FLAG: "qwen3",
+            _LANGUAGE_ONLY_FLAG: "",
+            _TEMPLATE_KWARGS_FLAG: json.dumps({"reasoning_effort": "low"}),
+        },
     ),
 )
 
@@ -456,6 +486,22 @@ RECIPES: Tuple[Recipe, ...] = (
         profiles=("max_throughput",),
         checkpoint="nvidia/Qwen3-8B-NVFP4",
     ),
+    Recipe(
+        source=(
+            "vLLM 0.32.0, 1x RTX PRO 6000, Qwen3.8-27B-FP8, agent profile with "
+            "low reasoning effort: 8 of 8 omp coding tasks in 2 runs, slowest "
+            "task 206s vs 459s at the default effort (median unchanged), "
+            "ai-designs/2026-11-05-omp-open-model-shootout.md"
+        ),
+        gpus=(RTX_PRO_6000,),
+        engines=("vllm",),
+        args={_GPU_MEM_FLAG: "0.92"},
+        single_gpu=True,
+        model_ids=frozenset({"qwen/qwen3.8-27b", "qwen/qwen3.8-27b-fp8"}),
+        profiles=(AGENT_PROFILE,),
+        checkpoint="Qwen/Qwen3.8-27B-FP8",
+        fp8_weights=True,
+    ),
     # gpt-oss on SM120 runs the Marlin W4A16 MoE path. The native b12x backend
     # crashes on expert biases, so never force a b12x backend here.
     Recipe(
@@ -580,8 +626,9 @@ def engine_preset_args(
       ``prompt_tokens_details.cached_tokens``.
     - ``profile="agent"`` (vLLM): ``--enable-prefix-caching``, the tool-call
       parser for the model family (``--enable-auto-tool-choice``,
-      ``--tool-call-parser``) and ``--max-model-len`` of the model's window up
-      to 128k.
+      ``--tool-call-parser``), ``--max-model-len`` of the model's window up
+      to 128k, and per-architecture flags (Qwen3.8: reasoning parser, text
+      only, low default reasoning effort).
     - ``fp8_weights``: online ``--quantization fp8`` (any GPU) unless the
       checkpoint is already quantized (any ``quantization_config``, which
       includes a checkpoint substituted by ``checkpoint_for``).
@@ -704,6 +751,11 @@ def _agent_args(model: ModelFacts) -> List[str]:
             f"{model.model_id!r}; set --enable-auto-tool-choice and "
             "--tool-call-parser in engine_args"
         )
+    mid = (model.model_id or "").lower()
+    for architectures, prefix, extra in _AGENT_ARCH_ARGS:
+        if architectures & model.architectures and mid.startswith(prefix):
+            for flag, value in extra.items():
+                args += [flag] if flag in _BOOLEAN_FLAGS else [flag, value]
     window = _num(_text_config(model.config or {}), "max_position_embeddings")
     if window is None:
         print(
