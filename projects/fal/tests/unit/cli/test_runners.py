@@ -477,3 +477,74 @@ def test_shell_session_stops_waiting_for_a_marker_after_the_exit_code(
     )
 
     assert code == 3
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_shell_session_with_done_ignores_the_exit_code_and_reads_on(mock_client_cls):
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    stub.ShellRunner.return_value = iter(
+        [
+            isolate_proto.ShellRunnerOutput(data=b"a", stream=1),
+            isolate_proto.ShellRunnerOutput(exit_code=0),
+            isolate_proto.ShellRunnerOutput(data=b"b", stream=1),
+            isolate_proto.ShellRunnerOutput(data=b"end", stream=1),
+            isolate_proto.ShellRunnerOutput(data=b"never", stream=1),
+        ]
+    )
+    out = io.BytesIO()
+
+    shell_session(
+        mock_client_cls.return_value,
+        "r1",
+        ["x"],
+        interactive=False,
+        remote_tty=False,
+        console=None,
+        stdout=out,
+        done=lambda: out.getvalue().endswith(b"end"),
+    )
+
+    assert out.getvalue() == b"abend"
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_shell_session_with_done_gives_up_when_the_stream_stays_open(
+    mock_client_cls, monkeypatch
+):
+    import threading
+
+    from fal.cli import runners
+
+    monkeypatch.setattr(runners, "UNTIL_GRACE_SECONDS", 0.05)
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    cancelled = threading.Event()
+
+    class Call:
+        def __iter__(self):
+            yield isolate_proto.ShellRunnerOutput(data=b"a", stream=1)
+            yield isolate_proto.ShellRunnerOutput(exit_code=0)
+            assert cancelled.wait(5)  # the server keeps the stream open
+            raise _Cancelled()
+
+        def cancel(self):
+            cancelled.set()
+
+    class _Cancelled(grpc.RpcError):
+        def code(self):
+            return grpc.StatusCode.CANCELLED
+
+    stub.ShellRunner.return_value = Call()
+    out = io.BytesIO()
+
+    shell_session(
+        mock_client_cls.return_value,
+        "r1",
+        ["x"],
+        interactive=False,
+        remote_tty=False,
+        console=None,
+        stdout=out,
+        done=lambda: False,
+    )
+
+    assert out.getvalue() == b"a"

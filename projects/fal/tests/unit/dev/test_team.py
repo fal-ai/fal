@@ -372,7 +372,7 @@ def events(monkeypatch):
 def test_deploy_confirms_before_deploying(monkeypatch, events):
     box = _fake_box(deployed=True)
     box.deploy.side_effect = lambda **k: events.append("deploy") or "ok"
-    monkeypatch.setattr(box_commands, "get_box", lambda args: box)
+    monkeypatch.setattr(box_commands, "get_box", lambda args, **kw: box)
 
     box_commands.cmd_deploy(parse_args(["dev", "deploy", "--yes"]))
 
@@ -382,11 +382,11 @@ def test_deploy_confirms_before_deploying(monkeypatch, events):
 def test_up_confirms_only_when_it_has_to_deploy(monkeypatch, events):
     args = parse_args(["dev", "up"])
 
-    monkeypatch.setattr(box_commands, "get_box", lambda args: _fake_box(True))
+    monkeypatch.setattr(box_commands, "get_box", lambda args, **kw: _fake_box(True))
     box_commands.cmd_up(args)
     assert not events
 
-    monkeypatch.setattr(box_commands, "get_box", lambda args: _fake_box(False))
+    monkeypatch.setattr(box_commands, "get_box", lambda args, **kw: _fake_box(False))
     box_commands.cmd_up(args)
     assert events == [("confirm", {"yes": False, "name": "demo"})]
 
@@ -423,7 +423,7 @@ def test_ssh_proxy_does_not_announce_the_account(monkeypatch):
 
     box_commands.cmd_ssh_proxy(parse_args(["dev", "ssh-proxy"]))
 
-    assert seen == {"quiet": True}
+    assert seen == {"quiet": True, "remember": False}
 
 
 def test_app_commands_after_start_do_not_offer_team(capsys):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import signal
 import sys
 from datetime import datetime, timedelta, timezone
@@ -10,8 +11,9 @@ from pathlib import Path
 from rich.markup import escape
 
 from fal.cli.runners import print_logs, shell_session
+from fal.dev import execute
 from fal.dev.box import FINAL_STATES, newest_first, ssh_config
-from fal.dev.cli.common import get_box, resolve_name
+from fal.dev.cli.common import get_box, note_new_box, remember_name, resolve_name
 from fal.dev.errors import DevError
 from fal.dev.team import confirm_deploy
 
@@ -34,7 +36,9 @@ def _confirm_deploy(box, args) -> None:
 
 
 def cmd_deploy(args):
-    box = get_box(args)
+    box = get_box(args, creates=True)
+    if box.app_info() is None:
+        note_new_box(args, box)
     _confirm_deploy(box, args)
     message = box.deploy(
         machine_type=args.machine_type,
@@ -45,17 +49,26 @@ def cmd_deploy(args):
         dockerfile=args.dockerfile,
         team_data=args.team_data,
     )
+    remember_name(args, box.name)
     print(message)
 
 
 def cmd_up(args):
     _cleanup_on_hangup()
-    box = get_box(args)
+    box = get_box(args, creates=True)
     if box.app_info() is None:
+        note_new_box(args, box)
         _confirm_deploy(box, args)
-    runner = box.up(args.timeout, args.machine_type)
+    try:
+        runner = box.up(args.timeout, args.machine_type)
+    finally:
+        # A box that was created but did not come up is still the folder's box.
+        with contextlib.suppress(Exception):
+            if box.app_info() is not None:
+                remember_name(args, box.name)
     args.console.print(
-        f"ready: runner {runner.runner_id} ({escape(str(runner.machine_type))})"
+        f"ready: runner {runner.runner_id} on {escape(str(runner.machine_type))}"
+        f"{_rate(box)}"
     )
     if args.dash:
         from fal.dev.cli.dash import show
@@ -65,6 +78,17 @@ def cmd_up(args):
         args.console.print(
             "connect with: fal dev shell, or watch it with: fal dev dash"
         )
+
+
+def _rate(box) -> str:
+    """ " at $X/h" when the platform's usage API already knows the box's rate."""
+    from fal.dev.dash.model import fetch_cost
+
+    try:
+        cost = fetch_cost(box, 3600)
+    except Exception:
+        return ""
+    return f" at ${cost.per_hour:.2f}/h" if cost and cost.per_hour else ""
 
 
 def cmd_down(args):
@@ -94,14 +118,7 @@ def cmd_exec(args):
     if not command:
         args.parser.error("usage: fal dev exec -- <command>")
     box = get_box(args)
-    return shell_session(
-        box.client,
-        box.require_runner(),
-        command,
-        interactive=False,
-        remote_tty=False,
-        console=args.console,
-    )
+    return execute.run(box.client, box.require_runner(), command, args.console)
 
 
 def cmd_logs(args):
@@ -143,4 +160,5 @@ def cmd_ssh_config(args):
 def cmd_ssh_proxy(args):
     _cleanup_on_hangup()
     # Editors show stderr on every connect, so the account is not announced.
-    return get_box(args, quiet=True).ssh_proxy(args.timeout)
+    # No name lookup here: editors start the proxy on every connect.
+    return get_box(args, quiet=True, remember=False).ssh_proxy(args.timeout)

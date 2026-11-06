@@ -259,6 +259,22 @@ def box_exists(
     return any(app.alias in names for app in apps)
 
 
+def _has_live_runner(
+    name: str, account: Account, host: str | None, environment: str | None
+) -> bool:
+    """Whether the box has a runner that could still be serving its old token."""
+    from fal.api.client import SyncServerlessClient
+    from fal.dev.box import FINAL_STATES
+
+    try:
+        runners = SyncServerlessClient(host=host, team=account.fal_team).apps.runners(
+            name, environment_name=environment
+        )
+    except Exception:
+        return False  # unknown: let the deploy go ahead as before
+    return any(r.state not in FINAL_STATES for r in runners)
+
+
 def start_box(
     file: Path,
     class_name: str | None,
@@ -294,6 +310,11 @@ def start_box(
         raise DevError(
             f"An app named {name!r} already exists and was not started from this "
             "machine. Pick another --name, or pass --replace to take it over."
+        )
+    if exists and not replace and _has_live_runner(name, account, host, environment):
+        raise DevError(
+            f"The dev box {name!r} is already running. Push your changes with "
+            "`fal dev app sync`, or pass --replace to redeploy it."
         )
     token = secrets.token_urlsafe(32)
     deployed = deploy_box(

@@ -187,6 +187,7 @@ def shell_session(
     stderr=None,
     timeout: float | None = None,
     until: bytes | None = None,
+    done=None,
     stub=None,
 ):
     """Stream a shell session on a runner; command=None opens a login shell.
@@ -200,6 +201,9 @@ def shell_session(
     Connection errors are printed to `console`, or raised if there is none.
     `timeout` limits the whole call in seconds. The exit code can arrive before
     the last of the output: with `until`, stdout is read up to that marker.
+    With `done`, a callable checked after each output frame, the stream is read
+    until it returns True or ends, ignoring the exit code and close frames; the
+    exit code is then not meaningful (the caller carries its own).
     A `stub` from an earlier call can be passed to reuse its connection.
     """
     if stdout is None:
@@ -316,6 +320,14 @@ def shell_session(
                     window = tail + output.data
                     marker_seen = marker_seen or until in window
                     tail = window[-len(until) :]
+            if done is not None:
+                if done():
+                    break
+                if (output.HasField("exit_code") or output.close) and grace is None:
+                    # The stream should end now; if it does not, stop waiting.
+                    grace = Timer(UNTIL_GRACE_SECONDS, _give_up, (call, gave_up))
+                    grace.start()
+                continue
             if output.HasField("exit_code"):
                 exit_code = output.exit_code
                 if until and not marker_seen:

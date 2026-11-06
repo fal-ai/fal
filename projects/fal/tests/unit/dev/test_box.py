@@ -443,3 +443,94 @@ def test_run_starts_each_attempt_with_an_empty_buffer(monkeypatch):
     monkeypatch.setattr(box_module, "shell_session", session)
 
     assert box.run("r1", ["ls"]) == (0, "partial")
+
+
+def test_a_new_box_defaults_to_the_rtx_pro_6000_not_an_h100():
+    box = make_box(deployed=False)
+    box.ensure_volume = MagicMock(return_value="devbox-demo")
+    box.stop = MagicMock(return_value=True)
+    seen = {}
+    box.client.deploy.side_effect = lambda *a, **k: seen.update(
+        machine=box_module.os.environ[config.ENV_MACHINE_TYPE]
+    )
+
+    message = box.deploy()
+
+    assert seen["machine"] == "GPU-RTXPRO6000"
+    assert "1x GPU-RTXPRO6000" in message
+
+
+def test_local_public_keys_reads_ssh_dir(monkeypatch, tmp_path):
+    ssh = tmp_path / ".ssh"
+    ssh.mkdir()
+    (ssh / "id_ed25519.pub").write_text("ssh-ed25519 AAAA me@laptop\n")
+    (ssh / "notes.pub").write_text("not a key\n")
+    (ssh / "id_ed25519-cert.pub").write_text("ssh-ed25519-cert-v01@openssh.com C\n")
+    (ssh / "id_ed25519").write_text("PRIVATE")
+    monkeypatch.setattr(box_module.Path, "home", lambda: tmp_path)
+
+    assert box_module.local_public_keys() == ["ssh-ed25519 AAAA me@laptop"]
+
+
+def test_ssh_proxy_authorizes_the_local_keys_before_sshd(monkeypatch):
+    monkeypatch.setattr(box_module, "local_public_keys", lambda: ["ssh-ed25519 K"])
+    seen = []
+
+    def session(client, runner_id, command, **kwargs):
+        seen.append(command)
+        kwargs["stdout"].write(box_module.SSH_READY_MARKER)
+        return 0
+
+    monkeypatch.setattr(box_module, "shell_session", session)
+    monkeypatch.setattr(box_module.sys, "stdout", MagicMock())
+
+    make_box([make_runner("r1")]).ssh_proxy(timeout=1)
+
+    command = seen[0]
+    assert command[-1] == "ssh-ed25519 K" and command[-2] == "sh"
+    script = command[2]
+    assert script.index("authorized_keys") < script.index("sshd -i")
+
+
+def test_the_authorize_script_is_idempotent(tmp_path):
+    import subprocess
+
+    script = box_module.AUTHORIZE_KEYS.replace("/root/.ssh", str(tmp_path / ".ssh"))
+    for _ in range(2):
+        subprocess.run(
+            ["sh", "-c", script, "sh", "ssh-ed25519 K1", "ssh-ed25519 K2"], check=True
+        )
+
+    keys = (tmp_path / ".ssh" / "authorized_keys").read_text().splitlines()
+    assert keys == ["ssh-ed25519 K1", "ssh-ed25519 K2"]
+    assert oct((tmp_path / ".ssh" / "authorized_keys").stat().st_mode)[-3:] == "600"
+
+
+def test_the_authorize_script_never_fails_when_the_dir_is_unwritable(tmp_path):
+    import subprocess
+
+    blocker = tmp_path / "file"
+    blocker.write_text("x")
+    script = box_module.AUTHORIZE_KEYS.replace("/root/.ssh", str(blocker / ".ssh"))
+
+    result = subprocess.run(
+        ["sh", "-c", script + " && echo ready", "sh", "ssh-ed25519 K"],
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.stdout.strip() == b"ready"
+
+
+def test_the_authorize_script_keeps_a_key_file_without_a_final_newline(tmp_path):
+    import subprocess
+
+    ssh = tmp_path / ".ssh"
+    ssh.mkdir()
+    (ssh / "authorized_keys").write_text("ssh-ed25519 OLD")
+    script = box_module.AUTHORIZE_KEYS.replace("/root/.ssh", str(ssh))
+
+    subprocess.run(["sh", "-c", script, "sh", "ssh-ed25519 NEW"], check=True)
+
+    keys = (ssh / "authorized_keys").read_text().splitlines()
+    assert keys == ["ssh-ed25519 OLD", "ssh-ed25519 NEW"]

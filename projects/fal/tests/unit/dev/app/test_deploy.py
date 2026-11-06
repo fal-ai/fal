@@ -259,3 +259,48 @@ def test_box_imports_the_class_by_the_name_the_module_exposes(repo, monkeypatch)
         environment=None,
     )
     assert deployed.class_name == "Exposed"
+
+
+def test_start_refuses_a_box_that_is_already_running_without_touching_the_session(
+    monkeypatch, tmp_path
+):
+    from unittest.mock import MagicMock
+
+    from fal.dev.account import Account
+    from fal.dev.app import deploy as app_deploy
+    from fal.dev.errors import DevError
+    from fal.sdk import RunnerState
+
+    monkeypatch.setattr(app_deploy, "box_exists", lambda *a, **k: True)
+    ours = SimpleNamespace(
+        account=Account("me", True),
+        host=None,
+        environment=None,
+        file_path=str(tmp_path / "app.py"),
+    )
+    monkeypatch.setattr(app_deploy, "find_session", lambda name: ours)
+    live = MagicMock(state=RunnerState.RUNNING)
+    monkeypatch.setattr(
+        "fal.api.client.SyncServerlessClient",
+        lambda **k: MagicMock(apps=MagicMock(runners=lambda name, **kw: [live])),
+    )
+    deployed = []
+    monkeypatch.setattr(app_deploy, "deploy_box", lambda *a, **k: deployed.append(1))
+
+    with pytest.raises(DevError, match="already running.*fal dev app sync.*--replace"):
+        app_deploy.start_box(
+            tmp_path / "app.py",
+            None,
+            None,
+            name="dev-x",
+            root=tmp_path,
+            explicit_root=False,
+            replace=False,
+            keep_alive=60,
+            machine_type=None,
+            account=Account("me", True),
+            host=None,
+            environment=None,
+            session_env=[],
+        )
+    assert not deployed

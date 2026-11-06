@@ -11,7 +11,7 @@ from fal.cli.main import _get_main_parser, parse_args
 from fal.cli.parser import FalParserExit
 from fal.dev import config, state
 from fal.dev.cli import box as box_commands
-from fal.dev.cli.common import default_name, resolve_name
+from fal.dev.cli.common import default_name, remember_name, resolve_name
 from fal.sdk import RunnerState
 
 pytestmark = pytest.mark.usefixtures("dev_account")
@@ -145,11 +145,14 @@ def _ns(name=None, host="api.example", team=None):
     return argparse.Namespace(name=name, host=host, team=team)
 
 
-def test_resolve_name_remembers_explicit_name_per_folder(monkeypatch, tmp_path):
+def test_resolve_name_uses_the_remembered_name_per_folder(monkeypatch, tmp_path):
     monkeypatch.setattr("fal.dev.cli.common.default_name", lambda: "someone")
 
     assert resolve_name(_ns()) == "someone"
     assert resolve_name(_ns(name="demo")) == "demo"
+    # An explicit name alone is not remembered: only a confirmed box is.
+    assert resolve_name(_ns()) == "someone"
+    remember_name(_ns(), "demo")
     assert resolve_name(_ns()) == "demo"
 
     # Another folder or host does not see it.
@@ -242,6 +245,10 @@ def test_dev_shell_and_exec_open_a_session_on_the_boxs_runner(monkeypatch, fake_
         "shell_session",
         lambda *args, **kwargs: sessions.append((args, kwargs)) or 0,
     )
+    execs = []
+    monkeypatch.setattr(
+        box_commands.execute, "run", lambda *args: execs.append(args) or 0
+    )
     shell = parse_args(["dev", "shell"])
     shell.console = MagicMock()
     exec_ = parse_args(["dev", "exec", "--", "nvidia-smi"])
@@ -250,10 +257,10 @@ def test_dev_shell_and_exec_open_a_session_on_the_boxs_runner(monkeypatch, fake_
     assert box_commands.cmd_shell(shell) == 0
     assert box_commands.cmd_exec(exec_) == 0
 
-    (args, kwargs), (exec_args, _) = sessions
+    ((args, kwargs),) = sessions
     assert args == (fake_box.client, "r1", None)
     assert (kwargs["interactive"], kwargs["remote_tty"]) == (True, True)
-    assert exec_args == (fake_box.client, "r1", ["nvidia-smi"])
+    assert execs == [(fake_box.client, "r1", ["nvidia-smi"], exec_.console)]
 
 
 def test_dev_logs_follow_the_live_runner(monkeypatch, fake_box):
@@ -299,3 +306,82 @@ def test_dev_ssh_config_proxy_keeps_the_host_and_team(monkeypatch, capsys):
 
     entry = capsys.readouterr().out
     assert "dev ssh-proxy --name k --host api.test --team t" in entry
+
+
+def _named_box(exists):
+    box = MagicMock(app="devbox-typo")
+    box.name = "typo"
+    box.app_info.return_value = MagicMock() if exists else None
+    return box
+
+
+def _patch_get_box(monkeypatch, box):
+    from fal.dev.cli import common
+
+    monkeypatch.setattr(common, "resolve_account", lambda *a: MagicMock())
+    monkeypatch.setattr(common, "announce", lambda account: None)
+    monkeypatch.setattr(common, "Box", lambda *a, **k: box)
+    return common
+
+
+def test_a_name_that_matches_no_box_is_not_remembered(monkeypatch, tmp_path):
+    common = _patch_get_box(monkeypatch, _named_box(exists=False))
+    monkeypatch.setattr(common, "default_name", lambda: "someone")
+
+    common.get_box(_ns(name="typo"))
+
+    assert resolve_name(_ns()) == "someone"
+
+
+def test_a_name_that_matches_a_box_is_remembered(monkeypatch):
+    common = _patch_get_box(monkeypatch, _named_box(exists=True))
+
+    common.get_box(_ns(name="typo"))
+
+    assert resolve_name(_ns()) == "typo"
+
+
+def test_a_failed_lookup_does_not_remember_the_name(monkeypatch):
+    box = _named_box(exists=True)
+    box.app_info.side_effect = RuntimeError("api down")
+    common = _patch_get_box(monkeypatch, box)
+    monkeypatch.setattr(common, "default_name", lambda: "someone")
+
+    common.get_box(_ns(name="typo"))
+
+    assert resolve_name(_ns()) == "someone"
+
+
+def test_creating_commands_remember_the_name_only_after_they_succeed(monkeypatch):
+    box = _named_box(exists=False)
+    box.deploy.side_effect = RuntimeError("deploy failed")
+    _patch_get_box(monkeypatch, box)
+    monkeypatch.setattr(box_commands, "get_box", lambda args, **kw: box)
+    monkeypatch.setattr(box_commands, "_confirm_deploy", lambda *a: None)
+    args = parse_args(["dev", "deploy", "--name", "typo"])
+
+    with pytest.raises(RuntimeError):
+        box_commands.cmd_deploy(args)
+    assert resolve_name(parse_args(["dev", "status"])) != "typo"
+
+    box.deploy.side_effect = None
+    box.deploy.return_value = "ok"
+    box_commands.cmd_deploy(args)
+    assert resolve_name(parse_args(["dev", "status"])) == "typo"
+
+
+def test_up_says_when_it_creates_a_box_from_a_remembered_name(monkeypatch, capsys):
+    remember_name(parse_args(["dev", "up"]), "typo")
+    box = _named_box(exists=False)
+    monkeypatch.setattr(box_commands, "get_box", lambda args, **kw: box)
+    monkeypatch.setattr(box_commands, "_confirm_deploy", lambda *a: None)
+    box.up.return_value = MagicMock(runner_id="r1", machine_type="GPU-RTXPRO6000")
+    monkeypatch.setattr(box_commands, "_rate", lambda box: "")
+    args = parse_args(["dev", "up"])
+    args.console = MagicMock()
+
+    box_commands.cmd_up(args)
+
+    err = capsys.readouterr().err
+    assert "no box named typo exists yet (remembered for this folder)" in err
+    assert "GPU-RTXPRO6000" in args.console.print.call_args_list[0].args[0]

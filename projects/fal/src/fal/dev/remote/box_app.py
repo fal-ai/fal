@@ -340,6 +340,7 @@ def _idle_watchdog() -> None:
             checks = (
                 ("hold", _held),
                 ("SSH session", lambda: signals.ssh_sessions() > 0),
+                ("exec command", lambda: signals.exec_commands() > 0),
             )
             active = [name for name, check in checks if check()]
             if gpu := _gpu_activity():

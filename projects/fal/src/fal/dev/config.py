@@ -12,7 +12,7 @@ import re
 # /data/devboxes/<name>. /data is the box's own volume (also `devbox-<name>`);
 # with --team-data it is the team-shared /data instead.
 APP_PREFIX = "devbox-"
-DEFAULT_GPU = "GPU-H100"
+DEFAULT_GPU = "GPU-RTXPRO6000"
 DEFAULT_NUM_GPUS = 1
 DEFAULT_IDLE_MINUTES = 60
 # A GPU above this utilization counts as activity (an unattended job).

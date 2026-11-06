@@ -83,6 +83,38 @@ def newest_first(runners: list[RunnerInfo]) -> list[RunnerInfo]:
     return sorted(runners, key=lambda r: r.uptime.total_seconds())
 
 
+# Appends each public key argument ($@) to root's authorized_keys unless present.
+# Never fails: a key that cannot be written must not stop sshd from starting.
+AUTHORIZE_KEYS = (
+    "{ mkdir -p /root/.ssh && chmod 700 /root/.ssh && "
+    "touch /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys && "
+    # A hand-edited file may lack its final newline, which would glue two keys.
+    '{ [ -n "$(tail -c1 /root/.ssh/authorized_keys)" ] '
+    "&& echo >> /root/.ssh/authorized_keys; true; } && "
+    'for k in "$@"; do grep -qxF "$k" /root/.ssh/authorized_keys '
+    "|| printf '%s\\n' \"$k\" >> /root/.ssh/authorized_keys; done; true; }"
+)
+MAX_PUBLIC_KEYS = 10
+
+
+def local_public_keys() -> list[str]:
+    """The public keys of ~/.ssh/id_*.pub (not certificates), at most a few."""
+    keys = []
+    for path in sorted((Path.home() / ".ssh").glob("id_*.pub")):
+        if path.name.endswith("-cert.pub"):
+            continue
+        try:
+            lines = path.read_text().splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        keys += [
+            line.strip()
+            for line in lines
+            if line.startswith(("ssh-", "ecdsa-", "sk-")) and "\0" not in line
+        ]
+    return keys[:MAX_PUBLIC_KEYS]
+
+
 def newest_live(runners: list[RunnerInfo]) -> list[RunnerInfo]:
     """Ready runners, newest first."""
     return newest_first([r for r in runners if r.state in LIVE_STATES])
@@ -607,8 +639,11 @@ class Box:
             log(f"{self.app} is stopped, starting it ...")
             runner_id = self.start(timeout).runner_id
         sshd_log = posixpath.join(posixpath.dirname(config.SSHD_CONFIG), "sshd.log")
+        # Authorize this laptop's keys on every connect: nothing else installs them,
+        # and the file lives on /data, so duplicates are skipped.
         remote = (
             f"test -f {config.SSHD_CONFIG} "
+            f"&& {AUTHORIZE_KEYS} "
             f"&& printf '%s\\n' {SSH_READY_MARKER.decode().strip()} "
             f"&& exec /usr/sbin/sshd -i -f {config.SSHD_CONFIG} -E {sshd_log}"
         )
@@ -616,7 +651,7 @@ class Box:
         code = shell_session(
             self.client,
             runner_id,
-            ["sh", "-c", remote],
+            ["sh", "-c", remote, "sh", *local_public_keys()],
             interactive=True,
             remote_tty=False,
             # Errors go to stderr: stdout is the SSH connection.
@@ -649,6 +684,7 @@ def ssh_config(
         "    User root\n"
         f"    ProxyCommand {proxy}\n"
         "    ServerAliveInterval 30\n"
+        "    # Connecting authorizes the public keys in ~/.ssh on the box.\n"
         "    # The box keeps its host key on /data, so it only changes if the\n"
         "    # workspace is reset.\n"
         "    StrictHostKeyChecking accept-new"

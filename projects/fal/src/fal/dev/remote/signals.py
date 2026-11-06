@@ -8,6 +8,12 @@ import glob
 import os
 import subprocess
 
+# First line of the script `fal dev exec` runs; marks a running exec command.
+EXEC_TAG = "# fal-dev-exec"
+# Cancelling `fal dev exec` leaves its command running, so an exec older than this
+# no longer counts as activity: a forgotten job must not keep the box up forever.
+EXEC_MAX_AGE_SECONDS = 6 * 3600
+
 GPU_FIELDS = [
     "index",
     "name",
@@ -70,6 +76,44 @@ def ssh_sessions():
     return sum(
         1 for pid, sshd in is_sshd.items() if sshd and not is_sshd.get(parent[pid])
     )
+
+
+def _process_age(proc_root, pid):
+    """Seconds since process `pid` started, from /proc; None if unreadable."""
+    try:
+        with open(os.path.join(proc_root, "uptime")) as f:
+            uptime = float(f.read().split()[0])
+        with open(os.path.join(proc_root, pid, "stat")) as f:
+            # starttime is field 22; the command name may hold spaces.
+            started = int(f.read().rsplit(")", 1)[1].split()[19])
+        return uptime - started / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def exec_commands(proc_root="/proc"):
+    """How many `fal dev exec` commands are running: shells run with EXEC_TAG.
+
+    Commands that started more than EXEC_MAX_AGE_SECONDS ago are not counted.
+    """
+    tag = EXEC_TAG.encode()
+    count = 0
+    for cmdline in glob.glob(os.path.join(proc_root, "[0-9]*", "cmdline")):
+        try:
+            with open(cmdline, "rb") as f:
+                argv = f.read(256).split(b"\0", 3)
+        except OSError:
+            continue
+        if (
+            len(argv) > 2
+            and argv[0].rsplit(b"/", 1)[-1] in (b"sh", b"bash", b"dash")
+            and argv[1] == b"-c"
+            and argv[2].startswith(tag)
+        ):
+            age = _process_age(proc_root, os.path.basename(os.path.dirname(cmdline)))
+            if age is not None and age < EXEC_MAX_AGE_SECONDS:
+                count += 1
+    return count
 
 
 def gpus():
