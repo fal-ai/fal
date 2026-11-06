@@ -56,6 +56,7 @@ from fal.toolkit.llm._presets import (
     model_facts,
     short_gpu_type,
 )
+from fal.toolkit.llm._upstream import open_stream
 
 # vLLM speculative decoding counters (cumulative since engine start).
 _SPEC_ACCEPTED = "vllm:spec_decode_num_accepted_tokens_total"
@@ -77,6 +78,9 @@ _METRIC_PREFIXES = (
 )
 _METRIC_RE = re.compile(r"^([^\s{]+)(?:\{[^}]*\})?\s+([0-9.eE+-]+|nan|NaN)$")
 _STREAM_TAIL_BYTES = 8192
+_ENGINE_CONNECT_TIMEOUT_S = 30.0
+# An engine error body is small; a stalled one must not hold the request.
+_ERROR_BODY_TIMEOUT_S = 30.0
 # Per-request deadline override (seconds from arrival) and the gateway's
 # remaining time budget (seconds, relative; the gateway overwrites inbound
 # values, so it can be trusted).
@@ -255,6 +259,35 @@ def _deadline_budget(
     return min(candidates, default=None)
 
 
+_FD_RESERVE = 1536  # engine log pipes, files, listeners, slack
+
+
+def _fit_pool_to_fd_limit(wanted: int) -> int:
+    """Largest pool <= ``wanted`` that leaves fds for the inbound sockets.
+
+    Streams and unary requests can each fill ``pool`` upstream sockets, and as
+    many requests may hold (or wait with) a client socket, so the pool is capped
+    at about a quarter of the descriptor limit. The soft limit is raised toward
+    the hard one first; without that a low default turns overload into EMFILE
+    instead of pool backpressure.
+    """
+    try:
+        import resource  # noqa: PLC0415
+
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        target = 4 * wanted + _FD_RESERVE
+        if soft != resource.RLIM_INFINITY and soft < target:
+            new = target if hard == resource.RLIM_INFINITY else min(target, hard)
+            if new > soft:
+                resource.setrlimit(resource.RLIMIT_NOFILE, (new, hard))
+                soft = new
+        if soft == resource.RLIM_INFINITY:
+            return wanted
+        return max(64, min(wanted, (soft - _FD_RESERVE) // 4))
+    except Exception:
+        return min(wanted, 512)
+
+
 def _event_cut(buf: bytes) -> int:
     """Length of the leading run of whole SSE events in ``buf`` (0 if none)."""
     lf, crlf = buf.rfind(b"\n\n"), buf.rfind(b"\r\n\r\n")
@@ -326,9 +359,30 @@ class _Stream:
         self.upstream = upstream
         self.path = path
         self.abort = abort
-        self.tail = b""
+        self._recent: Deque[bytes] = deque()
+        self._recent_len = 0
         self._settled = False
         self._upstream_closed = False
+
+    @property
+    def tail(self) -> bytes:
+        """The last ``_STREAM_TAIL_BYTES`` bytes relayed."""
+        return b"".join(self._recent)[-_STREAM_TAIL_BYTES:]
+
+    @tail.setter
+    def tail(self, value: bytes) -> None:
+        self._recent = deque([value])
+        self._recent_len = len(value)
+
+    def feed(self, chunk: bytes) -> None:
+        # Keeps whole chunks instead of re-slicing one tail buffer per chunk,
+        # which copied the full tail for every few-hundred-byte event.
+        self._recent.append(chunk)
+        self._recent_len += len(chunk)
+        while len(self._recent) > 1 and (
+            self._recent_len - len(self._recent[0]) >= _STREAM_TAIL_BYTES
+        ):
+            self._recent_len -= len(self._recent.popleft())
 
     async def close(self) -> None:
         # Bookkeeping runs once; the upstream close is retried by the next
@@ -352,7 +406,7 @@ class _Stream:
 
 async def _wait_for_disconnect(request: Request) -> None:
     # Blocking receive instead of Request.is_disconnected(): the latter polls
-    # with a cancelled scope and never sees the event behind http middleware.
+    # with a cancelled scope, which can miss the event.
     while True:
         message = await request.receive()
         if message["type"] == "http.disconnect":
@@ -555,6 +609,13 @@ class LLMApp(App):
     kv_cpu_offload_gib: ClassVar[Optional[float]] = None
     engine_port: ClassVar[int] = 8000
     engine_startup_timeout_s: ClassVar[float] = 3300.0
+    # Upstream connection pool to the engine: one connection per in-flight
+    # request, so this must exceed the engine's max sequences plus queueing.
+    engine_max_connections: ClassVar[int] = 4096
+    # Streaming requests use a small raw-socket client (see _upstream.py): the
+    # httpx stack was over half of the proxy's CPU per chunk. Set False to go
+    # back to httpx, e.g. for an engine that needs TLS or a proxy.
+    raw_stream_client: ClassVar[bool] = True
 
     # Persistent caches under /data (None disables, a string overrides the
     # auto namespace of engine, version and GPU type).
@@ -881,10 +942,15 @@ class LLMApp(App):
         self._boot["engine_ready_s"] = time.monotonic() - self._engine_started
         self._boot["total_setup_s"] = time.monotonic() - t0
         self._write_boot_marker()
+        pool = _fit_pool_to_fd_limit(self.engine_max_connections)
+        self._stream_slots = asyncio.Semaphore(pool)
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=httpx.Timeout(connect=30.0, read=3600.0, write=300.0, pool=60.0),
-            limits=httpx.Limits(max_connections=512, max_keepalive_connections=128),
+            limits=httpx.Limits(
+                max_connections=pool,
+                max_keepalive_connections=min(pool, 512),
+            ),
         )
         # Copy: the log pump thread may still add late milestones.
         print(f"[llm-app] boot report: {dict(self._boot)}")
@@ -1500,12 +1566,7 @@ class LLMApp(App):
                 and "stream_options" not in payload
             ):
                 payload["stream_options"] = {"include_usage": True}
-            send = asyncio.ensure_future(
-                self._client.send(
-                    self._client.build_request("POST", path, json=payload),
-                    stream=True,
-                )
-            )
+            send = asyncio.ensure_future(self._open_upstream(path, payload))
             aborted = asyncio.ensure_future(abort.wait())
             limit, idle_bound = _wait_limit(deadline, self.stream_idle_timeout_s)
             try:
@@ -1544,8 +1605,14 @@ class LLMApp(App):
                 )
             upstream = send.result()
             if upstream.status_code != 200:
-                body = await upstream.aread()
-                await upstream.aclose()
+                try:
+                    body = await asyncio.wait_for(
+                        upstream.aread(), _ERROR_BODY_TIMEOUT_S
+                    )
+                except asyncio.TimeoutError:
+                    body = b'{"detail": "engine error body timed out"}'
+                finally:
+                    await upstream.aclose()
                 return Response(
                     content=body,
                     status_code=upstream.status_code,
@@ -1561,6 +1628,24 @@ class LLMApp(App):
         finally:
             if not relaying:
                 self._inflight.discard(abort)
+
+    async def _open_upstream(self, path: str, payload: Dict[str, Any]) -> Any:
+        """Start a streaming request; the result has the httpx.Response surface
+        the relay uses (status_code, aread, aiter_raw, aclose)."""
+        if not self.raw_stream_client:
+            return await self._client.send(
+                self._client.build_request("POST", path, json=payload), stream=True
+            )
+        return await open_stream(
+            "127.0.0.1",
+            self.engine_port,
+            path,
+            json.dumps(
+                payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+            ).encode(),
+            _ENGINE_CONNECT_TIMEOUT_S,
+            self._stream_slots,
+        )
 
     async def _relay(
         self,
@@ -1634,8 +1719,8 @@ class LLMApp(App):
                     if partial:
                         yield partial
                     return
-                stream.tail = (stream.tail + chunk)[-_STREAM_TAIL_BYTES:]
-                partial += chunk
+                stream.feed(chunk)
+                partial = partial + chunk if partial else chunk
                 cut = _event_cut(partial)
                 if not cut and len(partial) > _MAX_LINE_BYTES:
                     # Not SSE framed after all: stop holding it back.

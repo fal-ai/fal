@@ -4,6 +4,7 @@ import asyncio
 import io
 import json
 import os
+import resource
 import socket
 import subprocess
 import sys
@@ -235,6 +236,30 @@ def test_upstream_error_and_bad_body(served):
     r = httpx.post(f"{url}/v1/chat/completions", json={"fail": True})
     assert r.status_code == 400
     assert httpx.post(f"{url}/v1/chat/completions", content=b"nope").status_code == 400
+
+
+def test_stalled_stream_error_body_is_bounded(served, monkeypatch):
+    app, url, _, _ = served
+    closed = []
+
+    class Stalled:
+        status_code = 500
+
+        async def aread(self):
+            await asyncio.sleep(3600)
+
+        async def aclose(self):
+            closed.append(1)
+
+    async def open_upstream(path, payload):
+        return Stalled()
+
+    monkeypatch.setattr(_app, "_ERROR_BODY_TIMEOUT_S", 0.2)
+    monkeypatch.setattr(app, "_open_upstream", open_upstream)
+    r = httpx.post(f"{url}/v1/chat/completions", json={"stream": True}, timeout=10)
+    assert r.status_code == 500
+    assert "timed out" in r.text
+    assert closed == [1]
 
 
 def test_stream_passthrough_usage(served):
@@ -1890,6 +1915,54 @@ def test_upstream_check_failure_and_start_conditions(tmp_path, monkeypatch):
     while not ran and time.monotonic() < deadline:
         time.sleep(0.01)
     assert ran == [1]
+
+
+def test_stream_tail_keeps_recent_bytes_and_usage_survives_many_chunks(served):
+    app, _, _, _ = served
+    stream = _Stream(app, None, "/v1/chat/completions", asyncio.Event())
+    for _ in range(5000):
+        stream.feed(b'data: {"choices": [{"delta": {"content": "x"}}]}\n\n')
+    usage = b'data: {"choices": [], "usage": {"completion_tokens": 3}}\n\n'
+    stream.feed(usage)
+    stream.feed(b"data: [DONE]\n\n")
+    tail = stream.tail
+    assert len(tail) == _app._STREAM_TAIL_BYTES
+    # Eviction keeps memory bounded: about one tail plus one chunk.
+    assert stream._recent_len < _app._STREAM_TAIL_BYTES + 200
+    assert len(stream._recent) < 200
+    assert tail.endswith(b"data: [DONE]\n\n")
+    assert _app._parse_stream_usage(tail) == {"completion_tokens": 3}
+
+
+def test_engine_pool_is_sized_for_many_streams(served):
+    app, _, _, _ = served
+    assert type(app).engine_max_connections >= 1024
+
+
+def test_pool_fits_the_fd_limit(monkeypatch):
+    calls = []
+    monkeypatch.setattr(resource, "getrlimit", lambda _: (1024, 1 << 20))
+    monkeypatch.setattr(resource, "setrlimit", lambda *a: calls.append(a))
+    assert _app._fit_pool_to_fd_limit(4096) == 4096
+    assert calls and calls[0][1][0] == 4 * 4096 + _app._FD_RESERVE
+    monkeypatch.setattr(resource, "getrlimit", lambda _: (1024, 1024))
+    assert _app._fit_pool_to_fd_limit(4096) == 64
+
+
+@pytest.mark.parametrize("served", [{"raw_stream_client": False}], indirect=True)
+def test_httpx_stream_client_still_works_when_selected(served):
+    app, url, abort_file, _ = served
+    with httpx.stream(
+        "POST", f"{url}/v1/chat/completions", json={"stream": True, "n_chunks": 3}
+    ) as r:
+        chunks = [c for c in r.iter_lines() if c.startswith("data:")]
+    assert chunks[-1] == "data: [DONE]"
+    assert app._usage_totals["completion_tokens"] == 5
+    with httpx.stream(
+        "POST", f"{url}/v1/chat/completions", json={"stream": True, "n_chunks": 100}
+    ) as r:
+        next(r.iter_lines())
+    assert _wait_for(abort_file)
 
 
 def test_kv_cpu_offload_adds_connector_sized_from_container_ram(monkeypatch):
