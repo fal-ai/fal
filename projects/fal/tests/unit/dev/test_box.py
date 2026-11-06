@@ -251,6 +251,14 @@ def test_ssh_config_entry():
     )
 
 
+def test_ssh_config_waits_for_a_cold_start_and_reuses_the_connection():
+    entry = ssh_config("demo", "fal")
+
+    assert "ConnectTimeout 960" in entry
+    assert "ControlMaster auto" in entry and "ControlPersist 2m" in entry
+    assert "ControlPath ~/.ssh/fal-dev-%C" in entry
+
+
 def test_ssh_config_proxy_reaches_the_boxs_host():
     entry = ssh_config("demo", "fal", host="api.example.test")
 
