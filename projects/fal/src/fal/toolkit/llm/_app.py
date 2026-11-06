@@ -355,6 +355,50 @@ async def _wait_for_disconnect(request: Request) -> None:
             return
 
 
+# Pinned pages cannot be reclaimed, and the engine, /dev/shm and weight staging
+# share the container limit; 0.5 is the value measured to be healthy.
+_KV_OFFLOAD_MAX_FRACTION = 0.8
+
+
+def _container_ram_bytes() -> int:
+    """Smaller of MemTotal and the cgroup limit: the RAM the container can use."""
+    total = 0
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    total = int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    for path in (
+        "/sys/fs/cgroup/memory.max",
+        "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+    ):
+        try:
+            raw = Path(path).read_text().strip()
+        except OSError:
+            continue
+        if raw.isdigit() and int(raw) < 1 << 50:
+            total = min(total, int(raw)) if total else int(raw)
+    return total
+
+
+def _kv_offload_config(fraction: float) -> Dict[str, Any]:
+    if not 0 < fraction <= _KV_OFFLOAD_MAX_FRACTION:
+        raise ValueError(
+            f"kv_cpu_offload must be a fraction in (0, {_KV_OFFLOAD_MAX_FRACTION}], "
+            f"got {fraction}"
+        )
+    ram = _container_ram_bytes()
+    if not ram:
+        raise RuntimeError("kv_cpu_offload: cannot read the container's RAM")
+    return {
+        "kv_connector": "OffloadingConnector",
+        "kv_role": "kv_both",
+        "kv_connector_extra_config": {"cpu_bytes_to_use": int(ram * fraction)},
+    }
+
+
 class LLMApp(App):
     """Serve a vLLM or SGLang engine behind OpenAI-compatible routes.
 
@@ -440,6 +484,15 @@ class LLMApp(App):
     # Active parameters in billions when the config.json estimate is wrong.
     active_params_b: ClassVar[Optional[float]] = None
     engine_env: ClassVar[Dict[str, str]] = {}
+    # vLLM only. Fraction (0, 0.8] of the container's RAM to use as a CPU tier for
+    # evicted KV blocks (OffloadingConnector). Long prefixes pushed out of GPU
+    # memory reload in well under a second instead of being recomputed (gpt-oss
+    # 120b on RTX PRO 6000, 113k tokens: 0.7 s vs 11.7 s), with no change in
+    # decode throughput. Costs: vLLM turns off the hybrid KV cache manager for
+    # connectors, and the pinned pages count against the container's RAM limit.
+    # The size is the total across all workers (vLLM's cpu_bytes_to_use), capped
+    # at 0.8. None: off. Ignored when engine_args already set --kv-transfer-config.
+    kv_cpu_offload: ClassVar[Optional[float]] = None
     engine_port: ClassVar[int] = 8000
     engine_startup_timeout_s: ClassVar[float] = 3300.0
 
@@ -520,6 +573,13 @@ class LLMApp(App):
                 f"{cls.__name__}: engine_profile must be one of {PROFILES}, "
                 f"got {cls.engine_profile!r}"
             )
+        if cls.kv_cpu_offload is not None and not (
+            0 < cls.kv_cpu_offload <= _KV_OFFLOAD_MAX_FRACTION
+        ):
+            raise ValueError(
+                f"{cls.__name__}: kv_cpu_offload must be a fraction in "
+                f"(0, {_KV_OFFLOAD_MAX_FRACTION}], got {cls.kv_cpu_offload!r}"
+            )
         if not sets_config:
             return
         # warnings (not print): this runs on the deploying machine and callers
@@ -561,6 +621,18 @@ class LLMApp(App):
                 ),
                 engine_args,
             )
+        if (
+            self.kv_cpu_offload
+            and self.engine == "vllm"
+            and not any(
+                a.replace("_", "-").split("=")[0] == "--kv-transfer-config"
+                for a in engine_args
+            )
+        ):
+            engine_args += [
+                "--kv-transfer-config",
+                json.dumps(_kv_offload_config(self.kv_cpu_offload)),
+            ]
         return [
             *head,
             "--served-model-name",
@@ -902,7 +974,8 @@ class LLMApp(App):
         # config.json), then the path is replaced by the repo it came from:
         # snapshot dirs change per revision, while a recipe checkpoint (FP8)
         # and the model itself (bf16) compile different kernels under the same
-        # flags. The port says nothing about the compiled kernels.
+        # flags. The port and the KV connector (its CPU tier size follows the
+        # host's RAM) say nothing about the compiled kernels.
         repo = getattr(self, "_model_repo", None) or self.model
         try:
             cmd = self.engine_command(model_path or self.model)
@@ -919,9 +992,9 @@ class LLMApp(App):
         for arg in cmd:
             if skip:
                 skip = False
-            elif arg == "--port":
+            elif arg in ("--port", "--kv-transfer-config"):
                 skip = True
-            elif not arg.startswith("--port="):
+            elif not arg.startswith(("--port=", "--kv-transfer-config=")):
                 stripped.append(arg)
         env = sorted(self.engine_env.items())
         blob = json.dumps(

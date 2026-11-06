@@ -1890,3 +1890,120 @@ def test_upstream_check_failure_and_start_conditions(tmp_path, monkeypatch):
     while not ran and time.monotonic() < deadline:
         time.sleep(0.01)
     assert ran == [1]
+
+
+def test_kv_cpu_offload_adds_connector_sized_from_container_ram(monkeypatch):
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 100 << 30)
+
+    class A(LLMApp):
+        model = "m"
+        engine_presets = False
+        kv_cpu_offload = 0.5
+
+    cmd = A().engine_command("/m")
+    cfg = json.loads(cmd[cmd.index("--kv-transfer-config") + 1])
+    assert cfg["kv_connector"] == "OffloadingConnector"
+    assert cfg["kv_connector_extra_config"]["cpu_bytes_to_use"] == 50 << 30
+
+
+def test_kv_cpu_offload_off_by_default_and_user_flag_wins(monkeypatch):
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 100 << 30)
+
+    class Off(LLMApp):
+        model = "m"
+        engine_presets = False
+
+    class User(LLMApp):
+        model = "m"
+        engine_presets = False
+        kv_cpu_offload = 0.5
+        engine_args = ["--kv-transfer-config", "{}"]
+
+    assert "--kv-transfer-config" not in Off().engine_command("/m")
+    cmd = User().engine_command("/m")
+    assert cmd.count("--kv-transfer-config") == 1 and "{}" in cmd
+
+
+def test_kv_cpu_offload_rejects_bad_fraction_and_sglang(monkeypatch):
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 100 << 30)
+
+    with pytest.raises(ValueError, match="kv_cpu_offload"):
+
+        class Bad(LLMApp):
+            model = "m"
+            engine_presets = False
+            kv_cpu_offload = 1.5
+
+    class Sg(LLMApp):
+        model = "m"
+        engine = "sglang"
+        engine_presets = False
+        kv_cpu_offload = 0.5
+
+    assert "--kv-transfer-config" not in Sg().engine_command("/m")
+
+
+def test_kv_cpu_offload_caps_fraction_and_detects_equals_form(monkeypatch):
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 100 << 30)
+
+    with pytest.raises(ValueError, match="kv_cpu_offload"):
+
+        class High(LLMApp):
+            model = "m"
+            engine_presets = False
+            kv_cpu_offload = 0.95
+
+    class Eq(LLMApp):
+        model = "m"
+        engine_presets = False
+        kv_cpu_offload = 0.5
+        engine_args = ["--kv_transfer_config={}"]
+
+    assert "--kv-transfer-config" not in Eq().engine_command("/m")
+
+
+def test_config_key_ignores_kv_connector_size(monkeypatch):
+    class A(LLMApp):
+        model = "m"
+        engine_presets = False
+        kv_cpu_offload = 0.5
+
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 100 << 30)
+    small = A()._config_key("/m")
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 200 << 30)
+    assert A()._config_key("/m") == small
+
+
+@pytest.mark.parametrize(
+    "meminfo, cgroup, expected",
+    [
+        ("MemTotal: 1000 kB\n", "max", 1000 * 1024),
+        ("MemTotal: 1000 kB\n", "9223372036854771712", 1000 * 1024),
+        ("MemTotal: 1048576 kB\n", str(100 << 20), 100 << 20),
+    ],
+)
+def test_container_ram_takes_the_smaller_of_meminfo_and_cgroup(
+    monkeypatch, tmp_path, meminfo, cgroup, expected
+):
+    import builtins
+
+    real_open = builtins.open
+    real_read = _app.Path.read_text
+
+    def fake_open(path, *a, **k):
+        if path == "/proc/meminfo":
+            f = tmp_path / "meminfo"
+            f.write_text(meminfo)
+            return real_open(f, *a, **k)
+        return real_open(path, *a, **k)
+
+    def fake_read(self, *a, **k):
+        if str(self) == "/sys/fs/cgroup/memory/memory.limit_in_bytes":
+            return cgroup
+        if str(self).startswith("/sys/fs/cgroup"):
+            raise OSError
+        return real_read(self, *a, **k)
+
+    monkeypatch.setattr(builtins, "open", fake_open)
+    monkeypatch.setattr(_app.Path, "read_text", fake_read)
+    assert _app._container_ram_bytes() == expected
