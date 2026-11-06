@@ -366,14 +366,16 @@ def system(sample_seconds=0.25, root=CGROUP, proc=PROC):
     and CPU percent is None.
     """
     cpus = _cpu_limit(root)
-    before = _cpu_usage_usec(root)
     net_before = _net_bytes(proc)
     ticks_before = _cpu_ticks(proc)
+    # Read the cgroup next to the clock so the /proc scan above, and the
+    # probe's own CPU spent on it, stay out of the container's CPU percent.
+    before = _cpu_usage_usec(root)
     start = time.monotonic()
     time.sleep(sample_seconds)
+    after = _cpu_usage_usec(root) if before is not None else None
     elapsed = time.monotonic() - start
     cpu_pct = None
-    after = _cpu_usage_usec(root) if before is not None else None
     if after is not None and cpus and elapsed > 0:
         cpu_pct = round(min((after - before) / 1e6 / elapsed / cpus * 100, 100.0), 1)
     net_after = _net_bytes(proc) if net_before else None
