@@ -184,7 +184,8 @@ def format_runs(runs: list[float]) -> str:
 def compare(baseline: dict[str, Any], candidate: dict[str, Any]) -> list[str]:
     """Rows of a side-by-side comparison, baseline first."""
     left, right = baseline["name"] or "baseline", candidate["name"] or "candidate"
-    width = max(len(left), len(right), 9) + 2
+    # Wide enough for the names and the 12-character source digests.
+    width = max(len(left), len(right), 12) + 2
     lines = [f"{'':8}{left:<{width}}{right:<{width}}change"]
     for key in STAT_KEYS:
         before, after = baseline["stats"][key], candidate["stats"][key]
@@ -192,12 +193,10 @@ def compare(baseline: dict[str, Any], candidate: dict[str, Any]) -> list[str]:
             f"{key:<8}{_seconds(before):<{width}}{_seconds(after):<{width}}"
             f"{_delta(before, after)}"
         )
-    lines.append(
-        f"{'runs':<8}{baseline['repeat']:<{width}}{candidate['repeat']:<{width}}"
-    )
+    lines.append(f"{'runs':<8}{baseline['repeat']:<{width}}{candidate['repeat']}")
     lines.append(
         f"{'source':<8}{baseline.get('source', '?'):<{width}}"
-        f"{candidate.get('source', '?'):<{width}}"
+        f"{candidate.get('source', '?')}"
     )
     if (baseline.get("overlay") or []) != (candidate.get("overlay") or []):
         lines.append(

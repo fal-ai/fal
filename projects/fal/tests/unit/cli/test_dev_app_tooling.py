@@ -276,3 +276,15 @@ def test_empty_benchmark_name_is_refused(home):
     _session().save()
     with pytest.raises(app_bench.BenchmarkError):
         _request("--name", "")
+
+
+def test_compare_columns_fit_source_digests():
+    run = {
+        "name": "a",
+        "repeat": 5,
+        "source": "0123456789ab",
+        "stats": dict.fromkeys(app_bench.STAT_KEYS, 1.0),
+    }
+    lines = app_bench.compare(run, {**run, "name": "b", "source": "ba9876543210"})
+    source = next(line for line in lines if line.startswith("source"))
+    assert source.split() == ["source", "0123456789ab", "ba9876543210"]

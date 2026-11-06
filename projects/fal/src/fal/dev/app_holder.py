@@ -51,7 +51,8 @@ MAX_REPEAT = 100
 MAX_PROFILE_WARMUPS = 10
 # Profile folders kept on the runner; older ones are deleted.
 PROFILES_KEPT = 3
-ARTIFACT_CHUNK_BYTES = 8 * 1024 * 1024
+# About 5.3 MiB once base64-encoded in the JSON response.
+ARTIFACT_CHUNK_BYTES = 4 * 1024 * 1024
 ARTIFACTS = (app_profile.TRACE_NAME, app_profile.OPS_NAME, app_profile.STATUS_NAME)
 # A batch of runs ends within this, inside the box's 3600 s request timeout.
 RUNS_BUDGET_SECONDS = 3300

@@ -41,6 +41,13 @@ def _bounded(low: int, high: int):
     return parse
 
 
+def escape(text: str) -> str:
+    """Show text as is in rich output (package extras look like markup)."""
+    from rich.markup import escape as rich_escape
+
+    return rich_escape(text)
+
+
 def _console():
     from fal.console import console
 
@@ -190,8 +197,6 @@ def _replay_overlay(session) -> None:
     A layer that no longer installs is dropped with a warning, so the box
     still starts and `deps` commands keep working.
     """
-    from rich.markup import escape
-
     from fal.dev.app_deps import redact
     from fal.dev.app_session import DevAppError
 
@@ -683,7 +688,8 @@ def _print_layers(layers: list[dict[str, Any]]) -> None:
         return
     console.print(f"{len(layers)} overlay layer(s), newest first:")
     for layer in layers:
-        console.print(f"  [bold]{layer['id']}[/] ({', '.join(layer['requested'])})")
+        requested = escape(", ".join(layer["requested"]))
+        console.print(f"  [bold]{layer['id']}[/] ({requested})")
         for package in layer["installed"]:
             base = package.get("base_version")
             shadows = f" (app has {base})" if base else " (new)"
@@ -715,7 +721,8 @@ def _after_change(session, result: dict[str, Any], restart: bool) -> None:
 def _print_app_versions(status: dict[str, Any]) -> None:
     versions = status.get("app_versions") or {}
     if "error" in versions:
-        _console().print(f"[yellow]Could not ask the app[/]: {versions['error']}")
+        error = escape(versions["error"])
+        _console().print(f"[yellow]Could not ask the app[/]: {error}")
         return
     for name, found in sorted(versions.items()):
         if found:
@@ -735,7 +742,8 @@ def _deps_install(args):
         "force": args.force,
         "restart": args.restart,
     }
-    _console().print(f"Installing {' '.join(args.packages)} into an overlay ...")
+    packages = escape(" ".join(args.packages))
+    _console().print(f"Installing {packages} into an overlay ...")
     result = _deps_call(session, payload)
     layer = result.get("layer")
     if layer is None:
@@ -1016,7 +1024,7 @@ def add_parser(main_subparsers, parents=None):
     )
     profile.add_argument(
         "--max-trace-mb",
-        type=int,
+        type=_bounded(1, 100_000),
         default=200,
         help="Skip downloading compressed traces over this size (default 200).",
     )
