@@ -213,3 +213,45 @@ def test_overlay_record_is_private(tmp_path, monkeypatch):
     overlay, _ = _overlay(tmp_path, monkeypatch, ["six==1.16.0"])
     overlay.install(["six"], index_url="https://u:secret@pypi.example/simple")
     assert overlay.state_file.stat().st_mode & 0o777 == 0o600
+
+
+def test_a_runner_without_uv_gets_one_from_pip(tmp_path, monkeypatch):
+    monkeypatch.setattr(app_deps.shutil, "which", lambda name: None)
+    monkeypatch.setenv("PIP_INDEX_URL", "https://elsewhere.example/simple")
+    monkeypatch.setenv("DEVBOX_ADMIN_KEY", "admin")
+    commands, envs = [], []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        if "pip" in command and "uv" in command:
+            uv = Path(command[command.index("--target") + 1]) / "bin" / "uv"
+            envs.append(kwargs["env"])
+            uv.parent.mkdir(parents=True)
+            uv.write_text("")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(app_deps.subprocess, "run", run)
+    overlay = app_deps.Overlay(tmp_path / "overlay")
+    overlay._deadline = app_deps.time.monotonic() + 60
+
+    installer = overlay._installer()
+    assert installer[0] == str(tmp_path / "overlay" / "uv" / "bin" / "uv")
+    assert commands[0][1:3] == ["-m", "pip"] and "--isolated" in commands[0]
+    assert "PIP_INDEX_URL" not in envs[0] and "DEVBOX_ADMIN_KEY" not in envs[0]
+    # Kept for later installs: pip is not run again.
+    overlay._installer()
+    assert len(commands) == 1
+
+
+def test_a_failed_uv_bootstrap_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(app_deps.shutil, "which", lambda name: None)
+    monkeypatch.setattr(
+        app_deps.subprocess,
+        "run",
+        lambda command, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+    overlay = app_deps.Overlay(tmp_path / "overlay")
+    overlay._deadline = app_deps.time.monotonic() + 60
+
+    with pytest.raises(DevError, match="could not install uv"):
+        overlay._installer()

@@ -91,13 +91,49 @@ class Overlay:
             return {"packages": []}
 
     def _installer(self) -> list[str]:
-        uv = shutil.which("uv")
-        if not uv:
-            raise DevError("uv is not available on the runner")
+        uv = shutil.which("uv") or self._bootstrap_uv()
         return [uv, "pip", "install", "--python", sys.executable]
 
-    def _run(self, command: list[str]) -> str:
-        env = {k: v for k, v in os.environ.items() if not k.startswith("FAL_")}
+    def _bootstrap_uv(self) -> str:
+        """uv from pip into the overlay folder, for apps whose image has none."""
+        target = self.root / "uv"
+        uv = target / "bin" / "uv"
+        if not uv.exists():
+            self.root.mkdir(parents=True, exist_ok=True)
+            tmp = self.root / "uv.tmp"
+            shutil.rmtree(tmp, ignore_errors=True)
+            try:
+                # Plain PyPI, whatever PIP_* the app's environment sets; into a
+                # temp folder so an interrupted install never looks finished.
+                self._run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "install",
+                        "--disable-pip-version-check",
+                        "--isolated",
+                        "--target",
+                        str(tmp),
+                        "uv",
+                    ],
+                    drop_prefixes=("PIP_",),
+                )
+                if tmp.exists():
+                    shutil.rmtree(target, ignore_errors=True)
+                    os.replace(tmp, target)
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+        if not uv.exists():
+            raise DevError("could not install uv on the runner (needed for deps)")
+        return str(uv)
+
+    def _run(self, command: list[str], *, drop_prefixes: tuple[str, ...] = ()) -> str:
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if not k.startswith(("FAL_", *drop_prefixes)) and k != "DEVBOX_ADMIN_KEY"
+        }
         left = self._deadline - time.monotonic()
         if left <= 0:
             raise DevError("the install ran out of time")
@@ -114,7 +150,7 @@ class Overlay:
             raise DevError(f"the installer took over {exc.timeout:.0f}s") from exc
         output = result.stdout + result.stderr
         if result.returncode != 0:
-            raise DevError(redact(f"uv pip install failed:\n{output[-3000:]}"))
+            raise DevError(redact(f"install failed:\n{output[-3000:]}"))
         return output
 
     def _plan(self, options: list[str], packages: list[str]) -> list[str]:
