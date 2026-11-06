@@ -51,6 +51,17 @@ def log(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
+def local_starship_config() -> str:
+    """Your starship.toml, the only file `--starship` sends to the box."""
+    path = Path(os.environ.get("STARSHIP_CONFIG") or "~/.config/starship.toml")
+    path = path.expanduser()
+    if not path.is_file():
+        raise DevError(
+            f"no starship config at {path}; create one or set $STARSHIP_CONFIG"
+        )
+    return path.read_text()
+
+
 def fal_spec(version: str) -> str:
     """The fal requirement for the box image: this release, or the latest one."""
     from packaging.version import InvalidVersion, Version
@@ -342,6 +353,7 @@ class Box:
         num_gpus: int = config.DEFAULT_NUM_GPUS,
         idle_minutes: int = config.DEFAULT_IDLE_MINUTES,
         claude: bool = False,
+        starship: bool = False,
         no_save: bool = False,
         dockerfile: str | None = None,
         team_data: bool = False,
@@ -359,6 +371,8 @@ class Box:
             )
         if dockerfile and not Path(dockerfile).is_file():
             raise DevError(f"no such Dockerfile: {dockerfile}")
+        # Read first: a missing config must not fail after the box was stopped.
+        starship_toml = local_starship_config() if starship else ""
         volume = None if team_data else self.ensure_volume()
         app = self.app_info()
         was_stopped = not (app and app.min_concurrency)
@@ -398,6 +412,7 @@ class Box:
             config.ENV_PYTHON_VERSION: f"{sys.version_info[0]}.{sys.version_info[1]}",
             config.ENV_FAL_SPEC: fal_spec(__version__),
             config.ENV_VOLUME: volume or "",
+            config.ENV_STARSHIP: starship_toml,
         }
         # box_app.py reads these when the deploy loads it.
         try:
@@ -548,13 +563,17 @@ class Box:
         timeout: int,
         machine_type: str | None = None,
         on_wait: Callable[[str], None] | None = None,
+        starship: bool = False,
     ) -> RunnerInfo:
-        if self.app_info() is None:
+        exists = self.app_info() is not None
+        if starship and exists:
+            log("the box already exists; use `fal dev deploy --starship` to change it")
+        if not exists:
             log(
                 f"{self.app} does not exist yet; "
                 "deploying it with the default image ..."
             )
-            log(self.deploy(machine_type=machine_type, hint=False))
+            log(self.deploy(machine_type=machine_type, starship=starship, hint=False))
         live = newest_live(self.runners())
         if live and machine_type and live[0].machine_type != machine_type:
             raise DevError(

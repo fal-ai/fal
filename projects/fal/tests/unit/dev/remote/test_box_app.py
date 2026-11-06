@@ -1,3 +1,4 @@
+import re
 import runpy
 
 import pytest
@@ -185,3 +186,146 @@ def test_a_gpu_that_cannot_be_read_is_warned_about_once_then_cleared(tmp_path):
         signals.gpus = original
 
     assert warning.read_text() == ""
+
+
+def _bashrc(**values):
+    module = runpy.run_path(str(BOX_APP))
+    return module["_fill"](
+        (REMOTE / "scripts" / "bashrc.sh").read_text(),
+        WORKSPACE="/data/devboxes/demo",
+        WORK="/work",
+        CLAUDE_DIR="/data/c",
+        WARNING_FILE="/tmp/w",
+        BOX_NAME="demo",
+        **values,
+    )
+
+
+def test_bashrc_default_prompt_shows_box_gpu_path_and_branch(tmp_path):
+    import subprocess
+
+    text = _bashrc()
+    assert "PS1=" in text
+    # The prompt is set before .devboxrc, so a user's PS1 there wins.
+    assert text.index("PS1=") < text.index('.devboxrc"')
+    # Starship is only used when setup() installed it with --starship.
+    assert "command -v starship" in text
+
+    nvidia = tmp_path / "nvidia-smi"
+    nvidia.write_text(
+        "#!/bin/sh\necho 'NVIDIA RTX PRO 6000 Blackwell Server Edition'\n"
+    )
+    nvidia.chmod(0o755)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rc = tmp_path / "rc"
+    rc.write_text(
+        text.replace("/tmp/devbox-gpu-short", str(tmp_path / "gpu"))
+        .replace('cd "/work"', "")
+        .replace('cd "$WORK"', "")
+    )
+    script = (
+        f'export PATH="{tmp_path}:$PATH" HOME={tmp_path}; PS1="x"; . {rc}; '
+        f"cd {repo}; git init -q -b main . ; "
+        'printf "%s\\n" "$(PROMPT_COMMAND= ; echo "${PS1@P}")"'
+    )
+    done = subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, check=False
+    )
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", done.stdout)
+    assert "demo RTXPRO6000" in plain, done.stderr
+    assert "(main)" in plain
+
+
+def test_bashrc_prompt_skips_gpu_without_nvidia_smi(tmp_path):
+    import subprocess
+
+    rc = tmp_path / "rc"
+    rc.write_text(_bashrc().replace("/tmp/devbox-gpu-short", str(tmp_path / "gpu")))
+    done = subprocess.run(
+        ["bash", "-c", f'PATH=/usr/bin:/bin; PS1=x; . {rc}; echo "${{PS1@P}}"'],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", done.stdout)
+    assert plain.startswith("demo ")
+    assert "RTX" not in plain and "H100" not in plain
+
+
+def test_starship_off_by_default_and_failed_install_keeps_default(
+    monkeypatch, tmp_path
+):
+    module = runpy.run_path(str(BOX_APP))
+    assert module["STARSHIP_TOML"] is None
+
+    warnings = []
+    module["_setup_starship"].__globals__["_warn"] = warnings.append
+
+    def boom(*a, **k):
+        raise OSError("no network")
+
+    monkeypatch.setattr(module["subprocess"], "run", boom)
+    module["_setup_starship"](tmp_path, "format = '$all'")
+
+    assert not (tmp_path / ".config" / "starship.toml").exists()
+    assert "default prompt" in warnings[0]
+
+
+def test_starship_installs_then_writes_only_the_config(monkeypatch, tmp_path):
+    module = runpy.run_path(str(BOX_APP))
+    calls = []
+    monkeypatch.setenv(config.ADMIN_KEY_SECRET, "secret")
+    monkeypatch.setattr(
+        module["subprocess"], "run", lambda cmd, **kw: calls.append((cmd, kw))
+    )
+
+    module["_setup_starship"](tmp_path, "format = '$all'")
+
+    assert "starship.rs/install.sh" in calls[0][0][-1]
+    assert config.ADMIN_KEY_SECRET not in calls[0][1]["env"]
+    assert (tmp_path / ".config" / "starship.toml").read_text() == "format = '$all'"
+
+
+def test_local_starship_config_reads_env_or_default(monkeypatch, tmp_path):
+    from fal.dev.box import local_starship_config
+    from fal.dev.errors import DevError
+
+    cfg = tmp_path / "s.toml"
+    cfg.write_text("add_newline = false\n")
+    monkeypatch.setenv("STARSHIP_CONFIG", str(cfg))
+    assert local_starship_config() == "add_newline = false\n"
+
+    monkeypatch.setenv("STARSHIP_CONFIG", str(tmp_path / "missing.toml"))
+    with pytest.raises(DevError):
+        local_starship_config()
+
+
+def test_bashrc_uses_starship_only_when_installed_with_its_config(tmp_path):
+    import subprocess
+
+    rc = tmp_path / "rc"
+    rc.write_text(_bashrc().replace("/tmp/devbox-gpu-short", str(tmp_path / "gpu")))
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    starship = fake / "starship"
+    starship.write_text("#!/bin/sh\necho 'PS1=STARSHIP '\n")
+    starship.chmod(0o755)
+
+    def prompt(home, path):
+        done = subprocess.run(
+            ["bash", "-c", f'HOME={home} PATH={path}; PS1=x; . {rc}; echo "$PS1"'],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return done.stdout
+
+    path = f"{fake}:/usr/bin:/bin"
+    home = tmp_path / "home"
+    (home / ".config").mkdir(parents=True)
+    assert "demo" in prompt(home, path)
+    (home / ".config" / "starship.toml").write_text("")
+    assert prompt(home, path).strip() == "STARSHIP"
+    # Config copied but the install failed: the default prompt stays.
+    assert "demo" in prompt(home, "/usr/bin:/bin")
