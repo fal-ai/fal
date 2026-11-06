@@ -183,7 +183,7 @@ def test_render_running_box():
     text = _text(render(_snapshot(), FakeBox(), now=NOW))
     for expected in [
         "fal dev  troy",
-        "RUNNING",
+        "● running",
         "devbox-troy",
         "1x GPU-H100",
         "runner-abc",
@@ -193,7 +193,7 @@ def test_render_running_box():
         "21.0/80 GiB",
         "41°C",
         "in 58m 00s",
-        "estimate",
+        "±1m · 60 min timeout",
         "hot request, 2m 00s ago",
         "hold",
         "code v3",
@@ -216,7 +216,7 @@ def test_render_warns_loudly_when_watchdog_is_off():
     )
     text = _text(render(_snapshot(probe), FakeBox(probe), now=NOW))
     assert "IDLE SHUTDOWN IS OFF" in text
-    assert re.search(r"auto-stop\s+OFF", text)
+    assert re.search(r"auto-stop\s+off", text)
 
 
 def test_render_hot_error_and_hold():
@@ -231,7 +231,7 @@ def test_render_hot_error_and_hold():
 
 def test_render_stopped_box():
     text = _text(render(_snapshot(state="stopped"), FakeBox(state="stopped"), now=NOW))
-    assert "STOPPED" in text
+    assert "● stopped" in text
     assert "fal dev up" in text
 
 
