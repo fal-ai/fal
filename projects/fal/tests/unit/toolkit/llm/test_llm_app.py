@@ -105,6 +105,15 @@ def _wait_inflight(app, timeout: float = 10.0) -> bool:
     return False
 
 
+def _wait_idle(app, timeout: float = 5.0) -> bool:
+    end = time.time() + timeout
+    while time.time() < end:
+        if not app._inflight:
+            return True
+        time.sleep(0.05)
+    return False
+
+
 def test_unary_usage_model_rewrite_and_hints(served):
     app, url, _, body_file = served
     r = httpx.post(
@@ -289,6 +298,110 @@ def test_unary_disconnect_aborts_engine(served):
     with pytest.raises(httpx.ReadTimeout):
         httpx.post(f"{url}/v1/chat/completions", json={"delay_ticks": 300}, timeout=1.0)
     assert _wait_for(abort_file, timeout=8.0)
+
+
+def test_llm_app_opts_into_gateway_cancel():
+    assert LLMApp.cancel_on_gateway_cancel is True
+
+
+def _gateway_cancel(url: str, path: str, request_id: str) -> dict:
+    r = httpx.post(f"{url}{path}/cancel", headers={"x-fal-request-id": request_id})
+    assert r.status_code == 200
+    assert r.headers["x-fal-billable-units"] == "0"
+    return r.json()
+
+
+@pytest.mark.parametrize("path", ["/v1/chat/completions", "/v1/responses"])
+def test_gateway_cancel_aborts_unary_engine_request(served, path):
+    app, url, abort_file, _ = served
+    result: dict = {}
+
+    def call():
+        result["r"] = httpx.post(
+            f"{url}{path}",
+            json={"delay_ticks": 300},
+            headers={"x-fal-request-id": "req-unary"},
+            timeout=20.0,
+        )
+
+    t = threading.Thread(target=call)
+    t.start()
+    assert _wait_inflight(app)
+    assert _gateway_cancel(url, path, "req-unary") == {"cancelled": True}
+    t.join(timeout=10)
+    assert result["r"].status_code == 499
+    assert result["r"].headers["x-fal-billable-units"] == "0"
+    assert _wait_for(abort_file, timeout=8.0)
+    assert app._usage_totals["cancel_aborts"] == 1
+    assert _wait_idle(app)
+
+
+@pytest.mark.parametrize(
+    "served", [{}, {"raw_stream_client": False}], indirect=True, ids=["raw", "httpx"]
+)
+@pytest.mark.parametrize("path", ["/v1/chat/completions", "/v1/responses"])
+def test_gateway_cancel_aborts_stream_engine_request(served, path):
+    app, url, abort_file, _ = served
+    with httpx.stream(
+        "POST",
+        f"{url}{path}",
+        json={"stream": True, "n_chunks": 300},
+        headers={"x-fal-request-id": "req-stream"},
+        timeout=20.0,
+    ) as r:
+        lines = r.iter_lines()
+        next(lines)
+        assert _gateway_cancel(url, path, "req-stream") == {"cancelled": True}
+        # Mid-stream the connection is cut rather than ended cleanly.
+        with pytest.raises(httpx.HTTPError):
+            for _ in lines:
+                pass
+    assert _wait_for(abort_file)
+    assert app._usage_totals["cancel_aborts"] == 1
+    assert _wait_idle(app)
+
+
+@pytest.mark.parametrize(
+    "served", [{}, {"raw_stream_client": False}], indirect=True, ids=["raw", "httpx"]
+)
+def test_gateway_cancel_before_stream_headers_aborts_engine_request(served):
+    app, url, abort_file, _ = served
+    result: dict = {}
+
+    def call():
+        result["r"] = httpx.post(
+            f"{url}/v1/chat/completions",
+            json={"stream": True, "header_delay_ticks": 300},
+            headers={"x-fal-request-id": "req-headers"},
+            timeout=20.0,
+        )
+
+    t = threading.Thread(target=call)
+    t.start()
+    assert _wait_inflight(app)
+    assert _gateway_cancel(url, "/v1/chat/completions", "req-headers") == {
+        "cancelled": True
+    }
+    t.join(timeout=10)
+    assert result["r"].status_code == 499
+    assert _wait_for(abort_file, timeout=8.0)
+    assert app._usage_totals["cancel_aborts"] == 1
+    assert _wait_idle(app)
+
+
+def test_gateway_cancel_of_unknown_or_finished_request_is_a_no_op(served):
+    app, url, abort_file, _ = served
+    r = httpx.post(
+        f"{url}/v1/chat/completions",
+        json={},
+        headers={"x-fal-request-id": "req-done"},
+    )
+    assert r.status_code == 200
+    assert _gateway_cancel(url, "/v1/chat/completions", "req-done") == {
+        "cancelled": False
+    }
+    assert not abort_file.exists()
+    assert "cancel_aborts" not in app._usage_totals
 
 
 def test_health_and_engine_stats(served):

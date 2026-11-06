@@ -390,6 +390,7 @@ class _Stream:
         if not self._settled:
             self._settled = True
             self.app._inflight.discard(self.abort)
+            self.app._count_if_cancelled()
             usage = _parse_stream_usage(self.tail)
             try:
                 if usage:
@@ -668,6 +669,10 @@ class LLMApp(App):
     # Seconds between SIGTERM and SIGKILL. The platform default (5s) leaves no
     # time to drain streams; 60 fits the 30s drain plus the engine stop.
     termination_grace_period_seconds: ClassVar[Optional[int]] = 60
+    # A gateway cancel (queue cancel, request timeout) stops the handler, which
+    # closes the engine connection so the engine aborts the request and frees
+    # its KV cache. Disconnects are already handled per request below.
+    cancel_on_gateway_cancel: ClassVar[bool] = True
 
     # Idle seconds before a runner scales down. LLM boots take minutes, so a
     # short keep_alive lets cold starts dominate the tail (simulated with a 143s
@@ -1577,6 +1582,7 @@ class LLMApp(App):
                 )
             except asyncio.CancelledError:
                 send.cancel()
+                self._count_if_cancelled()
                 if send.done() and not send.cancelled() and not send.exception():
                     # Headers arrived in the same tick: close what we got.
                     await send.result().aclose()
@@ -1752,6 +1758,15 @@ class LLMApp(App):
             self._usage_totals.get("deadline_aborts", 0) + 1
         )
 
+    def _count_if_cancelled(self) -> None:
+        # Counts gateway cancels (POST <route>/cancel), and client disconnects
+        # when cancel_on_disconnect is set; see fal._request_cancel.
+        context = self.current_request
+        if context is not None and context.cancelled:
+            self._usage_totals["cancel_aborts"] = (
+                self._usage_totals.get("cancel_aborts", 0) + 1
+            )
+
     def _count_idle_abort(self, path: str) -> None:
         self._usage_totals["idle_aborts"] = self._usage_totals.get("idle_aborts", 0) + 1
         print(
@@ -1778,7 +1793,10 @@ class LLMApp(App):
                 return_when=asyncio.FIRST_COMPLETED,
             )
         except asyncio.CancelledError:
+            # A gateway cancel lands here: dropping the upstream call closes
+            # its connection, which makes the engine abort the request.
             task.cancel()
+            self._count_if_cancelled()
             raise
         finally:
             watcher.cancel()

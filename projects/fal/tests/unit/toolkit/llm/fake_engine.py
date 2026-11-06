@@ -117,12 +117,17 @@ async def _respond(request: Request):
         "response": {"status": "completed", "output_text": text, "usage": usage},
     }
     if not body.get("stream"):
+        for _ in range(int(body.get("delay_ticks", 0))):
+            if await request.is_disconnected():
+                _mark_abort()
+                return JSONResponse({})
+            await asyncio.sleep(0.1)
         return final["response"]
 
     async def gen():
         done = False
         try:
-            for i in range(3):
+            for i in range(int(body.get("n_chunks", 3))):
                 delta = {"type": "response.output_text.delta", "delta": str(i)}
                 yield f"event: {delta['type']}\ndata: {json.dumps(delta)}\n\n"
                 await asyncio.sleep(0.2)

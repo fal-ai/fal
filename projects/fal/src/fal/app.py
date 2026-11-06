@@ -19,6 +19,14 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from fal._billing import BillingComponents, BillingDeclaration, check_declaration
 from fal._cuda_cache import apply_cuda_cache_env
+from fal._request_cancel import (
+    TIMEOUT_REMAINING_HEADER,
+    RequestCancellation,
+    RequestFlight,
+    flight_from_scope,
+    header_value,
+    parse_timeout_remaining,
+)
 from fal._serialization import include_modules_from
 from fal._typing import EndpointT
 from fal.api import (
@@ -679,6 +687,8 @@ class _RequestContextMiddleware:
             lifecycle_preference=request_lifecycle_preference(request),
             headers=dict(request.headers),
             upload_policy=upload_policy,
+            deadline_monotonic=_deadline_from_header(scope),
+            _flight=flight_from_scope(scope),
         )
 
         token = fal_app._current_request_context.set(context)
@@ -761,6 +771,27 @@ class RequestContext:
     lifecycle_preference: dict[str, str] | None
     headers: dict[str, str]
     upload_policy: UploadPolicy | None = None
+    # time.monotonic() value at which the gateway's request timeout expires,
+    # from x-fal-request-timeout-remaining. None when the gateway sent none.
+    deadline_monotonic: float | None = None
+    _flight: RequestFlight | None = field(default=None, repr=False)
+
+    @property
+    def cancelled(self) -> bool:
+        """True once the gateway cancelled this request or the client left
+        (with ``cancel_on_gateway_cancel`` / ``cancel_on_disconnect``)."""
+        return self._flight is not None and self._flight.cancelled
+
+    def time_remaining(self) -> float | None:
+        """Seconds until the gateway's request timeout, or None if unknown."""
+        if self.deadline_monotonic is None:
+            return None
+        return max(0.0, self.deadline_monotonic - time.monotonic())
+
+
+def _deadline_from_header(scope: Any) -> float | None:
+    remaining = parse_timeout_remaining(header_value(scope, TIMEOUT_REMAINING_HEADER))
+    return None if remaining is None else time.monotonic() + remaining
 
 
 class App(BaseServable):
@@ -895,6 +926,14 @@ class App(BaseServable):
     data_mounts: ClassVar[Optional[list[str]]] = None
     volumes: ClassVar[Optional[dict[str, Volume | str]]] = None
     persist_cuda_cache: ClassVar[bool] = True
+    # Cancel a request's handler (asyncio.CancelledError) when the gateway
+    # cancels it (POST <endpoint>/cancel, sent for queue cancels and request
+    # timeouts), and when the client disconnects. Both are off by default;
+    # leave them off if handlers must finish side effects (billing, writes). An
+    # app's own cancel route wins. Only async handlers can be interrupted; a
+    # sync handler keeps running in its thread.
+    cancel_on_gateway_cancel: ClassVar[bool] = False
+    cancel_on_disconnect: ClassVar[bool] = False
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -1227,6 +1266,14 @@ class App(BaseServable):
             # but it is sometimes used by servers to indicate that a client has closed
             # the connection without receiving a response
             return JSONResponse({"detail": str(exc)}, 499)
+
+        # Added last so it is outermost: it sets the request flight before the
+        # context middleware reads it and sees receive() before any other layer.
+        app.add_middleware(
+            RequestCancellation,  # type: ignore[arg-type]
+            cancel_on_gateway_cancel=self.cancel_on_gateway_cancel,
+            cancel_on_disconnect=self.cancel_on_disconnect,
+        )
 
     def _add_extra_routes(self, app: fastapi.FastAPI):
         # TODO remove this once we have a proper health check endpoint
