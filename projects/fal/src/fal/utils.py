@@ -328,6 +328,14 @@ def _is_app_default_host_option(
         return False
     if key in app_cls.__dict__:
         return False
+    # A host option App does not seed (e.g. termination_grace_period_seconds)
+    # that is inherited from an SDK base class (module under ``fal.``, such as
+    # LLMApp) is a default too, so pyproject can override it.
+    for base in app_cls.__mro__[1:]:
+        if key in base.__dict__:
+            if base.__module__.startswith("fal."):
+                return True
+            break
 
     current_host_value = app_cls.host_kwargs.get(key, _MISSING)
     if current_host_value is not _MISSING:
