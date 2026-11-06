@@ -430,12 +430,25 @@ def test_app_process_gets_the_session_name(tmp_path, monkeypatch):
     monkeypatch.setattr(
         app_holder.threading, "Thread", lambda **kwargs: SimpleNamespace(start=dict)
     )
-    child.start("m", "C", session_env=["MY_CACHE_NAMESPACE"])
+    child.start("m", "C", session_env=["MY_CACHE_NAMESPACE", "FAL_MY_CACHE_NS"])
     assert child._env()["MY_CACHE_NAMESPACE"] == "dev-tiny-image-me"
-    for bad in ("PYTHONPATH", "LD_PRELOAD", "FAL_DEV_APP", "HOME", "1BAD", "A-B"):
+    assert child._env()["FAL_MY_CACHE_NS"] == "dev-tiny-image-me"
+    for bad in (
+        "PYTHONPATH",
+        "LD_PRELOAD",
+        "FAL_DEV_APP",
+        "FAL_DEV_SESSION",
+        "FAL_KEY",
+        "FAL_HOST",
+        "FAL_RUN_HOST",
+        "PATH",
+        "home",
+        "1BAD",
+        "A-B",
+    ):
         with pytest.raises(ValueError, match="cannot set"):
             child.start("m", "C", session_env=[bad])
-    assert child.session_env == ["MY_CACHE_NAMESPACE"]
+    assert child.session_env == ["MY_CACHE_NAMESPACE", "FAL_MY_CACHE_NS"]
 
 
 def test_start_saves_session_env(repo, monkeypatch):
@@ -707,3 +720,21 @@ def test_sync_never_sends_keys_or_credentials(tmp_path):
     ]
     assert "server.pem" in withheld
     assert ".aws/credentials" in withheld
+
+
+def test_session_env_never_overrides_what_the_sdk_reads():
+    """Every FAL_ variable the SDK reads is refused, so new ones can't slip by."""
+    import re
+
+    import fal
+    from fal.dev.app_holder import check_session_env
+
+    names = set()
+    for path in Path(fal.__file__).parent.rglob("*.py"):
+        for line in path.read_text(errors="ignore").splitlines():
+            if "environ" in line or "getenv" in line:
+                names.update(re.findall(r"[\"'](FAL_[A-Z0-9_]+)[\"']", line))
+    assert names
+    for name in sorted(names):
+        with pytest.raises(ValueError, match="cannot set"):
+            check_session_env([name])

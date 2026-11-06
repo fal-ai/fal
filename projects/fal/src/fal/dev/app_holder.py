@@ -77,9 +77,43 @@ REQUEST_ERRORS = (ValueError, TypeError, EOFError, OSError, tarfile.TarError)
 # overwrite what deployed runners use. `start --session-env NAME` sets more.
 SESSION_ENV = "FAL_DEV_SESSION"
 ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-# Names the loader, Python, the shell or fal itself read: never overwritten.
-RESERVED_ENV = {"PATH", "HOME", "TMPDIR", "USER", "SHELL", "PWD", "LANG"}
-RESERVED_ENV_PREFIXES = ("LD_", "DYLD_", "PYTHON", "FAL_", "LC_")
+# Names the loader, Python, the shell or the fal SDK read: never overwritten.
+# A unit test keeps this in step with the FAL_ names the SDK reads.
+RESERVED_ENV = {
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "USER",
+    "SHELL",
+    "PWD",
+    "LANG",
+    "FAL_API_SOCKET",
+    "FAL_APP_NAME",
+    "FAL_APP_ROOT_PATH",
+    "FAL_CDN_V3_HOST",
+    "FAL_CONFIG_PATH",
+    "FAL_ENV",
+    "FAL_FORCE_AUTH_BY_USER",
+    "FAL_GRPC_HOST",
+    "FAL_HOME_DIR",
+    "FAL_PROFILE",
+    "FAL_QUEUE_RUN_HOST",
+    "FAL_REST_HOST",
+    "FAL_RUNNER_STATE",
+    "FAL_RUN_HOST",
+    "FAL_URL_OUTPUT",
+    "FAL_USE_LOCAL_UPLOADER",
+    "FAL_WS_RUN_HOST",
+}
+RESERVED_ENV_PREFIXES = (
+    "LD_",
+    "DYLD_",
+    "PYTHON",
+    "LC_",
+    "FAL_KEY",
+    "FAL_HOST",
+    "FAL_DEV_",
+)
 
 
 def check_session_env(names: list[str]) -> list[str]:
