@@ -57,7 +57,7 @@ def source_digest(manifest: dict[str, str]) -> str:
 
 
 def check_name(name: str) -> str:
-    if not NAME_RE.match(name):
+    if not NAME_RE.fullmatch(name):
         raise BenchmarkError(
             f"Invalid benchmark name {name!r}: use letters, digits, '.', '_' or '-'."
         )
@@ -108,7 +108,7 @@ def save(run: dict[str, Any]) -> Path:
 def load(ref: str, session_name: str | None) -> dict[str, Any]:
     """A saved run by name under the session's folder, or a ``.json`` file."""
     path = Path(ref)
-    if session_name is not None and NAME_RE.match(ref):
+    if session_name is not None and NAME_RE.fullmatch(ref):
         named = BENCHMARKS_DIR / session_name / f"{ref}.json"
         if named.is_file():
             path = named

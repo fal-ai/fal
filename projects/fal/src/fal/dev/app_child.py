@@ -28,7 +28,7 @@ import uvicorn
 
 import fal.ref
 from fal.app import App
-from fal.dev import app_reload
+from fal.dev import app_profile, app_reload
 from fal.dev.app_holder import CHILD_PREFIX
 
 
@@ -72,6 +72,7 @@ class DevAppServer:
         self.last_reload: dict[str, Any] = {}
         self.setup_seconds: float | None = None
         self.started_at = time.time()
+        self.profiler = app_profile.Profiler()
         self.instance, self.fastapi_app = self._load()
         self.setup_fp = app_reload.setup_fingerprint(type(self.instance), self.root)
         self.setup_writes = app_reload.setup_global_writes(
@@ -94,7 +95,18 @@ class DevAppServer:
         cls = self._import_class()
         instance = cls(_allow_init=True)
         fal.ref.set_current_app(instance)
-        return instance, instance._build_app()
+        return instance, self._build(instance)
+
+    def _build(self, instance: App) -> Any:
+        """The app's FastAPI app, with endpoints that can run under a profile."""
+        routes = app_profile.wrap_routes(instance.collect_routes(), self.profiler)
+        # _build_app() reads the routes from collect_routes(); shadow it on
+        # the instance only while building, so reloads never copy it over.
+        instance.collect_routes = lambda: routes  # type: ignore[method-assign]
+        try:
+            return instance._build_app()
+        finally:
+            del instance.collect_routes
 
     def _drop_local_modules(self) -> None:
         for name, module in list(sys.modules.items()):
@@ -140,7 +152,7 @@ class DevAppServer:
                 instance = object.__new__(cls)
                 # The state setup() built (models, pipelines) lives on the instance.
                 instance.__dict__.update(self.instance.__dict__)
-                fastapi_app = instance._build_app()
+                fastapi_app = self._build(instance)
                 self.instance, self.fastapi_app = instance, fastapi_app
                 # set_current_app() refuses to replace the app, so set it here.
                 fal.ref.current_app = instance
@@ -209,11 +221,29 @@ class DevAppServer:
         if scope["type"] == "http" and path.startswith(CHILD_PREFIX):
             action = path[len(CHILD_PREFIX) :]
             body = await _read_body(receive)
+            try:
+                payload = json.loads(body or b"{}")
+            except ValueError:
+                payload = None
+            if not isinstance(payload, dict):
+                await _send_json(send, 422, {"detail": "expected a JSON object"})
+                return
             if action == "reload":
-                changed = json.loads(body or b"{}").get("files", [])
-                await _send_json(send, 200, self.reload(changed))
+                await _send_json(send, 200, self.reload(payload.get("files", [])))
             elif action == "status":
                 await _send_json(send, 200, self.status())
+            elif action == "endpoints":
+                routes = self.instance.collect_routes()
+                found = {"endpoints": app_profile.endpoints(routes)}
+                await _send_json(send, 200, found)
+            elif action == "profile/arm":
+                try:
+                    await _send_json(send, 200, self.profiler.arm(payload))
+                except (KeyError, ValueError) as exc:
+                    await _send_json(send, 422, {"detail": str(exc)})
+            elif action == "profile/result":
+                result = self.profiler.result(str(payload.get("id")))
+                await _send_json(send, 200, result)
             else:
                 await _send_json(send, 404, {"detail": f"unknown action {action}"})
             return

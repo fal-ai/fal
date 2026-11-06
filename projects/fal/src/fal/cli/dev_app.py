@@ -24,6 +24,7 @@ MAX_WARMUPS = 50
 MAX_REPEAT = 100
 
 DEFAULT_KEEP_ALIVE = 1800
+PROFILES_DIR = Path("~/.fal/dev/profiles").expanduser()
 POLL_SECONDS = 1.0
 
 
@@ -417,8 +418,8 @@ def _request(args):
     from fal.dev import app_bench
 
     session = _session(args)
-    benchmark = args.warmups > 0 or args.repeat > 1 or args.name
-    if args.name:
+    benchmark = args.warmups > 0 or args.repeat > 1 or args.name is not None
+    if args.name is not None:
         app_bench.check_name(args.name)
     body = _load_data(args.data)
     _ensure_booted(session)
@@ -495,6 +496,135 @@ def _benchmark_list(args):
             f"{run['name']:<20} {created}  {run['path']:<12} "
             f"x{run['repeat']}  {app_bench.format_stats(run['stats'])}"
         )
+
+
+def _download(session, profile_id: str, name: str, target: Path) -> int:
+    """Copy one profile file from the box in chunks; returns its size."""
+    from fal.dev.app_session import call
+
+    tmp = target.with_name(f".{target.name}.part")
+    offset, size = 0, None
+    try:
+        with tmp.open("wb") as handle:
+            while size is None or offset < size:
+                chunk = call(
+                    session,
+                    "artifact",
+                    {"id": profile_id, "name": name, "offset": offset},
+                    timeout=600,
+                )
+                size = chunk["size"]
+                data = base64.b64decode(chunk["data"])
+                if not data and offset < size:
+                    raise OSError(f"{name} stopped at {offset} of {size} bytes")
+                handle.write(data)
+                offset += len(data)
+        tmp.replace(target)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return size
+
+
+def _mib(size: int) -> str:
+    return f"{size / 1024 / 1024:.1f} MiB"
+
+
+def _profile_one(session, args, path: str, body: Any, out: Path) -> bool:
+    from fal.dev.app_session import call
+
+    console = _console()
+    console.print(
+        f"Profiling [bold]{path}[/] ({args.mode}, {args.warmups} warmup(s)) ..."
+    )
+    payload: dict[str, Any] = {
+        "path": path,
+        "mode": args.mode,
+        "warmups": args.warmups,
+        "top": args.top,
+    }
+    if body is not None:
+        payload["body"] = body
+    result = call(session, "profile", payload, timeout=3660)
+    request = result.get("request", {})
+    status = request.get("status_code")
+    if result.get("status") == "request_failed":
+        console.print(f"[red]A warmup request to {path} returned {status}[/].")
+        print(str(request.get("body", ""))[-2000:], file=sys.stderr)
+        return False
+    if (status or 0) >= 400:
+        # The profile may exist, but of a failing request; not worth keeping.
+        console.print(f"[red]The profiled request to {path} returned {status}[/].")
+        print(str(request.get("body", ""))[-2000:], file=sys.stderr)
+        return False
+    if result.get("status") != "ok":
+        detail = result.get("error") or result.get("status")
+        console.print(f"[red]No profile for {path}[/]: {detail}")
+        return False
+    elapsed = result["elapsed_seconds"]
+    line = f"[green]{status}[/] {path} in {elapsed:.2f}s under the profiler"
+    if result.get("peak_memory_allocated_bytes"):
+        peak = result["peak_memory_allocated_bytes"] / 1024**3
+        line += f", peak GPU memory {peak:.1f} GiB"
+    console.print(line)
+    print(result["top_ops"])
+
+    folder = out / f"{time.strftime('%Y%m%d-%H%M%S')}-{_slug(path)}"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "profile.json").write_text(json.dumps(result, indent=2) + "\n")
+    _download(session, result["id"], "ops.txt", folder / "ops.txt")
+    size = result["trace_bytes"]
+    if size > args.max_trace_mb * 1024 * 1024:
+        console.print(
+            f"[yellow]Trace not downloaded[/]: {_mib(size)} is over "
+            f"--max-trace-mb {args.max_trace_mb}. It stays on the box until "
+            "newer profiles replace it. Use --light (GPU kernels only), a "
+            "smaller request, or a higher --max-trace-mb."
+        )
+        console.print(f"Ops table: {folder / 'ops.txt'}")
+        return True
+    trace = folder / "trace.json.gz"
+    _download(session, result["id"], "trace.json.gz", trace)
+    console.print(f"Trace: {trace} ({_mib(size)})")
+    console.print("Open it in https://ui.perfetto.dev (Open trace file).")
+    return True
+
+
+def _slug(path: str) -> str:
+    return "".join(c if c.isalnum() else "-" for c in path).strip("-") or "root"
+
+
+def _profile(args):
+    from fal.dev.app_session import DevAppError, call
+
+    session = _session(args)
+    if args.all == (args.path is not None):
+        raise ValueError("Pass an endpoint path or --all.")
+    if args.all and args.data is not None:
+        raise ValueError("--data applies to one endpoint; drop --all.")
+    out = (
+        Path(args.output_dir).expanduser()
+        if args.output_dir
+        else PROFILES_DIR / session.name
+    )
+    _ensure_booted(session)
+    if not args.all:
+        body = _load_data(args.data) if args.data is not None else None
+        if not _profile_one(session, args, args.path, body, out):
+            raise SystemExit(1)
+        return
+    endpoints = call(session, "endpoints", timeout=120)["endpoints"]
+    failed = False
+    for entry in endpoints:
+        if "error" in entry:
+            _console().print(f"[yellow]Skipping {entry['path']}[/]: {entry['error']}")
+            continue
+        try:
+            failed |= not _profile_one(session, args, entry["path"], None, out)
+        except (DevAppError, OSError) as exc:
+            _console().print(f"[red]{entry['path']}[/]: {exc}")
+            failed = True
+    if failed:
+        raise SystemExit(1)
 
 
 def _restart(args):
@@ -673,6 +803,59 @@ def add_parser(main_subparsers, parents=None):
         "list", help="List saved runs.", parents=[*parents, session_parser]
     )
     listing.set_defaults(func=_benchmark_list)
+
+    profile = subparsers.add_parser(
+        "profile",
+        help="Run one request under the torch profiler and download the trace.",
+        description="Warm the endpoint up, run one request under torch.profiler, "
+        "print the top ops and save a Perfetto/Chrome trace locally. Without "
+        "--data the request is built from the endpoint's input model "
+        "(examples and defaults). CPU ops are recorded in the thread that runs "
+        "the endpoint: work an async endpoint hands to other threads shows up "
+        "as GPU kernels only.",
+        parents=[*parents, session_parser],
+    )
+    profile.add_argument("path", nargs="?", help="Endpoint path, e.g. /")
+    profile.add_argument(
+        "--all", action="store_true", help="Profile every endpoint in turn."
+    )
+    profile.add_argument("--data", help="JSON body, or @file.json.")
+    depth = profile.add_mutually_exclusive_group()
+    depth.add_argument(
+        "--light",
+        dest="mode",
+        action="store_const",
+        const="light",
+        help="GPU kernels only: the smallest trace.",
+    )
+    depth.add_argument(
+        "--deep",
+        dest="mode",
+        action="store_const",
+        const="deep",
+        help="Add shapes, memory, stacks and FLOPs (large traces).",
+    )
+    profile.set_defaults(mode="standard")
+    profile.add_argument(
+        "--warmups",
+        type=_bounded(0, 10),
+        default=1,
+        help="Unprofiled requests to send first (default 1).",
+    )
+    profile.add_argument(
+        "--top", type=_bounded(1, 100), default=15, help="Ops to print (default 15)."
+    )
+    profile.add_argument(
+        "--output-dir",
+        help="Where to save profiles (default ~/.fal/dev/profiles/<session>).",
+    )
+    profile.add_argument(
+        "--max-trace-mb",
+        type=int,
+        default=200,
+        help="Skip downloading compressed traces over this size (default 200).",
+    )
+    profile.set_defaults(func=_profile)
 
     restart = subparsers.add_parser(
         "restart",

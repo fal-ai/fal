@@ -1,0 +1,439 @@
+import contextlib
+import enum
+import gzip
+import json
+import os
+import sys
+import threading
+from pathlib import Path
+from typing import Literal
+
+import pytest
+from fastapi.testclient import TestClient
+from pydantic import BaseModel, Field
+
+import fal
+from fal.dev import app_profile
+from fal.dev.app_child import DevAppServer
+
+APP_SOURCE = """
+from __future__ import annotations
+
+import fal
+from pydantic import BaseModel, Field
+
+
+class Input(BaseModel):
+    prompt: str = Field(examples=["a fox"])
+    steps: int = 4
+
+
+class Demo(fal.App):
+    def setup(self):
+        self.ready = True
+
+    @fal.endpoint("/")
+    def generate(self, input: Input) -> dict:
+        return {"prompt": input.prompt, "steps": input.steps}
+
+    @fal.endpoint("/async")
+    async def generate_async(self, input: Input) -> dict:
+        return {"prompt": input.prompt}
+
+    @fal.endpoint("/ping")
+    def ping(self) -> dict:
+        return {"ok": True}
+"""
+
+
+@pytest.fixture
+def server(tmp_path, monkeypatch):
+    (tmp_path / "profile_app.py").write_text(APP_SOURCE)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.setattr(fal.ref, "current_app", None)
+    captured = []
+
+    @contextlib.contextmanager
+    def capture(self, spec):
+        captured.append((spec["path"], threading.get_ident()))
+        yield
+        self.results[spec["id"]] = {"status": "ok", "id": spec["id"]}
+
+    monkeypatch.setattr(app_profile.Profiler, "capture", capture)
+    server = DevAppServer(tmp_path, "profile_app", "Demo")
+    with TestClient(server) as client:
+        yield server, client, captured, tmp_path
+    sys.modules.pop("profile_app", None)
+
+
+def _arm(client, tmp_path, path, profile_id="a" * 32):
+    spec = {"id": profile_id, "path": path, "mode": "light", "dir": str(tmp_path)}
+    return client.post("/__fal_dev_child/profile/arm", json=spec)
+
+
+@pytest.mark.parametrize("path", ["/", "/async"])
+def test_armed_profile_wraps_one_request(server, path):
+    server, client, captured, tmp_path = server
+    assert _arm(client, tmp_path, path).status_code == 200
+
+    # A request to another endpoint does not claim it.
+    assert client.post("/ping", json={}).json() == {"ok": True}
+    assert captured == []
+
+    response = client.post(path, json={"prompt": "a cat"})
+    assert response.status_code == 200
+    assert response.json()["prompt"] == "a cat"
+    assert [entry[0] for entry in captured] == [path]
+
+    # Only the first matching request is profiled.
+    client.post(path, json={"prompt": "again"})
+    assert len(captured) == 1
+    result = client.post("/__fal_dev_child/profile/result", json={"id": "a" * 32})
+    assert result.json()["status"] == "ok"
+
+
+def test_profile_not_reached_reports_not_captured(server):
+    server, client, captured, tmp_path = server
+    _arm(client, tmp_path, "/")
+    # A body that fails validation never reaches the endpoint.
+    assert client.post("/", json={"steps": "x"}).status_code == 422
+    result = client.post("/__fal_dev_child/profile/result", json={"id": "a" * 32})
+    assert result.json()["status"] == "not_captured"
+    assert captured == []
+
+
+def test_wrapped_routes_survive_reload(server):
+    server, client, captured, tmp_path = server
+    result = client.post("/__fal_dev_child/reload", json={"files": []}).json()
+    assert result["action"] == "reload"
+    # The profiler wrapper must not leak into the instance state copied over.
+    assert "collect_routes" not in vars(server.instance)
+    _arm(client, tmp_path, "/")
+    client.post("/", json={"prompt": "x"})
+    assert [entry[0] for entry in captured] == ["/"]
+
+
+def test_endpoints_lists_default_bodies(server):
+    server, client, captured, tmp_path = server
+    found = client.post("/__fal_dev_child/endpoints", json={}).json()["endpoints"]
+    by_path = {entry["path"]: entry for entry in found}
+    assert by_path["/"]["body"] == {"prompt": "a fox", "steps": 4}
+    assert by_path["/ping"]["body"] == {}
+
+
+def test_arm_rejects_unknown_mode(server):
+    server, client, captured, tmp_path = server
+    spec = {"id": "b" * 32, "path": "/", "mode": "huge", "dir": str(tmp_path)}
+    assert client.post("/__fal_dev_child/profile/arm", json=spec).status_code == 422
+
+
+class Color(enum.Enum):
+    RED = "red"
+
+
+class Size(BaseModel):
+    width: int = Field(ge=64)
+
+
+class Rich(BaseModel):
+    prompt: str
+    count: int = Field(gt=2)
+    ratio: float
+    flag: bool
+    color: Color
+    mode: Literal["fast", "slow"]
+    tags: list[str] = Field(min_length=2)
+    size: Size
+    optional: str | None = None
+    seed: int = 7
+
+
+def test_default_body_fills_required_fields_and_keeps_defaults():
+    body = app_profile.default_body(Rich)
+    assert body == {
+        "prompt": "test",
+        "count": 3,
+        "ratio": 1.0,
+        "flag": False,
+        "color": "red",
+        "mode": "fast",
+        "tags": ["test", "test"],
+        "size": {"width": 64},
+        "optional": None,
+        "seed": 7,
+    }
+
+
+def test_default_body_names_the_field_it_cannot_build():
+    class Opaque(BaseModel):
+        blob: bytes
+
+    with pytest.raises(ValueError, match="Opaque.blob"):
+        app_profile.default_body(Opaque)
+
+
+def test_prune_keeps_newest(tmp_path):
+    for index in range(4):
+        folder = tmp_path / f"p{index}"
+        folder.mkdir()
+        (folder / "trace.json.gz").write_bytes(b"x")
+        os.utime(folder, (index, index))
+    app_profile.prune(tmp_path, keep=2)
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["p2", "p3"]
+
+
+def test_capture_writes_a_perfetto_trace(tmp_path):
+    torch = pytest.importorskip("torch")
+    profiler = app_profile.Profiler()
+    spec = {"id": "c" * 32, "path": "/", "mode": "standard", "dir": str(tmp_path)}
+    with profiler.capture(spec):
+        torch.ones(64, 64) @ torch.ones(64, 64)
+    status = json.loads((tmp_path / app_profile.STATUS_NAME).read_text())
+    assert status["status"] == "ok", status
+    trace = json.loads(
+        gzip.decompress((tmp_path / app_profile.TRACE_NAME).read_bytes())
+    )
+    assert trace["traceEvents"]
+    assert "aten::mm" in status["top_ops"]
+
+
+def test_holder_profile_warms_up_arms_and_collects(tmp_path, monkeypatch):
+    from fal.dev import app_holder
+
+    child_calls, forwarded = [], []
+
+    def child_call(action, payload, timeout):
+        child_calls.append(action)
+        if action == "endpoints":
+            return 200, {"endpoints": [{"path": "/", "body": {"prompt": "x"}}]}
+        if action == "profile/arm":
+            return 200, {"armed": payload["id"]}
+        return 200, {"status": "ok", "trace_bytes": 10, "top_ops": "table"}
+
+    def forward(payload):
+        forwarded.append(payload["body"])
+        return {"status_code": 200, "elapsed_seconds": 1.0, "body": "{}"}
+
+    monkeypatch.setattr(app_holder, "_child_call", child_call)
+    monkeypatch.setattr(app_holder, "_forward", forward)
+    result = app_holder._profile({"path": "/", "warmups": 2}, tmp_path)
+
+    assert child_calls == ["endpoints", "profile/arm", "profile/result"]
+    # Two warmups, then the profiled request, all with the derived body.
+    assert forwarded == [{"prompt": "x"}] * 3
+    assert result["status"] == "ok"
+    assert result["request"]["status_code"] == 200
+    assert result["body"] == {"prompt": "x"}
+
+
+def test_holder_profile_needs_a_body_it_can_build(tmp_path, monkeypatch):
+    from fal.dev import app_holder
+
+    monkeypatch.setattr(
+        app_holder,
+        "_child_call",
+        lambda *a, **k: (200, {"endpoints": [{"path": "/", "error": "no model"}]}),
+    )
+    with pytest.raises(ValueError, match="pass --data"):
+        app_holder._profile({"path": "/"}, tmp_path)
+
+
+def test_holder_artifact_reads_chunks_and_refuses_other_files(tmp_path, monkeypatch):
+    from fal.dev import app_holder
+
+    monkeypatch.setattr(app_holder, "ARTIFACT_CHUNK_BYTES", 4)
+    folder = tmp_path / ("d" * 32)
+    folder.mkdir()
+    (folder / "trace.json.gz").write_bytes(b"0123456789")
+    chunk = app_holder._artifact(
+        {"id": "d" * 32, "name": "trace.json.gz", "offset": 4}, tmp_path
+    )
+    assert chunk["size"] == 10
+    assert chunk["data"] == "NDU2Nw=="  # b"4567"
+    for bad in ({"id": "../x", "name": "trace.json.gz"}, {"id": "d" * 32, "name": "x"}):
+        with pytest.raises(ValueError):
+            app_holder._artifact(bad, tmp_path)
+
+
+def _fake_profile_box(monkeypatch, trace_bytes):
+    import base64
+
+    from fal.dev import app_session
+
+    trace = gzip.compress(json.dumps({"traceEvents": [{"name": "k"}]}).encode())
+    files = {"trace.json.gz": trace, "ops.txt": b"ops table\n"}
+    calls = []
+
+    def call(_session, action, payload=None, **_):
+        calls.append(action)
+        if action == "status":
+            return {"phase": "ready", "module": "demo_app"}
+        if action == "profile":
+            return {
+                "id": "e" * 32,
+                "status": "ok",
+                "elapsed_seconds": 2.5,
+                "trace_bytes": trace_bytes or len(trace),
+                "top_ops": "TOP OPS",
+                "request": {"status_code": 200},
+            }
+        data = files[payload["name"]]
+        piece = data[payload["offset"] : payload["offset"] + 7]
+        return {"size": len(data), "data": base64.b64encode(piece).decode()}
+
+    monkeypatch.setattr(app_session, "call", call)
+    return calls, trace
+
+
+def _profile_session(tmp_path, monkeypatch):
+    from fal.dev import app_session
+
+    monkeypatch.setattr(app_session, "SESSIONS_DIR", tmp_path / "sessions")
+    app_session.Session(
+        name="dev-demo-me",
+        app_name="dev-demo-me",
+        file_path="/src/demo_app.py",
+        root="/src",
+        module="demo_app",
+        class_name="Demo",
+        run_url="https://fal.run/me/dev-demo-me",
+        token="t",
+    ).save()
+
+
+def test_profile_command_downloads_the_trace(tmp_path, monkeypatch, capsys):
+    from fal.cli.main import parse_args
+
+    _profile_session(tmp_path, monkeypatch)
+    calls, trace = _fake_profile_box(monkeypatch, None)
+    out = tmp_path / "profiles"
+    args = parse_args(["dev", "app", "profile", "/", "--output-dir", str(out)])
+    args.func(args)
+
+    (folder,) = out.iterdir()
+    assert (folder / "trace.json.gz").read_bytes() == trace
+    assert (folder / "ops.txt").read_text() == "ops table\n"
+    printed = capsys.readouterr().out
+    assert "TOP OPS" in printed
+    assert "ui.perfetto.dev" in printed
+
+
+def test_profile_command_skips_traces_over_the_cap(tmp_path, monkeypatch, capsys):
+    from fal.cli.main import parse_args
+
+    _profile_session(tmp_path, monkeypatch)
+    calls, _ = _fake_profile_box(monkeypatch, 300 * 1024 * 1024)
+    out = tmp_path / "profiles"
+    args = parse_args(["dev", "app", "profile", "/", "--output-dir", str(out)])
+    args.func(args)
+
+    (folder,) = out.iterdir()
+    assert not (folder / "trace.json.gz").exists()
+    assert (folder / "ops.txt").exists()
+    assert "Trace not downloaded" in capsys.readouterr().out
+
+
+class _FakeProfile:
+    instances: list = []
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        _FakeProfile.instances.append(self)
+
+    def start(self):
+        pass
+
+
+@pytest.mark.parametrize(
+    "mode,cuda,activities,deep",
+    [
+        ("light", True, ["CUDA"], False),
+        ("standard", True, ["CPU", "CUDA"], False),
+        ("deep", True, ["CPU", "CUDA"], True),
+        ("light", False, ["CPU"], False),
+    ],
+)
+def test_profiler_modes(monkeypatch, mode, cuda, activities, deep):
+    import types
+
+    activity = types.SimpleNamespace(CPU="CPU", CUDA="CUDA")
+    fake = types.SimpleNamespace(
+        profiler=types.SimpleNamespace(ProfilerActivity=activity, profile=_FakeProfile),
+        cuda=types.SimpleNamespace(
+            is_available=lambda: cuda, reset_peak_memory_stats=lambda: None
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake)
+    profiler, has_cuda = app_profile._start(mode)
+    assert has_cuda is cuda
+    assert profiler.kwargs["activities"] == activities
+    for flag in ("record_shapes", "profile_memory", "with_stack", "with_flops"):
+        assert profiler.kwargs[flag] is deep
+
+
+def test_holder_profile_disarms_when_the_request_fails(tmp_path, monkeypatch):
+    from fal.dev import app_holder
+
+    child_calls = []
+
+    def child_call(action, payload, timeout):
+        child_calls.append(action)
+        return 200, {"armed": "x"} if action == "profile/arm" else {}
+
+    def forward(payload):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(app_holder, "_child_call", child_call)
+    monkeypatch.setattr(app_holder, "_forward", forward)
+    with pytest.raises(TimeoutError):
+        app_holder._profile({"path": "/", "body": {}, "warmups": 0}, tmp_path)
+    assert child_calls == ["profile/arm", "profile/result"]
+
+
+def test_holder_profile_warmups_share_the_time_budget(tmp_path, monkeypatch):
+    from fal.dev import app_holder
+
+    timeouts = []
+    clock = iter([0.0, 100.0, 3400.0])
+    monkeypatch.setattr(app_holder.time, "monotonic", lambda: next(clock))
+
+    def forward(payload):
+        timeouts.append(payload["timeout"])
+        return {"status_code": 200, "elapsed_seconds": 1.0}
+
+    monkeypatch.setattr(app_holder, "_forward", forward)
+    with pytest.raises(ValueError, match="time budget"):
+        app_holder._profile({"path": "/", "body": {}, "warmups": 2}, tmp_path)
+    assert timeouts == [app_holder.RUNS_BUDGET_SECONDS - 100]
+
+
+def test_capture_survives_a_status_write_failure(tmp_path, monkeypatch):
+    profiler = app_profile.Profiler()
+
+    def broken(mode):
+        raise RuntimeError("no torch")
+
+    monkeypatch.setattr(app_profile, "_start", broken)
+    spec = {"id": "f" * 32, "path": "/", "mode": "light", "dir": str(tmp_path / "p")}
+    monkeypatch.setattr(
+        Path, "write_text", lambda *a, **k: (_ for _ in ()).throw(OSError("full"))
+    )
+    with profiler.capture(spec):
+        pass
+    assert profiler.result("f" * 32)["status"] == "error"
+
+
+def test_armed_profile_expires(monkeypatch):
+    profiler = app_profile.Profiler()
+    profiler.arm({"id": "1", "path": "/", "mode": "light", "dir": "/tmp/x"})
+    monkeypatch.setattr(
+        app_profile.time, "monotonic", lambda: app_profile.ARM_SECONDS * 2 + 1e9
+    )
+    assert profiler.claim("/") is None
+    assert profiler.armed is None
+
+
+def test_child_control_routes_reject_non_objects(server):
+    server, client, captured, tmp_path = server
+    response = client.post("/__fal_dev_child/status", content=b"[1]")
+    assert response.status_code == 422

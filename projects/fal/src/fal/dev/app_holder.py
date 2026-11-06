@@ -32,6 +32,7 @@ import tarfile
 import threading
 import time
 import urllib.parse
+import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar
 
@@ -40,12 +41,18 @@ from fastapi import Body
 
 import fal
 from fal.app import App
+from fal.dev import app_profile
 
 CHILD_PORT = 8181
 STATE_ROOT = Path("/tmp/fal-dev-app")
 MAX_RESPONSE_BYTES = 20 * 1024 * 1024
 MAX_WARMUPS = 50
 MAX_REPEAT = 100
+MAX_PROFILE_WARMUPS = 10
+# Profile folders kept on the runner; older ones are deleted.
+PROFILES_KEPT = 3
+ARTIFACT_CHUNK_BYTES = 8 * 1024 * 1024
+ARTIFACTS = (app_profile.TRACE_NAME, app_profile.OPS_NAME, app_profile.STATUS_NAME)
 # A batch of runs ends within this, inside the box's 3600 s request timeout.
 RUNS_BUDGET_SECONDS = 3300
 LOG_LINES = 2000
@@ -148,6 +155,7 @@ class _ChildProcess:
         self.lock = threading.RLock()
         self.control = threading.Lock()
         self.install_lock = threading.Lock()
+        self.profile_lock = threading.Lock()
         self.log_lock = threading.Lock()
         self.generation = 0
         self.proc: subprocess.Popen | None = None
@@ -542,6 +550,93 @@ def _timeout(payload: dict) -> float:
         raise ValueError("timeout must be a number") from exc
 
 
+def _endpoint_body(path: str) -> Any:
+    """The default body the app's input model gives for ``path``."""
+    _, found = _child_call("endpoints", {}, timeout=60)
+    for entry in found.get("endpoints", []):
+        if entry["path"] == path:
+            if "error" in entry:
+                raise ValueError(f"{path}: {entry['error']}; pass --data")
+            return entry["body"]
+    raise ValueError(f"{path} is not an endpoint that can be profiled")
+
+
+def _profile(payload: dict, root: Path) -> dict:
+    """Warm up, then send one request to ``path`` under the torch profiler.
+
+    Warmups and the profiled request share ``RUNS_BUDGET_SECONDS``, so the
+    call answers inside the box's request timeout.
+    """
+    path = str(payload.get("path", "/"))
+    mode = str(payload.get("mode", "standard"))
+    warmups = _count(payload, "warmups", 1, 0, MAX_PROFILE_WARMUPS)
+    top = _count(payload, "top", 15, 1, 100)
+    timeout = _timeout(payload)
+    deadline = time.monotonic() + RUNS_BUDGET_SECONDS
+    body = payload.get("body")
+    if body is None:
+        body = _endpoint_body(path)
+    request = {"path": path, "body": body, "method": "POST"}
+
+    def send() -> dict:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise ValueError("warmups used up the time budget; pass fewer --warmups")
+        return _forward({**request, "timeout": min(timeout, left)})
+
+    for _ in range(warmups):
+        warm = send()
+        if warm["status_code"] >= 400:
+            failed = {k: warm[k] for k in ("status_code", "elapsed_seconds")}
+            failed["body"] = warm.get("body", "")[-2000:]
+            return {"status": "request_failed", "request": failed, "body": body}
+    app_profile.prune(root, keep=PROFILES_KEPT - 1)
+    profile_id = uuid.uuid4().hex
+    spec = {
+        "id": profile_id,
+        "path": path,
+        "mode": mode,
+        "dir": str(root / profile_id),
+        "top": top,
+    }
+    status, armed = _child_call("profile/arm", spec, timeout=30)
+    if status != 200:
+        raise ValueError(armed.get("detail", f"could not arm the profile ({status})"))
+    try:
+        response = send()
+    finally:
+        # Also disarms the profile when the request never reached the endpoint.
+        _, result = _child_call("profile/result", {"id": profile_id}, timeout=30)
+    result["request"] = {
+        "status_code": response["status_code"],
+        "elapsed_seconds": response["elapsed_seconds"],
+    }
+    if response["status_code"] >= 400:
+        result["request"]["body"] = response.get("body", "")[-2000:]
+    result["body"] = body
+    result["id"] = profile_id
+    return result
+
+
+def _artifact(payload: dict, root: Path) -> dict:
+    profile_id = str(payload.get("id", ""))
+    name = str(payload.get("name", ""))
+    if not profile_id.isalnum() or name not in ARTIFACTS:
+        raise ValueError("unknown profile artifact")
+    path = root / profile_id / name
+    if not path.is_file():
+        raise ValueError(f"{name} of profile {profile_id} is gone from the box")
+    offset = _count(payload, "offset", 0, 0, path.stat().st_size)
+    with path.open("rb") as handle:
+        handle.seek(offset)
+        data = handle.read(ARTIFACT_CHUNK_BYTES)
+    return {
+        "size": path.stat().st_size,
+        "offset": offset,
+        "data": base64.b64encode(data).decode(),
+    }
+
+
 def _int(payload: dict, key: str, default: int | None) -> int | None:
     value = payload.get(key, default)
     if value is None:
@@ -669,6 +764,52 @@ class DevAppHolder:
             return await asyncio.to_thread(_forward_runs, payload)
         except CHILD_ERRORS as exc:
             raise fastapi.HTTPException(status_code=409, detail=str(exc)) from exc
+
+    def _ready(self) -> None:
+        phase = self._child.phase
+        if phase != "ready":
+            raise fastapi.HTTPException(
+                status_code=409, detail=f"the app is not ready (phase: {phase})"
+            )
+
+    @fal.endpoint(f"{ROUTE_PREFIX}endpoints")
+    async def dev_endpoints(self, payload: Any = Body(...)) -> dict[str, Any]:
+        self._check(payload)
+        self._ready()
+        try:
+            _, found = await asyncio.to_thread(_child_call, "endpoints", {}, 60)
+        except CHILD_ERRORS as exc:
+            raise fastapi.HTTPException(status_code=409, detail=str(exc)) from exc
+        return found
+
+    @fal.endpoint(f"{ROUTE_PREFIX}profile")
+    async def dev_profile(self, payload: Any = Body(...)) -> dict[str, Any]:
+        payload = self._check(payload)
+        self._ready()
+        root = self._child.session_dir / "profiles"
+
+        def profile() -> dict[str, Any]:
+            # One profile at a time: arming replaces any armed profile.
+            if not self._child.profile_lock.acquire(blocking=False):
+                raise ValueError("another profile is running on this box")
+            try:
+                return _profile(payload, root)
+            finally:
+                self._child.profile_lock.release()
+
+        try:
+            return await asyncio.to_thread(profile)
+        except CHILD_ERRORS as exc:
+            raise fastapi.HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @fal.endpoint(f"{ROUTE_PREFIX}artifact")
+    async def dev_artifact(self, payload: Any = Body(...)) -> dict[str, Any]:
+        payload = self._check(payload)
+        root = self._child.session_dir / "profiles"
+        try:
+            return await asyncio.to_thread(_artifact, payload, root)
+        except CHILD_ERRORS as exc:
+            raise fastapi.HTTPException(status_code=404, detail=str(exc)) from exc
 
     @fal.endpoint(f"{ROUTE_PREFIX}logs")
     async def dev_logs(self, payload: Any = Body(...)) -> dict[str, Any]:

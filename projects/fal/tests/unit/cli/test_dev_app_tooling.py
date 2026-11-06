@@ -140,8 +140,9 @@ def test_compare_flags_different_requests(home):
 
 
 def test_benchmark_names_are_checked(home, tmp_path):
-    with pytest.raises(app_bench.BenchmarkError):
-        app_bench.check_name("../escape")
+    for bad in ("../escape", "a\n", ""):
+        with pytest.raises(app_bench.BenchmarkError):
+            app_bench.check_name(bad)
     with pytest.raises(app_bench.BenchmarkError):
         app_bench.load("missing", "dev-demo-me")
     foreign = tmp_path / "foreign.json"
@@ -269,3 +270,9 @@ def test_request_flags_are_bounded(capsys):
     assert "invalid integer 'abc'" in capsys.readouterr().err
     args = parse_args(["dev", "app", "benchmark", "compare", "a", "b"])
     assert (args.baseline, args.candidate) == ("a", "b")
+
+
+def test_empty_benchmark_name_is_refused(home):
+    _session().save()
+    with pytest.raises(app_bench.BenchmarkError):
+        _request("--name", "")
