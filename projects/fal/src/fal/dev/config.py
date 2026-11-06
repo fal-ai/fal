@@ -39,6 +39,10 @@ ENV_CLAUDE = "DEVBOX_CLAUDE"
 ENV_DOCKERFILE = "DEVBOX_DOCKERFILE"
 ENV_PYTHON_VERSION = "DEVBOX_PYTHON_VERSION"
 ENV_FAL_SPEC = "DEVBOX_FAL_SPEC"
+# The contents of your starship.toml, set by --starship; empty for the default prompt.
+ENV_STARSHIP = "DEVBOX_STARSHIP"
+STARSHIP_INSTALL_URL = "https://starship.rs/install.sh"
+STARSHIP_INSTALL_TIMEOUT_SECONDS = 120
 # The box's volume name; empty for the team-shared /data.
 ENV_VOLUME = "DEVBOX_VOLUME"
 

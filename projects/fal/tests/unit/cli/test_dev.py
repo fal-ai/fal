@@ -41,6 +41,7 @@ def test_dev_deploy_defaults(monkeypatch):
     assert args.num_gpus == config.DEFAULT_NUM_GPUS
     assert args.idle_minutes == config.DEFAULT_IDLE_MINUTES
     assert not args.claude
+    assert not args.starship
     assert not args.no_save
     assert args.dockerfile is None
     assert not args.team_data
@@ -50,6 +51,9 @@ def test_dev_deploy_defaults(monkeypatch):
 def test_dev_box_commands_run_their_handlers(monkeypatch):
     up = _run(monkeypatch, "box", "up", ["dev", "up", "--machine-type", "GPU-B200"])
     assert up.machine_type == "GPU-B200"
+    assert not up.starship
+    assert parse_args(["dev", "up", "--starship"]).starship
+    assert parse_args(["dev", "deploy", "--starship"]).starship
     assert _run(monkeypatch, "box", "down", ["dev", "down", "--no-save"]).no_save
     proxy = _run(monkeypatch, "box", "ssh_proxy", ["dev", "ssh-proxy", "--name", "k"])
     assert proxy.name == "k"

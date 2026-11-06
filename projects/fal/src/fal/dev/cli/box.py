@@ -40,6 +40,7 @@ def cmd_deploy(args):
         num_gpus=args.num_gpus,
         idle_minutes=args.idle_minutes,
         claude=args.claude,
+        starship=args.starship,
         no_save=args.no_save,
         dockerfile=args.dockerfile,
         team_data=args.team_data,
@@ -66,7 +67,7 @@ def cmd_up(args):
         wait.start()  # only once the runner wait begins, after any deploy
 
     try:
-        box.up(args.timeout, args.machine_type, on_wait)
+        box.up(args.timeout, args.machine_type, on_wait, starship=args.starship)
     except KeyboardInterrupt:
         wait.close()
         if box.start_cancelled:
