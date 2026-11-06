@@ -167,7 +167,7 @@ def cmd_logs(args):
             raise DevError(
                 f"{str(exc).rstrip('. ')}. To read the last runner's log: "
                 "fal dev logs --all"
-            ) from exc
+            ) from None
         # The tail first, so a quiet box still shows something, then new lines.
         args.console.print(f"[dim]last lines of {runner_id}, then following ...[/]")
         # Taken before the tail, so no line falls between the two reads.
