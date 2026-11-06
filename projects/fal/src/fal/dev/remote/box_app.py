@@ -554,6 +554,10 @@ def _prepare_home() -> None:
     for rel in PERSISTED_HOME_DIRS:
         (persisted_home / rel).mkdir(parents=True, exist_ok=True)
     (persisted_home / ".ssh").chmod(0o700)
+    for rel in PERSISTED_HOME_FILES:
+        # Else the link dangles until something writes the file, and git cannot
+        # tell a missing config from a broken one.
+        (persisted_home / rel).touch()
     for rel in PERSISTED_HOME_FILES + PERSISTED_HOME_DIRS:
         target = persisted_home / rel
         link = home / rel

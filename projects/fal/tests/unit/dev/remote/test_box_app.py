@@ -185,3 +185,26 @@ def test_a_gpu_that_cannot_be_read_is_warned_about_once_then_cleared(tmp_path):
         signals.gpus = original
 
     assert warning.read_text() == ""
+
+
+def test_persisted_dotfile_links_do_not_dangle(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    module = runpy.run_path(str(BOX_APP))
+    home, workspace = tmp_path / "home", tmp_path / "workspace"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
+    prepare = module["_prepare_home"]
+    # The function's own globals, not the copy runpy returns.
+    monkeypatch.setitem(prepare.__globals__, "WORKSPACE", workspace)
+    monkeypatch.setitem(
+        prepare.__globals__, "CLAUDE_CONFIG_DIR", workspace / ".home" / ".claude"
+    )
+    monkeypatch.setitem(
+        prepare.__globals__, "BASHRC_BLOCK", "# >>> devbox >>>\n# <<< devbox <<<\n"
+    )
+
+    prepare()
+
+    link = home / ".gitconfig"
+    assert link.is_symlink() and link.resolve().exists()
