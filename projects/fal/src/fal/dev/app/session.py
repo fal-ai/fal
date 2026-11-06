@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from fal.dev.app_sync import SKIP_DIRS
+from fal.dev.app.sync import SKIP_DIRS
 
 if TYPE_CHECKING:
     from fal.app import App
@@ -144,7 +144,7 @@ def call(
     timeout: float = 60,
 ) -> dict[str, Any]:
     """POST to the box's ``/__fal_dev/<action>`` route."""
-    from fal.dev.app_holder import ROUTE_PREFIX, TOKEN_FIELD
+    from fal.dev.remote.holder import ROUTE_PREFIX, TOKEN_FIELD
 
     # The token travels in the body; keep fal from storing request payloads.
     headers = {**_headers(session.team), "X-Fal-Store-IO": "0"}
@@ -340,7 +340,7 @@ def deploy_box(
     from fal.api.client import SyncServerlessClient
     from fal.api.deploy import PreparedDeployment, execute_prepared_deployment
     from fal.cli._utils import AppData
-    from fal.dev.app_holder import ROUTE_PREFIX, box_host_options, make_holder
+    from fal.dev.remote.holder import ROUTE_PREFIX, box_host_options, make_holder
     from fal.utils import load_function_from
 
     found: dict[str, Any] = {}

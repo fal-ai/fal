@@ -3,7 +3,7 @@
 ``make_holder(target)`` subclasses the user's ``fal.App`` so the box inherits
 its machine type, requirements, image and secrets, but it skips the target's
 ``setup()`` and serves only ``/__fal_dev/*`` routes. Those routes write synced
-source files, start and restart the resident app process (``app_child``), and
+source files, start and restart the resident app process (``child``), and
 proxy requests to it.
 
 This module is shipped to the runner by value (cloudpickle). ``fal`` is not
@@ -43,7 +43,9 @@ from fastapi import Body
 
 import fal
 from fal.app import App
-from fal.dev import app_deps, app_objects, app_profile
+from fal.dev.remote import deps as app_deps
+from fal.dev.remote import objects as app_objects
+from fal.dev.remote import profile as app_profile
 
 CHILD_PORT = 8181
 STATE_ROOT = Path("/tmp/fal-dev-app")
@@ -307,7 +309,7 @@ class _ChildProcess:
 
     def _fal_importable(self) -> tuple[bool, str]:
         probe = subprocess.run(
-            [sys.executable, "-c", "import fal.app, fal.dev.app_child, uvicorn"],
+            [sys.executable, "-c", "import fal.app, fal.dev.remote.child, uvicorn"],
             env=self._env(),
             capture_output=True,
             text=True,
@@ -408,7 +410,7 @@ class _ChildProcess:
             sys.executable,
             "-u",
             "-m",
-            "fal.dev.app_child",
+            "fal.dev.remote.child",
             "--root",
             str(self.src),
             "--module",

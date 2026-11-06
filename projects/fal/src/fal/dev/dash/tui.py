@@ -17,8 +17,8 @@ from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
-from fal.dev.dash import HOLD_HOURS, Box, Poller
-from fal.dev.dash_view import render, render_screen
+from fal.dev.dash.model import HOLD_HOURS, Box, Poller
+from fal.dev.dash.view import render, render_screen
 
 CONFIRM_SECONDS = 5.0
 

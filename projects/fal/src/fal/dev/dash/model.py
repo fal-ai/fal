@@ -5,7 +5,7 @@ works with any box implementation that can list its runner and run a command
 on it. `FalBox` implements it with the fal SDK for boxes laid out like the
 fal-devbox app (workspace under /data/devboxes/<name>, /work snapshot).
 
-Each refresh costs one exec round trip: `dash_probe.py` runs on the box and
+Each refresh costs one exec round trip: `remote/probe.py` runs on the box and
 returns everything as one JSON document. Runner state and logs are polled less
 often. Polling never counts as activity for the idle watchdog (see the probe).
 """
@@ -24,10 +24,10 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from fal.dev import config
-from fal.dev.dash_probe import DEFAULTS as PROBE_DEFAULTS
-from fal.dev.dash_probe import END_MARKER
+from fal.dev.remote.probe import DEFAULTS as PROBE_DEFAULTS
+from fal.dev.remote.probe import END_MARKER
 
-PROBE_SOURCE = Path(__file__).with_name("dash_probe.py").read_text()
+PROBE_SOURCE = (Path(__file__).parents[1] / "remote" / "probe.py").read_text()
 
 # Runner states, lowercased.
 LIVE_RUNNER_STATES = {"running", "idle"}
@@ -421,7 +421,7 @@ def _ready_settings(message: str) -> dict:
 
 
 class FalBox:
-    """The dashboard's view of a box deployed by `fal dev` (fal/dev/box_app.py).
+    """The dashboard's view of a box deployed by `fal dev` (fal/dev/remote/box_app.py).
 
     It keeps its own exec and down rather than `fal.dev.box.Box`'s: the dashboard
     needs per-call timeouts and string results it can show. Holds share

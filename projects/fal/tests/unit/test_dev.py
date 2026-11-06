@@ -462,7 +462,7 @@ def test_push_reports_a_restarted_box(tmp_path):
 
 def test_dash_probe_defaults_match_the_box_layout():
     """dash_probe.py runs on the box as a standalone script, so it repeats these."""
-    from fal.dev.dash_probe import DEFAULTS
+    from fal.dev.remote.probe import DEFAULTS
 
     assert DEFAULTS["local_work"] == config.LOCAL_WORK
     assert DEFAULTS["snapshot"] == config.SNAPSHOT_FILE
@@ -483,7 +483,7 @@ def test_dash_probe_defaults_match_the_box_layout():
 
 
 def test_dash_box_shares_the_box_client():
-    from fal.dev.dash import FalBox
+    from fal.dev.dash.model import FalBox
 
     box = _box([])
     dash_box = FalBox.from_box(box, idle_minutes=30)
@@ -514,7 +514,7 @@ def test_hold_command_never_shortens_a_longer_hold(tmp_path):
 
 
 def test_published_idle_state_is_what_the_dash_reads(monkeypatch, tmp_path):
-    from fal.dev.dash import idle_view
+    from fal.dev.dash.model import idle_view
 
     module = runpy.run_path(str(BOX_APP))
     path = tmp_path / "idle.json"

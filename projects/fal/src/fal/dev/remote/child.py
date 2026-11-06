@@ -1,7 +1,7 @@
 """The resident process behind `fal dev app`: runs ``setup()`` once, reloads endpoints.
 
 Started on the runner by the dev box holder (``app_holder``) as
-``python -m fal.dev.app_child``. It imports the user's app from the synced
+``python -m fal.dev.remote.child``. It imports the user's app from the synced
 source tree, runs ``setup()`` through the app's own lifespan, and serves the
 app's FastAPI routes on 127.0.0.1. The port only opens once ``setup()`` is done.
 
@@ -30,8 +30,9 @@ import uvicorn
 
 import fal.ref
 from fal.app import App
-from fal.dev import app_profile, app_reload
-from fal.dev.app_holder import CHILD_PREFIX
+from fal.dev.remote import profile as app_profile
+from fal.dev.remote import reload as app_reload
+from fal.dev.remote.holder import CHILD_PREFIX
 
 
 def _log(message: str) -> None:
@@ -286,7 +287,7 @@ class DevAppServer:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="python -m fal.dev.app_child")
+    parser = argparse.ArgumentParser(prog="python -m fal.dev.remote.child")
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--module", required=True)
     parser.add_argument("--cls", required=True)

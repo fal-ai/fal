@@ -31,8 +31,8 @@ def show(box, console, interval: float = 3.0) -> None:
     """Run the dashboard for a `fal.dev.box.Box` until q or Ctrl-C."""
     from fal.config import Config
     from fal.dev.box import Box
-    from fal.dev.dash import FalBox
-    from fal.dev.dash_tui import run_dashboard
+    from fal.dev.dash.model import FalBox
+    from fal.dev.dash.tui import run_dashboard
 
     # The team names the account in the dashboard; the box itself needs none.
     team = box.team or Config().get_internal("team")
@@ -43,10 +43,10 @@ def show(box, console, interval: float = 3.0) -> None:
 def _dash(args) -> None:
     from fal.config import Config
     from fal.dev.box import Box
-    from fal.dev.dash import FalBox, Poller
-    from fal.dev.dash_tui import print_once, run_dashboard
+    from fal.dev.dash.model import FalBox, Poller
+    from fal.dev.dash.tui import print_once, run_dashboard
 
-    from .dev import resolve_name
+    from fal.dev.cli.box import resolve_name
 
     # The team names the account in the dashboard; the box itself needs none.
     team = args.team or Config().get_internal("team")

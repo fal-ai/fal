@@ -2,7 +2,7 @@ import argparse
 
 import pytest
 
-from fal.cli.dev import (
+from fal.dev.cli.box import (
     HOT_ACTIONS,
     SUBCOMMANDS,
     _deploy,
@@ -91,7 +91,7 @@ def test_subcommands_hook_registers_more_commands(monkeypatch):
         parser = subparsers.add_parser("extra", parents=parents)
         parser.set_defaults(func="extra")
 
-    monkeypatch.setattr("fal.cli.dev.SUBCOMMANDS", [*SUBCOMMANDS, add_extra])
+    monkeypatch.setattr("fal.dev.cli.box.SUBCOMMANDS", [*SUBCOMMANDS, add_extra])
 
     assert parse_args(["dev", "extra"]).func == "extra"
 
@@ -113,7 +113,7 @@ def _ns(name=None, host="api.example", team=None):
 
 
 def test_resolve_name_remembers_explicit_name_per_folder(monkeypatch, tmp_path):
-    monkeypatch.setattr("fal.cli.dev.default_name", lambda: "someone")
+    monkeypatch.setattr("fal.dev.cli.box.default_name", lambda: "someone")
 
     assert resolve_name(_ns()) == "someone"
     assert resolve_name(_ns(name="klein")) == "klein"

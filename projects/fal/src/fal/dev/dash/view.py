@@ -23,7 +23,7 @@ from fal.console.icons import (
     get_inline_separator_icon,
     get_state_dot_icon,
 )
-from fal.dev.dash import (
+from fal.dev.dash.model import (
     _CONTROL,
     HOLD_HOURS,
     IdleView,

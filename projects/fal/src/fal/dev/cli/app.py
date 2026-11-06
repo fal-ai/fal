@@ -23,9 +23,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .parser import FalClientParser, RefAction, add_env_argument
+from fal.cli.parser import FalClientParser, RefAction, add_env_argument
 
-# Kept equal to the holder's limits (fal.dev.app_holder) without importing it.
+# Kept equal to the holder's limits (fal.dev.remote.holder) without importing it.
 MAX_WARMUPS = 50
 MAX_REPEAT = 100
 
@@ -61,7 +61,7 @@ def _console():
 
 
 def _session(args):
-    from fal.dev.app_session import find_session
+    from fal.dev.app.session import find_session
 
     return find_session(args.session)
 
@@ -73,8 +73,8 @@ def _print_lines(lines: list[str], width: int = 400) -> None:
 
 def _wait_ready(session, *, after: int | None = None, timeout: float = 3600) -> dict:
     """Stream the app's log until it is ready, or raise if it stops."""
-    from fal.dev.app_holder import STOPPED_PHASES
-    from fal.dev.app_session import DevAppError, call
+    from fal.dev.remote.holder import STOPPED_PHASES
+    from fal.dev.app.session import DevAppError, call
 
     deadline = time.monotonic() + timeout
     if after is None:
@@ -99,7 +99,7 @@ def _wait_ready(session, *, after: int | None = None, timeout: float = 3600) -> 
 def _collect(
     session, skipped: list[str] | None = None, withheld: list[str] | None = None
 ):
-    from fal.dev import app_sync
+    from fal.dev.app import sync as app_sync
 
     return app_sync.collect(
         Path(session.root),
@@ -118,8 +118,8 @@ def _place_from_store(
     Returns the manifest of the files now in place (the rest must be sent),
     or None when the box has no store.
     """
-    from fal.dev import app_sync
-    from fal.dev.app_session import DevAppError, call
+    from fal.dev.app import sync as app_sync
+    from fal.dev.app.session import DevAppError, call
 
     try:
         found = call(
@@ -170,8 +170,8 @@ PLACE_BATCH_BYTES = 512 * 1024 * 1024
 def _sync(
     session, *, full: bool = False, reload: bool = True, from_store: bool = False
 ) -> dict[str, Any] | None:
-    from fal.dev import app_sync
-    from fal.dev.app_session import call
+    from fal.dev.app import sync as app_sync
+    from fal.dev.app.session import call
 
     skipped: list[str] = []
     withheld: list[str] = []
@@ -260,8 +260,8 @@ def _report_sync(result: dict[str, Any] | None, started: float) -> None:
 
 def _boot(session) -> dict:
     """Upload the whole source tree and the SDK, then run setup() on the box."""
-    from fal.dev import app_sync
-    from fal.dev.app_session import call
+    from fal.dev.app import sync as app_sync
+    from fal.dev.app.session import call
 
     started = time.perf_counter()
     result = _sync(session, full=True, reload=False, from_store=True) or {}
@@ -300,8 +300,8 @@ def _replay_overlay(session) -> None:
     A layer that no longer installs is dropped with a warning, so the box
     still starts and `deps` commands keep working.
     """
-    from fal.dev.app_deps import redact
-    from fal.dev.app_session import DevAppError
+    from fal.dev.remote.deps import redact
+    from fal.dev.app.session import DevAppError
 
     if not session.overlay:
         return
@@ -336,7 +336,7 @@ def _replay_overlay(session) -> None:
 
 def _ensure_booted(session) -> bool:
     """Boot again when the box was scaled to zero or replaced since `start`."""
-    from fal.dev.app_session import call
+    from fal.dev.app.session import call
 
     # A cold box first waits for a runner, which can take minutes.
     status = call(session, "status", timeout=600)
@@ -352,8 +352,8 @@ def _ensure_booted(session) -> bool:
 
 def _start(args):
     from fal.config import Config
-    from fal.dev.app_holder import check_session_env
-    from fal.dev.app_session import (
+    from fal.dev.remote.holder import check_session_env
+    from fal.dev.app.session import (
         DevAppError,
         Session,
         box_exists,
@@ -473,8 +473,8 @@ def _sync_once(session, args, *, full: bool = False) -> None:
 
 
 def _sync_cmd(args):
-    from fal.dev import app_sync
-    from fal.dev.app_session import DevAppError
+    from fal.dev.app import sync as app_sync
+    from fal.dev.app.session import DevAppError
 
     session = _session(args)
     _ensure_booted(session)
@@ -518,7 +518,7 @@ def _do_request(
     warmups: int = 0,
     repeat: int = 1,
 ):
-    from fal.dev.app_session import DevAppError, call
+    from fal.dev.app.session import DevAppError, call
 
     console = _console()
     started = time.perf_counter()
@@ -562,7 +562,7 @@ def _do_request(
 
 
 def _report_runs(path: str, result: dict, total: float) -> None:
-    from fal.dev import app_bench
+    from fal.dev.app import bench as app_bench
 
     console = _console()
     status = result["status_code"]
@@ -588,7 +588,7 @@ def _report_runs(path: str, result: dict, total: float) -> None:
 
 
 def _request(args):
-    from fal.dev import app_bench
+    from fal.dev.app import bench as app_bench
 
     session = _session(args)
     benchmark = args.warmups > 0 or args.repeat > 1 or args.name is not None
@@ -636,8 +636,8 @@ def _request(args):
 
 
 def _benchmark_compare(args):
-    from fal.dev import app_bench
-    from fal.dev.app_session import DevAppError, find_session
+    from fal.dev.app import bench as app_bench
+    from fal.dev.app.session import DevAppError, find_session
 
     try:
         session_name = find_session(args.session).name
@@ -656,7 +656,7 @@ def _benchmark_compare(args):
 
 
 def _benchmark_list(args):
-    from fal.dev import app_bench
+    from fal.dev.app import bench as app_bench
 
     session = _session(args)
     runs = app_bench.saved(session.name)
@@ -673,7 +673,7 @@ def _benchmark_list(args):
 
 def _download(session, profile_id: str, name: str, target: Path) -> int:
     """Copy one profile file from the box in chunks; returns its size."""
-    from fal.dev.app_session import call
+    from fal.dev.app.session import call
 
     tmp = target.with_name(f".{target.name}.part")
     offset, size = 0, None
@@ -703,7 +703,7 @@ def _mib(size: int) -> str:
 
 
 def _profile_one(session, args, path: str, body: Any, out: Path) -> bool:
-    from fal.dev.app_session import call
+    from fal.dev.app.session import call
 
     console = _console()
     console.print(
@@ -767,7 +767,7 @@ def _slug(path: str) -> str:
 
 
 def _profile(args):
-    from fal.dev.app_session import DevAppError, call
+    from fal.dev.app.session import DevAppError, call
 
     session = _session(args)
     if args.all == (args.path is not None):
@@ -824,7 +824,7 @@ def _print_layers(layers: list[dict[str, Any]]) -> None:
 def _deps_call(
     session, payload: dict[str, Any], *, remember: bool = True
 ) -> dict[str, Any]:
-    from fal.dev.app_session import call
+    from fal.dev.app.session import call
 
     result = call(session, "deps", payload, timeout=3600)
     if remember:
@@ -867,7 +867,7 @@ INDEX_AUTH_HINT = (
 
 
 def _deps_install(args):
-    from fal.dev.app_session import DevAppError
+    from fal.dev.app.session import DevAppError
 
     session = _session(args)
     _ensure_booted(session)
@@ -947,7 +947,7 @@ def _deps_status(args):
 
 
 def _restart(args):
-    from fal.dev.app_session import call
+    from fal.dev.app.session import call
 
     session = _session(args)
     started = time.perf_counter()
@@ -963,7 +963,7 @@ def _restart(args):
 
 
 def _logs(args):
-    from fal.dev.app_session import call
+    from fal.dev.app.session import call
 
     session = _session(args)
     logs = call(session, "logs", {"lines": args.lines})
@@ -977,7 +977,7 @@ def _logs(args):
 
 
 def _status(args):
-    from fal.dev.app_session import DevAppError, call
+    from fal.dev.app.session import DevAppError, call
 
     session = _session(args)
     info: dict[str, Any] = {
@@ -994,7 +994,7 @@ def _status(args):
 
 
 def _stop(args):
-    from fal.dev.app_session import stop_box
+    from fal.dev.app.session import stop_box
 
     session = _session(args)
     killed, existed = stop_box(session)

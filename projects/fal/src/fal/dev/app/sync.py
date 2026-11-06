@@ -255,7 +255,7 @@ def pack(files: dict[str, Path], names: list[str]) -> str:
 
 def sdk_files() -> dict[str, Path]:
     """The local fal package, which the runner does not have installed."""
-    package = Path(__file__).resolve().parent.parent
+    package = Path(__file__).resolve().parents[2]
     files = {}
     for path in package.rglob("*"):
         if path.is_file() and "__pycache__" not in path.parts:

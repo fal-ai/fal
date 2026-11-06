@@ -13,8 +13,8 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
 import fal
-from fal.dev import app_profile
-from fal.dev.app_child import DevAppServer
+from fal.dev.remote import profile as app_profile
+from fal.dev.remote.child import DevAppServer
 
 APP_SOURCE = """
 from __future__ import annotations
@@ -198,7 +198,7 @@ def test_capture_writes_a_perfetto_trace(tmp_path):
 
 
 def test_holder_profile_warms_up_arms_and_collects(tmp_path, monkeypatch):
-    from fal.dev import app_holder
+    from fal.dev.remote import holder as app_holder
 
     child_calls, forwarded = [], []
 
@@ -227,7 +227,7 @@ def test_holder_profile_warms_up_arms_and_collects(tmp_path, monkeypatch):
 
 
 def test_holder_profile_needs_a_body_it_can_build(tmp_path, monkeypatch):
-    from fal.dev import app_holder
+    from fal.dev.remote import holder as app_holder
 
     monkeypatch.setattr(
         app_holder,
@@ -239,7 +239,7 @@ def test_holder_profile_needs_a_body_it_can_build(tmp_path, monkeypatch):
 
 
 def test_holder_artifact_reads_chunks_and_refuses_other_files(tmp_path, monkeypatch):
-    from fal.dev import app_holder
+    from fal.dev.remote import holder as app_holder
 
     monkeypatch.setattr(app_holder, "ARTIFACT_CHUNK_BYTES", 4)
     folder = tmp_path / ("d" * 32)
@@ -258,7 +258,7 @@ def test_holder_artifact_reads_chunks_and_refuses_other_files(tmp_path, monkeypa
 def _fake_profile_box(monkeypatch, trace_bytes):
     import base64
 
-    from fal.dev import app_session
+    from fal.dev.app import session as app_session
 
     trace = gzip.compress(json.dumps({"traceEvents": [{"name": "k"}]}).encode())
     files = {"trace.json.gz": trace, "ops.txt": b"ops table\n"}
@@ -286,7 +286,7 @@ def _fake_profile_box(monkeypatch, trace_bytes):
 
 
 def _profile_session(tmp_path, monkeypatch):
-    from fal.dev import app_session
+    from fal.dev.app import session as app_session
 
     monkeypatch.setattr(app_session, "SESSIONS_DIR", tmp_path / "sessions")
     app_session.Session(
@@ -372,7 +372,7 @@ def test_profiler_modes(monkeypatch, mode, cuda, activities, deep):
 
 
 def test_holder_profile_disarms_when_the_request_fails(tmp_path, monkeypatch):
-    from fal.dev import app_holder
+    from fal.dev.remote import holder as app_holder
 
     child_calls = []
 
@@ -391,7 +391,7 @@ def test_holder_profile_disarms_when_the_request_fails(tmp_path, monkeypatch):
 
 
 def test_holder_profile_warmups_share_the_time_budget(tmp_path, monkeypatch):
-    from fal.dev import app_holder
+    from fal.dev.remote import holder as app_holder
 
     timeouts = []
     clock = iter([0.0, 100.0, 3400.0])

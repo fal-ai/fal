@@ -21,7 +21,7 @@ from fal.api.client import SyncServerlessClient
 from fal.dev import config
 from fal.sdk import AliasInfo, RunnerInfo, RunnerState
 
-BOX_APP = Path(__file__).with_name("box_app.py")
+BOX_APP = Path(__file__).parent / "remote" / "box_app.py"
 LIVE_STATES = {RunnerState.RUNNING, RunnerState.IDLE}
 # Runner states that will not come back; anything else may still bill.
 FINAL_STATES = {RunnerState.DEAD, RunnerState.TERMINATED, RunnerState.TERMINATING}

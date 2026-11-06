@@ -9,8 +9,8 @@ import grpc
 import pytest
 from rich.console import Console
 
-from fal.dev import dash
-from fal.dev.dash import (
+from fal.dev.dash import model as dash
+from fal.dev.dash.model import (
     END_MARKER,
     PROBE_SOURCE,
     BoxInfo,
@@ -21,7 +21,7 @@ from fal.dev.dash import (
     parse_probe,
     price_per_hour,
 )
-from fal.dev.dash_view import render, render_screen
+from fal.dev.dash.view import render, render_screen
 
 
 def _console_with_encoding(encoding: str) -> Console:

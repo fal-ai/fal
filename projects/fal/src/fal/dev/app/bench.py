@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fal.dev.app_deps import redact
+from fal.dev.remote.deps import redact
 
 BENCHMARKS_DIR = Path("~/.fal/dev/benchmarks").expanduser()
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")

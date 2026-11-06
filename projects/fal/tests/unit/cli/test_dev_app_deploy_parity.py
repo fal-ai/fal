@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from fal.cli.main import parse_args
-from fal.dev import app_sync
+from fal.dev.app import sync as app_sync
 
 APP_SOURCE = """
 import fal
@@ -94,7 +94,7 @@ def _fake_deploy(monkeypatch):
 
 
 def test_resolve_app_reads_pyproject_like_fal_deploy(repo):
-    from fal.dev.app_session import resolve_app
+    from fal.dev.app.session import resolve_app
 
     file_path, class_name, app_data = resolve_app(("demo", None))
     assert file_path == str(repo / "pkg" / "models" / "app.py")
@@ -108,7 +108,7 @@ def test_resolve_app_reads_pyproject_like_fal_deploy(repo):
 
 
 def test_package_root_is_above_the_top_level_package(repo):
-    from fal.dev.app_session import package_root
+    from fal.dev.app.session import package_root
 
     assert package_root(repo / "pkg" / "models" / "app.py") == repo
     assert package_root(repo / "pyproject.toml") == repo
@@ -116,7 +116,7 @@ def test_package_root_is_above_the_top_level_package(repo):
 
 def test_deploy_box_matches_fal_deploy_options_except_box_settings(repo, monkeypatch):
     from fal.api.client import SyncServerlessClient
-    from fal.dev.app_session import deploy_box, resolve_app
+    from fal.dev.app.session import deploy_box, resolve_app
     from fal.utils import load_function_from
 
     captured = _fake_deploy(monkeypatch)
@@ -170,7 +170,7 @@ def test_deploy_box_matches_fal_deploy_options_except_box_settings(repo, monkeyp
 
 
 def test_layout_problems_stop_before_anything_is_deployed(repo, monkeypatch):
-    from fal.dev.app_session import DevAppError, deploy_box, resolve_app
+    from fal.dev.app.session import DevAppError, deploy_box, resolve_app
 
     captured = _fake_deploy(monkeypatch)
     file_path, class_name, app_data = resolve_app(("demo", None))
@@ -194,7 +194,7 @@ def test_layout_problems_stop_before_anything_is_deployed(repo, monkeypatch):
 
 
 def test_machine_type_flag_beats_pyproject(repo, monkeypatch):
-    from fal.dev.app_session import deploy_box, resolve_app
+    from fal.dev.app.session import deploy_box, resolve_app
 
     captured = _fake_deploy(monkeypatch)
     file_path, class_name, app_data = resolve_app(("demo", None))
@@ -217,7 +217,7 @@ def test_machine_type_flag_beats_pyproject(repo, monkeypatch):
 
 
 def test_layout_mirrors_a_deployed_runner(repo):
-    from fal.dev.app_session import AppFiles, DevAppError, layout
+    from fal.dev.app.session import AppFiles, DevAppError, layout
 
     file = repo / "pkg" / "models" / "app.py"
     app_files = AppFiles(["assets"], [r"\.bin$"], repo, file.parent)
@@ -267,9 +267,9 @@ def test_sync_applies_app_files_ignore_from_the_context_folder(repo):
 
 
 def test_start_ignores_the_pyproject_team(repo, monkeypatch):
-    from fal.cli import dev_app
-    from fal.dev import app_session
-    from fal.dev.app_session import DeployedBox, Layout
+    from fal.dev.cli import app as dev_app
+    from fal.dev.app import session as app_session
+    from fal.dev.app.session import DeployedBox, Layout
 
     calls = {}
 
@@ -300,7 +300,7 @@ def test_start_ignores_the_pyproject_team(repo, monkeypatch):
 
 
 def test_child_layout_is_passed_to_the_app_process(tmp_path, monkeypatch):
-    from fal.dev import app_holder
+    from fal.dev.remote import holder as app_holder
 
     child = app_holder._ChildProcess(tmp_path)
     # No background launch or log pump threads.
@@ -332,7 +332,7 @@ def test_child_layout_is_passed_to_the_app_process(tmp_path, monkeypatch):
 def test_class_app_files_with_a_pyproject_context_folder(repo, monkeypatch):
     """The class's app_files win over pyproject.toml's, but the folder they are
     relative to still comes from pyproject.toml: as on a deploy."""
-    from fal.dev.app_session import deploy_box, resolve_app
+    from fal.dev.app.session import deploy_box, resolve_app
 
     app = repo / "pkg" / "models" / "app.py"
     app.write_text(
@@ -361,7 +361,7 @@ def test_class_app_files_with_a_pyproject_context_folder(repo, monkeypatch):
 
 
 def test_box_imports_the_class_by_the_name_the_module_exposes(repo, monkeypatch):
-    from fal.dev.app_session import deploy_box
+    from fal.dev.app.session import deploy_box
 
     app = repo / "pkg" / "models" / "app.py"
     app.write_text(APP_SOURCE + "\nExposed = Demo\ndel Demo\n")
@@ -383,7 +383,7 @@ def test_box_imports_the_class_by_the_name_the_module_exposes(repo, monkeypatch)
 
 
 def test_holder_refuses_a_bad_layout_without_changing_state(tmp_path):
-    from fal.dev import app_holder
+    from fal.dev.remote import holder as app_holder
 
     child = app_holder._ChildProcess(tmp_path)
     with pytest.raises(ValueError, match="refusing"):
@@ -392,8 +392,8 @@ def test_holder_refuses_a_bad_layout_without_changing_state(tmp_path):
 
 
 def test_deps_install_explains_an_index_that_refuses_the_box(monkeypatch):
-    from fal.cli import dev_app
-    from fal.dev.app_session import DevAppError
+    from fal.dev.cli import app as dev_app
+    from fal.dev.app.session import DevAppError
 
     monkeypatch.setattr(dev_app, "_session", lambda args: None)
     monkeypatch.setattr(dev_app, "_ensure_booted", lambda session: None)
@@ -421,7 +421,7 @@ def test_deps_install_explains_an_index_that_refuses_the_box(monkeypatch):
 
 
 def test_app_process_gets_the_session_name(tmp_path, monkeypatch):
-    from fal.dev import app_holder
+    from fal.dev.remote import holder as app_holder
 
     child = app_holder._ChildProcess(tmp_path / "dev-tiny-image-me")
     assert child._env()["FAL_DEV_SESSION"] == "dev-tiny-image-me"
@@ -452,9 +452,9 @@ def test_app_process_gets_the_session_name(tmp_path, monkeypatch):
 
 
 def test_start_saves_session_env(repo, monkeypatch):
-    from fal.cli import dev_app
-    from fal.dev import app_session
-    from fal.dev.app_session import DeployedBox, Layout
+    from fal.dev.cli import app as dev_app
+    from fal.dev.app import session as app_session
+    from fal.dev.app.session import DeployedBox, Layout
 
     monkeypatch.setattr(
         app_session,
@@ -484,7 +484,7 @@ def test_start_saves_session_env(repo, monkeypatch):
 @pytest.fixture
 def roomy(monkeypatch):
     """The store's free-space floor, off: test disks are small."""
-    from fal.dev import app_objects
+    from fal.dev.remote import objects as app_objects
 
     monkeypatch.setattr(app_objects, "MIN_FREE_BYTES", 0)
 
@@ -492,8 +492,8 @@ def roomy(monkeypatch):
 def test_object_store_keeps_checked_copies(tmp_path, roomy, monkeypatch):
     import hashlib
 
-    from fal.dev import app_objects
-    from fal.dev.app_objects import Store
+    from fal.dev.remote import objects as app_objects
+    from fal.dev.remote.objects import Store
 
     assert Store.open(tmp_path / "missing") is None
     store = Store.open(tmp_path)
@@ -549,8 +549,9 @@ def test_object_store_keeps_checked_copies(tmp_path, roomy, monkeypatch):
 
 
 def test_holder_places_stored_files_and_stores_synced_ones(tmp_path, roomy):
-    from fal.dev import app_holder, app_sync
-    from fal.dev.app_objects import Store
+    from fal.dev.remote import holder as app_holder
+    from fal.dev.app import sync as app_sync
+    from fal.dev.remote.objects import Store
 
     (tmp_path / "data").mkdir()
     store = Store.open(tmp_path / "data")
@@ -594,9 +595,9 @@ def test_holder_places_stored_files_and_stores_synced_ones(tmp_path, roomy):
 
 
 def test_boot_uploads_only_what_the_store_lacks(tmp_path, monkeypatch):
-    from fal.cli import dev_app
-    from fal.dev import app_session
-    from fal.dev.app_session import Session
+    from fal.dev.cli import app as dev_app
+    from fal.dev.app import session as app_session
+    from fal.dev.app.session import Session
 
     root = tmp_path / "tree"
     root.mkdir()
@@ -618,7 +619,7 @@ def test_boot_uploads_only_what_the_store_lacks(tmp_path, monkeypatch):
     def call(session, action, payload=None, *, timeout=60):
         calls.append((action, payload))
         if action == "objects" and payload["action"] == "missing":
-            from fal.dev import app_sync
+            from fal.dev.app import sync as app_sync
 
             digests = app_sync.manifest(app_sync.collect(root))
             return {"enabled": True, "missing": [digests["c.py"]]}
@@ -650,9 +651,10 @@ def test_boot_uploads_only_what_the_store_lacks(tmp_path, monkeypatch):
 
 def test_boot_falls_back_to_uploading(tmp_path, monkeypatch):
     """No store, a failed place, or a damaged object: those files are sent."""
-    from fal.cli import dev_app
-    from fal.dev import app_session, app_sync
-    from fal.dev.app_session import DevAppError, Session
+    from fal.dev.cli import app as dev_app
+    from fal.dev.app import session as app_session
+    from fal.dev.app import sync as app_sync
+    from fal.dev.app.session import DevAppError, Session
 
     root = tmp_path / "tree"
     root.mkdir()
@@ -727,7 +729,7 @@ def test_session_env_never_overrides_what_the_sdk_reads():
     import re
 
     import fal
-    from fal.dev.app_holder import check_session_env
+    from fal.dev.remote.holder import check_session_env
 
     names = set()
     for path in Path(fal.__file__).parent.rglob("*.py"):

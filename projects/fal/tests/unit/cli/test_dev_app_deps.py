@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from fal.dev import app_deps
+from fal.dev.remote import deps as app_deps
 
 
 def _dist(target: Path, name: str, version: str) -> None:
@@ -201,7 +201,7 @@ def test_status_reports_the_shadowed_version(tmp_path, monkeypatch):
 
 
 def test_child_path_puts_layers_ahead_of_the_app_env(tmp_path, monkeypatch):
-    from fal.dev.app_holder import _ChildProcess
+    from fal.dev.remote.holder import _ChildProcess
 
     child = _ChildProcess(tmp_path)
     fake = FakeInstaller([{"metadata": {"name": "six", "version": "1.16.0"}}])
@@ -222,7 +222,7 @@ def test_child_path_puts_layers_ahead_of_the_app_env(tmp_path, monkeypatch):
 def test_holder_deps_restarts_the_app_only_when_asked_and_changed(
     tmp_path, monkeypatch
 ):
-    from fal.dev import app_holder
+    from fal.dev.remote import holder as app_holder
 
     child = app_holder._ChildProcess(tmp_path)
     child.phase = "ready"
@@ -273,7 +273,7 @@ def test_holder_deps_restarts_the_app_only_when_asked_and_changed(
 
 
 def test_child_reports_versions_and_processes_pth_files(tmp_path, monkeypatch):
-    from fal.dev import app_child
+    from fal.dev.remote import child as app_child
 
     _dist(tmp_path, "overlaypkg", "9.9.9")
     (tmp_path / "extra.pth").write_text(str(tmp_path / "extra") + "\n")
@@ -296,7 +296,7 @@ class FakeBox:
         self.fail_on = fail_on
 
     def call(self, _session, action, payload: dict | None = None, **_):
-        from fal.dev.app_session import DevAppError
+        from fal.dev.app.session import DevAppError
 
         payload = payload or {}
         self.sent.append((action, payload))
@@ -341,7 +341,7 @@ class FakeBox:
 
 
 def _cli_session(tmp_path, monkeypatch, box):
-    from fal.dev import app_session
+    from fal.dev.app import session as app_session
 
     monkeypatch.setattr(app_session, "SESSIONS_DIR", tmp_path / "sessions")
     monkeypatch.setattr(app_session, "call", box.call)
@@ -361,9 +361,9 @@ def _cli_session(tmp_path, monkeypatch, box):
 def test_cli_remembers_the_overlay_and_replays_it_on_a_new_runner(
     tmp_path, monkeypatch
 ):
-    from fal.cli import dev_app
+    from fal.dev.cli import app as dev_app
     from fal.cli.main import parse_args
-    from fal.dev import app_bench
+    from fal.dev.app import bench as app_bench
 
     box = FakeBox()
     app_session = _cli_session(tmp_path, monkeypatch, box)
@@ -407,7 +407,7 @@ def test_cli_remembers_the_overlay_and_replays_it_on_a_new_runner(
 
 
 def test_replay_drops_a_layer_that_no_longer_installs(tmp_path, monkeypatch, capsys):
-    from fal.cli import dev_app
+    from fal.dev.cli import app as dev_app
 
     box = FakeBox(fail_on="broken")
     app_session = _cli_session(tmp_path, monkeypatch, box)

@@ -2,11 +2,13 @@ import json
 
 import pytest
 
-from fal.cli import dev_app
+from fal.dev.cli import app as dev_app
 from fal.cli.main import parse_args
 from fal.cli.parser import FalParserExit
-from fal.dev import app_bench, app_holder, app_session
-from fal.dev.app_session import Session
+from fal.dev.app import bench as app_bench
+from fal.dev.remote import holder as app_holder
+from fal.dev.app import session as app_session
+from fal.dev.app.session import Session
 
 
 def _session(**kwargs) -> Session:

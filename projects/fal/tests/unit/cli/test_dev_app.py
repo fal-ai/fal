@@ -11,16 +11,17 @@ from fastapi.testclient import TestClient
 
 import fal
 from fal.cli.main import parse_args
-from fal.dev import app_reload, app_sync
-from fal.dev.app_child import DevAppServer
-from fal.dev.app_holder import (
+from fal.dev.remote import reload as app_reload
+from fal.dev.app import sync as app_sync
+from fal.dev.remote.child import DevAppServer
+from fal.dev.remote.holder import (
     DevAppHolder,
     _ChildProcess,
     _extract,
     _forward,
     make_holder,
 )
-from fal.dev.app_session import NAME_PREFIX, session_name
+from fal.dev.app.session import NAME_PREFIX, session_name
 
 APP_SOURCE = """
 import fal
@@ -326,7 +327,7 @@ def test_sync_sends_symlinks_and_skips_env(tmp_path):
 
 def test_sdk_files_ship_the_child():
     files = app_sync.sdk_files()
-    assert "fal/dev/app_child.py" in files
+    assert "fal/dev/remote/child.py" in files
     assert "fal/app.py" in files
     assert not any("__pycache__" in name for name in files)
 
@@ -390,7 +391,7 @@ def test_sync_batches_large_trees(tmp_path, monkeypatch):
 
 
 def test_stop_box_refuses_non_dev_apps():
-    from fal.dev.app_session import DevAppError, Session, stop_box
+    from fal.dev.app.session import DevAppError, Session, stop_box
 
     session = Session(
         name="prod",
@@ -407,8 +408,8 @@ def test_stop_box_refuses_non_dev_apps():
 
 
 def test_start_refuses_to_take_over_an_unknown_app(monkeypatch, tmp_path):
-    from fal.cli import dev_app
-    from fal.dev import app_session
+    from fal.dev.cli import app as dev_app
+    from fal.dev.app import session as app_session
 
     (tmp_path / "app.py").write_text("import fal\n")
     monkeypatch.setattr(app_session, "box_exists", lambda *a, **k: True)
@@ -428,7 +429,7 @@ def test_start_refuses_to_take_over_an_unknown_app(monkeypatch, tmp_path):
 
 
 def test_sync_handles_file_becoming_folder_and_back(tmp_path):
-    from fal.dev.app_holder import _delete
+    from fal.dev.remote.holder import _delete
 
     src, dest = tmp_path / "src", tmp_path / "dest"
     src.mkdir()
