@@ -570,7 +570,8 @@ def _get_runner_info(rest_client: Client, runner_id: str) -> RestRunnerInfo:
             except Exception:
                 start = None
 
-        ended_at = data.get("ended_at")
+        # The API returns `finished_at`; older responses used `ended_at`.
+        ended_at = data.get("finished_at") or data.get("ended_at")
         if ended_at is not None:
             try:
                 end = _to_aware_utc(_parse_ts(ended_at))
@@ -662,7 +663,9 @@ def _get_logs(
         yield from _iter_logs(rest_client, params, since, until)
         return
 
-    if oldest:
+    # History pages arrive newest first, and the caller prints the result
+    # reversed (chronological), so "latest N" is the first N items.
+    if not oldest:
         produced = 0
         for log in _iter_logs(rest_client, params, since, until):
             if produced >= lines_count:
@@ -671,12 +674,11 @@ def _get_logs(
             yield log
         return
 
-    # newest tail: collect into a fixed-size deque, then yield
+    # oldest N: the last N items of a newest-first walk
     tail: deque[dict] = deque(maxlen=lines_count)
     for log in _iter_logs(rest_client, params, since, until):
         tail.append(log)
-    for log in tail:
-        yield log
+    yield from tail
 
 
 class LogPrinter:
@@ -711,7 +713,42 @@ class LogPrinter:
         )
 
 
-DEFAULT_STREAM_SINCE = timedelta(minutes=1)
+DEFAULT_FOLLOW_REPLAY_LINES = 100
+# Logs emitted while the runner shuts down can land slightly after finished_at.
+FINISHED_LOG_GRACE = timedelta(minutes=1)
+
+
+def _resolve_log_window(
+    args_since: datetime | None,
+    args_until: datetime | None,
+    runner_info: RestRunnerInfo,
+) -> tuple[datetime | None, datetime | None]:
+    # `started_at` is not a safe lower bound: for live runners it can lag the
+    # first logs (setup output) by minutes, so only an explicit --since applies.
+    since = _to_aware_utc(args_since) if args_since is not None else None
+    until = _to_aware_utc(args_until) if args_until is not None else None
+    if until is None and runner_info.ended_at is not None:
+        until = runner_info.ended_at + FINISHED_LOG_GRACE
+    if since is not None and until is not None and until < since:
+        since, until = until, since
+    return since, until
+
+
+def _replay_recent_logs(
+    rest_client: Client,
+    params: dict[str, str],
+    since: datetime | None,
+    until: datetime | None,
+    count: int,
+) -> list[dict]:
+    """Newest `count` lines in chronological order (history is newest first)."""
+    newest: list[dict] = []
+    for log in _iter_logs(rest_client, params, since, until):
+        newest.append(log)
+        if len(newest) >= count:
+            break
+    newest.reverse()
+    return newest
 
 
 def _logs(args):
@@ -723,34 +760,7 @@ def _logs(args):
     rest_client = client._create_rest_client()
     runner_info = _get_runner_info(rest_client, args.id)
     follow: bool = args.follow
-    since = args.since
-    if follow:
-        since = since or (datetime.now(timezone.utc) - DEFAULT_STREAM_SINCE)
-    else:
-        since = since or runner_info.started_at
-    until = args.until or runner_info.ended_at
-
-    # Normalize to aware UTC for comparisons
-    if since is not None:
-        since = _to_aware_utc(since)
-    if until is not None:
-        until = _to_aware_utc(until)
-
-    # Sanity limiters: clamp within runner lifetime when known
-    if runner_info.started_at is not None:
-        if since is not None and since < runner_info.started_at:
-            since = runner_info.started_at
-        if until is not None and until < runner_info.started_at:
-            until = runner_info.started_at
-    if runner_info.ended_at is not None:
-        if since is not None and since > runner_info.ended_at:
-            since = runner_info.ended_at
-        if until is not None and until > runner_info.ended_at:
-            until = runner_info.ended_at
-
-    # Ensure ordering if both are present
-    if since is not None and until is not None and until < since:
-        since, until = until, since
+    since, until = _resolve_log_window(args.since, args.until, runner_info)
 
     lines_arg = args.lines
     lines_count: int | None = None
@@ -766,22 +776,47 @@ def _logs(args):
         except ValueError:
             args.parser.error("Invalid -n|--lines value. Use an integer or +integer.")
 
-    if follow:
-        logs_gen = _stream_logs(rest_client, params, since, until)
-    else:
-        logs_gen = _get_logs(
-            rest_client, params, since, until, lines_count, oldest=lines_oldest
-        )
-
     printer = LogPrinter(args.console)
 
+    def emit(log: dict) -> None:
+        if args.output == "json":
+            args.console.print(json.dumps(log))
+        else:
+            printer.print(log)
+
+    if follow and runner_info.ended_at is not None and args.until is None:
+        # Finished runner: nothing to stream, so --follow is a plain read
+        # (latest lines unless a --since window or -n was given).
+        follow = False
+        if args.since is None and lines_count is None:
+            lines_count = DEFAULT_FOLLOW_REPLAY_LINES
+
     if follow:
-        for log in logs_gen:
-            if args.output == "json":
-                args.console.print(json.dumps(log))
+        stream_since = since
+        if args.since is None:
+            # Replay the latest lines first so quiet runners show their recent
+            # output, then stream from just after the last replayed line.
+            replay = _replay_recent_logs(
+                rest_client,
+                params,
+                None,
+                until,
+                lines_count or DEFAULT_FOLLOW_REPLAY_LINES,
+            )
+            for log in replay:
+                emit(log)
+            if replay:
+                stream_since = _to_aware_utc(_parse_ts(replay[-1]["timestamp"]))
+                stream_since += timedelta(microseconds=1)
             else:
-                printer.print(log)
+                stream_since = datetime.now(timezone.utc)
+        for log in _stream_logs(rest_client, params, stream_since, until):
+            emit(log)
         return
+
+    logs_gen = _get_logs(
+        rest_client, params, since, until, lines_count, oldest=lines_oldest
+    )
 
     if args.output == "json":
         args.console.print(json.dumps({"logs": list(logs_gen)}))
@@ -826,7 +861,7 @@ def _add_logs_parser(subparsers, parents):
         help=(
             "Show logs since the given time. "
             "Accepts 'now', relative like '30m', '1h', or an ISO timestamp. "
-            "Defaults to runner start time or to '1m ago' in --follow mode."
+            "Defaults to all available logs, or to the latest lines in --follow mode."
         ),
     )
     parser.add_argument(
@@ -843,7 +878,8 @@ def _add_logs_parser(subparsers, parents):
         "--follow",
         "-f",
         action="store_true",
-        help="Follow logs live. If --since is not specified, implies '--since 1m ago'.",
+        help="Follow logs live. If --since is not specified, "
+        "replays the latest 100 lines first.",
     )
     parser.add_argument(
         "--lines",
@@ -853,7 +889,7 @@ def _add_logs_parser(subparsers, parents):
         help=(
             "Only show latest N log lines. "
             "If '+' prefix is used, show oldest N log lines. "
-            "Ignored if --follow is used."
+            "With --follow, sets how many lines are replayed first."
         ),
     )
     parser.set_defaults(func=_logs)
