@@ -211,6 +211,38 @@ def test_wait_ready_stops_when_the_server_waits_for_a_fix(monkeypatch):
         box.wait_ready(timeout=60)
 
 
+def _said(monkeypatch) -> list[str]:
+    said: list[str] = []
+    wait = MagicMock()
+    wait.say.side_effect = said.append
+    loading = MagicMock()
+    loading.return_value.__enter__.return_value = wait
+    monkeypatch.setattr(hot, "Loading", loading)
+    return said
+
+
+def test_wait_ready_hides_blank_and_progress_lines_until_the_load_fails(monkeypatch):
+    monkeypatch.setattr(hot.time, "sleep", lambda s: None)
+    loading = "00:00:01 [hot] loading the model (load.load()) ..."
+    bar = "Loading weights:  50%|#####     | 199/398"
+    loaded = "00:00:09 [hot] model loaded in 8.2s"
+    file_tail = json.dumps({"log": [loading, "", bar, ""]}).encode()
+    # The restarted server answers with its own log, which has no blank lines.
+    ready = json.dumps(
+        {"ready": True, "load_seconds": 8.2, "log": [loading, loaded]}
+    ).encode()
+    said = _said(monkeypatch)
+    _hot_box([(409, {}, file_tail), (200, {}, ready)]).wait_ready(timeout=60)
+    assert said == [f"  {loading}", f"  {loaded}"]
+
+    failed = "00:00:02 [hot] load.load() failed; fix load.py and save to retry"
+    stuck = json.dumps({"log": [loading, bar, "", failed]}).encode()
+    said = _said(monkeypatch)
+    with pytest.raises(DevError, match="stopped on an error"):
+        _hot_box([(409, {}, stuck)]).wait_ready(timeout=60)
+    assert said == [f"  {line}" for line in (loading, bar, "", failed)]
+
+
 def test_waiting_for_fix_ignores_a_failure_followed_by_a_retry():
     assert not hot.waiting_for_fix(
         ["[hot] load.load() failed", "[hot] loading the model"]
@@ -227,6 +259,26 @@ def test_new_log_lines_prints_each_line_once():
     assert hot.new_log_lines(["a", "b", "c"], ["b", "c", "d"]) == ["d"]
     # A different log (the server restarted): print all of it.
     assert hot.new_log_lines(["a", "b"], ["x", "y"]) == ["x", "y"]
+
+
+def test_new_log_lines_reprints_only_a_grown_last_line():
+    loading = "17:11:59 [hot] loading the model (load.load()) ..."
+    warning = "  deprecate('torch_dtype', '1.0.0', _TORCH_DTYPE_DEPRECATION_MESSAGE)"
+    bar = "Loading pipeline components...:  80%|########  | 4/5"
+    printed = [loading, warning, bar]
+    # The bar line was read mid-write; a warning then landed on the same line.
+    grown = bar + "The config attributes {'force_upcast': True} were passed"
+    lines = [loading, warning, grown, "model loaded in 8.2s"]
+    assert hot.new_log_lines(printed, lines) == [grown, "model loaded in 8.2s"]
+    # The same while the tail slides.
+    assert hot.new_log_lines(printed, lines[1:]) == [grown, "model loaded in 8.2s"]
+    # The restarted server answers with its own log, without the file's extra lines.
+    loaded = "17:16:26 [hot] model loaded in 8.5s"
+    file_tail = [loading, warning, "", bar, ""]
+    assert hot.new_log_lines(file_tail, [loading, loaded]) == [loaded]
+    # An exact match still wins over skipping lines already printed.
+    assert hot.new_log_lines(["a", "b"], ["a", "b", "b"]) == ["b"]
+    assert hot.new_log_lines(["a", "b"], ["a", "c"]) == ["c"]
 
 
 def test_restarting_reads_the_log_order():

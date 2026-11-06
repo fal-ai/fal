@@ -85,11 +85,21 @@ def remote_dir(local: str | None, remote: str | None) -> str:
 
 
 def new_log_lines(printed: list[str], lines: list[str]) -> list[str]:
-    """The lines of a log tail not printed yet, given the tail printed last time."""
+    """The lines of a log tail not printed yet, given the tail printed last time.
+
+    Without an exact overlap, skip the leading lines already printed, in order:
+    the last line printed may have been read mid-write and grown since (a
+    progress bar, or output landing on the same line), and once the restarted
+    server answers, the tail comes from its own log instead of the log file.
+    """
     for overlap in range(min(len(printed), len(lines)), 0, -1):
         if printed[-overlap:] == lines[:overlap]:
             return lines[overlap:]
-    return lines
+    shown = iter(printed)
+    skip = 0
+    while skip < len(lines) and lines[skip] in shown:
+        skip += 1
+    return lines[skip:]
 
 
 def _last(lines: list[str], markers: tuple[str, ...]) -> int:
@@ -277,9 +287,9 @@ class HotBox:
             if printed is None:
                 # Earlier requests and attempts were shown by earlier commands.
                 printed = lines[: len(lines) - len(attempt_lines(lines))]
-            # Progress bars only when the load failed.
+            # Progress bars and blank lines only when the load failed.
             for line in new_log_lines(printed, lines):
-                if stuck or not PROGRESS.search(line):
+                if stuck or (line.strip() and not PROGRESS.search(line)):
                     wait.say(f"  {line}")
             printed = lines
             if stuck:
