@@ -417,3 +417,51 @@ def test_deps_install_explains_an_index_that_refuses_the_box(monkeypatch):
         with pytest.raises(DevAppError) as info:
             dev_app._deps_install(args)
         assert "builds an app's environment" not in str(info.value)
+
+
+def test_app_process_gets_the_session_name(tmp_path, monkeypatch):
+    from fal.dev import app_holder
+
+    child = app_holder._ChildProcess(tmp_path / "dev-tiny-image-me")
+    assert child._env()["FAL_DEV_SESSION"] == "dev-tiny-image-me"
+
+    # Apps that read another name for it get that one too.
+    monkeypatch.setattr(
+        app_holder.threading, "Thread", lambda **kwargs: SimpleNamespace(start=dict)
+    )
+    child.start("m", "C", session_env=["MY_CACHE_NAMESPACE"])
+    assert child._env()["MY_CACHE_NAMESPACE"] == "dev-tiny-image-me"
+    for bad in ("PYTHONPATH", "LD_PRELOAD", "FAL_DEV_APP", "HOME", "1BAD", "A-B"):
+        with pytest.raises(ValueError, match="cannot set"):
+            child.start("m", "C", session_env=[bad])
+    assert child.session_env == ["MY_CACHE_NAMESPACE"]
+
+
+def test_start_saves_session_env(repo, monkeypatch):
+    from fal.cli import dev_app
+    from fal.dev import app_session
+    from fal.dev.app_session import DeployedBox, Layout
+
+    monkeypatch.setattr(
+        app_session,
+        "deploy_box",
+        lambda *a, **k: DeployedBox("Demo", "u", Layout(repo, ["."], ".", ".", [])),
+    )
+    monkeypatch.setattr(app_session, "box_exists", lambda *a, **k: False)
+    monkeypatch.setattr(app_session, "SESSIONS_DIR", repo / ".sessions")
+    monkeypatch.setattr(dev_app, "_boot", lambda session: {"app": {}})
+    args = parse_args(
+        ["dev", "app", "start", "demo", "--team", "t", "--session-env", "MY_NS"]
+    )
+    dev_app._start(args)
+    assert app_session.find_session(None).session_env == ["MY_NS"]
+
+    # A name the box would refuse stops the start before anything deploys.
+    deployed = []
+    monkeypatch.setattr(app_session, "deploy_box", lambda *a, **k: deployed.append(1))
+    args = parse_args(
+        ["dev", "app", "start", "demo", "--team", "t", "--session-env", "LD_PRELOAD"]
+    )
+    with pytest.raises(ValueError, match="cannot set"):
+        dev_app._start(args)
+    assert not deployed

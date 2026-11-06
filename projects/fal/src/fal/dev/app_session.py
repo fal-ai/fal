@@ -60,6 +60,8 @@ class Session:
     # to ``ignore_base`` (its app files context folder) like `fal deploy` does.
     ignore: list[str] = dataclasses.field(default_factory=list)
     ignore_base: str = "."
+    # Extra environment variable names the app process gets the box name in.
+    session_env: list[str] = dataclasses.field(default_factory=list)
     manifest: dict[str, str] = dataclasses.field(default_factory=dict)
     # Dependency overlay layers, oldest first, replayed on a new runner.
     overlay: list[dict[str, Any]] = dataclasses.field(default_factory=list)

@@ -5,6 +5,11 @@ image and secrets, uploads the app's source tree, and runs ``setup()`` once in a
 resident process. `sync` uploads changed files: endpoint edits reload in place
 with the weights still loaded; edits to ``setup()`` (or what it uses) restart
 the process; requirement or image changes need `start` again.
+
+The app process runs with ``FAL_DEV_SESSION`` set to the box name. Anything
+the app shares with its deployed runners, such as a compile cache on /data,
+should be keyed by it so dev runs stay apart. An app that already reads
+another variable for this can have it set too, with `start --session-env NAME`.
 """
 
 from __future__ import annotations
@@ -197,6 +202,7 @@ def _boot(session) -> dict:
             "sdk_archive": app_sync.pack(sdk, sorted(sdk)),
             "sdk_requirements": app_sync.sdk_requirements(),
             "layout": {"paths": session.paths, "workdir": session.workdir},
+            "session_env": session.session_env,
         },
         timeout=300,
     )
@@ -262,6 +268,7 @@ def _ensure_booted(session) -> bool:
 
 def _start(args):
     from fal.config import Config
+    from fal.dev.app_holder import check_session_env
     from fal.dev.app_session import (
         DevAppError,
         Session,
@@ -275,6 +282,7 @@ def _start(args):
     )
 
     console = _console()
+    session_env = check_session_env(list(args.session_env or []))
     file_path, class_name, app_data = resolve_app(args.app_ref)
     file = Path(file_path)
     import_root = Path(args.root).resolve() if args.root else package_root(file)
@@ -351,6 +359,7 @@ def _start(args):
         workdir=layout.workdir,
         ignore=layout.ignore,
         ignore_base=layout.ignore_base,
+        session_env=session_env,
     )
     session.save()
 
@@ -955,6 +964,13 @@ def add_parser(main_subparsers, parents=None):
         "the app's top-level package, widened to its app_files folder).",
     )
     add_env_argument(start)
+    start.add_argument(
+        "--session-env",
+        action="append",
+        metavar="NAME",
+        help="Also set environment variable NAME to the box name in the app "
+        "process (repeatable). FAL_DEV_SESSION is always set.",
+    )
     start.add_argument(
         "--replace",
         action="store_true",

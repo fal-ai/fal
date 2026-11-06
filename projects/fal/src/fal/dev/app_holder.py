@@ -24,6 +24,7 @@ import http.client
 import io
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -68,6 +69,27 @@ STOPPED_PHASES = ("idle", "exited", "failed", "stopped")
 CHILD_ERRORS = (OSError, ValueError, http.client.HTTPException)
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 REQUEST_ERRORS = (ValueError, TypeError, EOFError, OSError, tarfile.TarError)
+# Set to the box name in the app process. Apps that write shared state (a
+# compile cache on /data, say) namespace it by this so dev runs never read or
+# overwrite what deployed runners use. `start --session-env NAME` sets more.
+SESSION_ENV = "FAL_DEV_SESSION"
+ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# Names the loader, Python, the shell or fal itself read: never overwritten.
+RESERVED_ENV = {"PATH", "HOME", "TMPDIR", "USER", "SHELL", "PWD", "LANG"}
+RESERVED_ENV_PREFIXES = ("LD_", "DYLD_", "PYTHON", "FAL_", "LC_")
+
+
+def check_session_env(names: list[str]) -> list[str]:
+    """Names `start --session-env` may set; raises ValueError for any other."""
+    for name in names:
+        upper = name.upper()
+        if (
+            not ENV_NAME.fullmatch(name)
+            or upper in RESERVED_ENV
+            or upper.startswith(RESERVED_ENV_PREFIXES)
+        ):
+            raise ValueError(f"cannot set environment variable {name!r}")
+    return names
 
 
 def _rel(raw: str) -> PurePosixPath:
@@ -169,6 +191,8 @@ class _ChildProcess:
         self.module = ""
         self.class_name = ""
         self.requirements: list[str] = []
+        # More names for the box name in the app's environment.
+        self.session_env: list[str] = []
         # sys.path entries and working directory, relative to src.
         self.paths: list[str] = ["."]
         self.workdir = "."
@@ -214,6 +238,8 @@ class _ChildProcess:
         env["PYTHONPATH"] = self._pythonpath()
         env["PYTHONUNBUFFERED"] = "1"
         env["FAL_DEV_APP"] = "1"
+        for name in (SESSION_ENV, *self.session_env):
+            env[name] = self.session_dir.name
         env["FAL_DEV_OVERLAY"] = os.pathsep.join(self.overlay.paths())
         return env
 
@@ -395,6 +421,7 @@ class _ChildProcess:
         requirements: list[str] | None = None,
         generation: int | None = None,
         layout: dict[str, Any] | None = None,
+        session_env: list[str] | None = None,
     ) -> bool:
         """(Re)start the app process; False when no app was ever started here.
 
@@ -405,6 +432,8 @@ class _ChildProcess:
             # Checked before any state changes.
             paths = [str(_rel(p)) for p in layout.get("paths") or ["."]]
             workdir = str(_rel(layout.get("workdir") or "."))
+        if session_env is not None:
+            session_env = check_session_env([str(name) for name in session_env])
         with self.control:
             if not (module or self.module):
                 return False
@@ -421,6 +450,8 @@ class _ChildProcess:
                     self.requirements = requirements
                 if layout is not None:
                     self.paths, self.workdir = paths, workdir
+                if session_env is not None:
+                    self.session_env = session_env
                 self.pending_reload = False
                 self.phase, self.detail = "starting", ""
                 generation = self.generation
@@ -804,6 +835,7 @@ class DevAppHolder:
                 payload.get("class_name"),
                 payload.get("sdk_requirements"),
                 layout=payload.get("layout"),
+                session_env=payload.get("session_env"),
             )
             if not started:
                 raise ValueError("no app has been started on this box")
