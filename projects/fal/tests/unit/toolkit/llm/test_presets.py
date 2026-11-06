@@ -1436,7 +1436,7 @@ def test_agent_app_defaults_offload_and_hints_and_overrides(monkeypatch):
     monkeypatch.setattr(Agent, "_gpu_name", staticmethod(lambda: None))
     cmd = Agent().engine_command("/m")
     cfg = json.loads(cmd[cmd.index("--kv-transfer-config") + 1])
-    assert cfg["kv_connector_extra_config"]["cpu_bytes_to_use"] == 50 << 30
+    assert cfg["kv_connector_extra_config"]["cpu_bytes_to_use"] == 70 << 30
     assert Agent()._prefix_hints_on() is True
 
     class Tuned(Agent):

@@ -91,7 +91,7 @@ _SPEC_DENYLIST = frozenset({"GptOssForCausalLM"})
 # max_throughput recipe get the throughput one.
 # agent: long multi-turn tool-calling sessions (coding agents). Adds prefix
 # caching, the tool-call parser and a 128k window here; LLMApp also turns on
-# the CPU KV tier (0.5) and prefix_hints unless the app sets them.
+# the CPU KV tier (0.7) and prefix_hints unless the app sets them.
 PROFILES = ("throughput", "latency", "max_throughput", "agent")
 # The Qwen3-8B FP8 + EAGLE3 recipes are not measured with long context, prefix
 # caching and the CPU KV tier, so the agent profile does not take them.
@@ -100,7 +100,7 @@ _ENGINES = tuple(_TP_FLAG)
 
 AGENT_PROFILE = "agent"
 AGENT_MAX_MODEL_LEN = 131072
-AGENT_KV_CPU_OFFLOAD = 0.5
+AGENT_KV_CPU_OFFLOAD = 0.7
 # vLLM --tool-call-parser per model family, matched on architecture. Families
 # not listed get no parser (a note is printed) rather than a wrong one.
 _QWEN_ARCHS = frozenset(

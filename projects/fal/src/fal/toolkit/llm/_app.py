@@ -358,7 +358,8 @@ async def _wait_for_disconnect(request: Request) -> None:
 
 
 # Pinned pages cannot be reclaimed, and the engine, /dev/shm and weight staging
-# share the container limit; 0.5 is the value measured to be healthy.
+# share the container limit, so leave headroom. The agent default is 0.7
+# (_presets.AGENT_KV_CPU_OFFLOAD).
 _KV_OFFLOAD_MAX_FRACTION = 0.8
 
 
@@ -473,7 +474,7 @@ class LLMApp(App):
     # "throughput" (default), "latency", "max_throughput" or "agent"; recipes
     # can differ by profile. "agent" is the one switch for long tool-calling
     # sessions on vLLM: prefix caching, the model family's tool-call parser, a
-    # context window up to 128k, the CPU KV tier (kv_cpu_offload 0.5) and
+    # context window up to 128k, the CPU KV tier (kv_cpu_offload 0.7) and
     # prefix_hints, each overridable by setting it on the class or in
     # engine_args. The engine flags need vLLM and engine_presets; the CPU tier
     # needs vLLM, and prefix_hints works with any engine.
@@ -500,7 +501,7 @@ class LLMApp(App):
     # connectors, and the pinned pages count against the container's RAM limit.
     # The size is the total across all workers (vLLM's cpu_bytes_to_use), capped
     # at 0.8. None: off. Ignored when engine_args already set --kv-transfer-config.
-    # With engine_profile = "agent" (and engine_presets), None means 0.5; 0 turns
+    # With engine_profile = "agent" (and engine_presets), None means 0.7; 0 turns
     # the tier off.
     kv_cpu_offload: ClassVar[Optional[float]] = None
     engine_port: ClassVar[int] = 8000
