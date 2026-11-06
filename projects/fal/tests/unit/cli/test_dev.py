@@ -264,6 +264,10 @@ def test_dev_shell_and_exec_open_a_session_on_the_boxs_runner(monkeypatch, fake_
 
 
 def test_dev_logs_follow_the_live_runner(monkeypatch, fake_box):
+    tail_lines = [{"message": "a"}, {"message": "b"}]
+    fake_box.logs.return_value = tail_lines
+    shown = MagicMock()
+    monkeypatch.setattr(box_commands, "LogPrinter", lambda console: shown)
     printed = []
     monkeypatch.setattr(
         box_commands, "print_logs", lambda *args, **kw: printed.append((args, kw))
@@ -273,7 +277,55 @@ def test_dev_logs_follow_the_live_runner(monkeypatch, fake_box):
 
     box_commands.cmd_logs(args)
 
-    assert printed == [((fake_box.client, "r1", args.console), {"follow": True})]
+    ((follow_args, follow_kwargs),) = printed
+    assert follow_args == (fake_box.client, "r1", args.console)
+    assert follow_kwargs["follow"] is True and follow_kwargs["since"] is not None
+    # The tail is the newest lines the API returned, oldest first.
+    assert [c.args[0] for c in shown.print.call_args_list] == tail_lines
+    fake_box.logs.assert_called_once()
+    assert fake_box.logs.call_args.args[:2] == ("r1", box_commands.FOLLOW_BACKLOG_LINES)
+
+
+def test_dev_logs_on_a_stopped_box_points_at_all(fake_box):
+    from fal.dev.errors import DevError
+
+    fake_box.require_runner.side_effect = DevError("devbox-k is not running.")
+    args = parse_args(["dev", "logs"])
+    args.console = MagicMock()
+
+    with pytest.raises(DevError, match="not running.*fal dev logs --all"):
+        box_commands.cmd_logs(args)
+
+
+def test_dev_logs_all_picks_the_latest_started_not_the_shortest_lived(
+    monkeypatch, fake_box
+):
+    from datetime import datetime, timezone
+
+    printed = []
+    monkeypatch.setattr(
+        box_commands, "print_logs", lambda *args, **kw: printed.append(args)
+    )
+    # The first runner lived 22 s; the latest lived 13 min: uptime sorts them wrong.
+    fake_box.runners.return_value = [
+        _runner("first", RunnerState.TERMINATED, 22),
+        _runner("latest", RunnerState.TERMINATED, 780),
+    ]
+    starts = {
+        "first": datetime(2026, 11, 6, 0, 13, tzinfo=timezone.utc),
+        "latest": datetime(2026, 11, 6, 0, 40, tzinfo=timezone.utc),
+    }
+    monkeypatch.setattr(
+        box_commands,
+        "get_runner_info",
+        lambda rest, runner_id: MagicMock(started_at=starts[runner_id]),
+    )
+    args = parse_args(["dev", "logs", "--all"])
+    args.console = MagicMock()
+
+    box_commands.cmd_logs(args)
+
+    assert printed[0][1] == "latest"
 
 
 def test_dev_logs_all_reads_the_runner_that_is_still_around(monkeypatch, fake_box):

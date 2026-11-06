@@ -10,6 +10,8 @@ from pathlib import Path
 
 from rich.markup import escape
 
+from fal.cli.runners import LogPrinter
+from fal.cli.runners import _get_runner_info as get_runner_info
 from fal.cli.runners import print_logs, shell_session
 from fal.dev import execute
 from fal.dev.box import FINAL_STATES, newest_first, ssh_config
@@ -121,20 +123,75 @@ def cmd_exec(args):
     return execute.run(box.client, box.require_runner(), command, args.console)
 
 
+FOLLOW_BACKLOG_LINES = 20
+MAX_RUNNER_LOOKUPS = 20
+
+
+def _latest_runner(box, runners) -> str:
+    """The runner that started last: a live one, else the newest by start time.
+
+    A finished runner's uptime is its lifetime, so sorting by uptime would pick the
+    shortest-lived one, not the latest.
+    """
+    active = [r for r in runners if r.state not in FINAL_STATES]
+    if active:
+        return newest_first(active)[0].runner_id
+    rest = box.client._create_rest_client()
+    started = []
+    failed = 0
+    for runner in runners[:MAX_RUNNER_LOOKUPS]:
+        try:
+            at = get_runner_info(rest, runner.runner_id).started_at
+        except Exception:
+            failed += 1
+            continue
+        if at is not None:
+            started.append((at, runner.runner_id))
+    if failed:
+        print(
+            f"could not read the start time of {failed} runner(s); "
+            "the log shown may not be the latest",
+            file=sys.stderr,
+        )
+    if not started:
+        return newest_first(runners)[0].runner_id
+    return max(started)[1]
+
+
 def cmd_logs(args):
     box = get_box(args)
     if not args.all:
-        print_logs(box.client, box.require_runner(), args.console, follow=True)
+        try:
+            runner_id = box.require_runner()
+        except DevError as exc:
+            raise DevError(
+                f"{str(exc).rstrip('. ')}. To read the last runner's log: "
+                "fal dev logs --all"
+            ) from exc
+        # The tail first, so a quiet box still shows something, then new lines.
+        args.console.print(f"[dim]last lines of {runner_id}, then following ...[/]")
+        # Taken before the tail, so no line falls between the two reads.
+        now = datetime.now(timezone.utc)
+        printer = LogPrinter(args.console)
+        # The API's newest-first history, so a quiet box shows its latest lines.
+        for entry in box.logs(
+            runner_id, FOLLOW_BACKLOG_LINES, now - timedelta(hours=23)
+        ):
+            printer.print(entry)
+        print_logs(
+            box.client,
+            runner_id,
+            args.console,
+            follow=True,
+            since=now,
+        )
         return
     # The API only accepts a start time within the last 24 hours.
     since = datetime.now(timezone.utc) - timedelta(hours=23)
     runners = box.runners(since=since)
     if not runners:
         raise DevError(f"{box.app} has no runners in the last 23 hours")
-    # Prefer a runner that is still around (e.g. failing to start), else the
-    # shortest-lived one.
-    active = [r for r in runners if r.state not in FINAL_STATES]
-    runner_id = newest_first(active or runners)[0].runner_id
+    runner_id = _latest_runner(box, runners)
     print_logs(box.client, runner_id, args.console, follow=False, since=since)
 
 
