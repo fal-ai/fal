@@ -130,9 +130,9 @@ def test_dev_names_are_flags_everywhere(monkeypatch):
 
 
 def test_default_name_from_env(monkeypatch):
-    monkeypatch.setenv(config.ENV_DEFAULT_NAME, "klein")
+    monkeypatch.setenv(config.ENV_DEFAULT_NAME, "demo")
 
-    assert default_name() == "klein"
+    assert default_name() == "demo"
 
 
 def test_default_name_from_user(monkeypatch):
@@ -149,8 +149,8 @@ def test_resolve_name_remembers_explicit_name_per_folder(monkeypatch, tmp_path):
     monkeypatch.setattr("fal.dev.cli.common.default_name", lambda: "someone")
 
     assert resolve_name(_ns()) == "someone"
-    assert resolve_name(_ns(name="klein")) == "klein"
-    assert resolve_name(_ns()) == "klein"
+    assert resolve_name(_ns(name="demo")) == "demo"
+    assert resolve_name(_ns()) == "demo"
 
     # Another folder or host does not see it.
     assert resolve_name(_ns(host="other.example")) == "someone"

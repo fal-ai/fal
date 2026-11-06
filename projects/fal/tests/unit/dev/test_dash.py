@@ -78,9 +78,9 @@ def _state(code="running", runner_id="runner-abc") -> BoxState:
     )
 
 
-class FakeBox:
-    name = "troy"
-    app = "devbox-troy"
+class FakeDashBox:
+    name = "demo"
+    app = "devbox-demo"
     account = Account(None, False, via_key=True)
     host = None
 
@@ -119,7 +119,7 @@ class FakeBox:
 
 
 def _snapshot(probe=None, code="running", **changes) -> Snapshot:
-    box = FakeBox(probe, code)
+    box = FakeDashBox(probe, code)
     return Snapshot(
         state=box.state(),
         state_at=NOW,
@@ -137,7 +137,7 @@ def _text(renderable, width=150) -> str:
 
 
 def _frame(snapshot, box=None, **kwargs) -> str:
-    return _text(render(snapshot, box or FakeBox(), now=NOW), **kwargs)
+    return _text(render(snapshot, box or FakeDashBox(), now=NOW), **kwargs)
 
 
 def test_render_falls_back_to_ascii(monkeypatch):
@@ -199,9 +199,9 @@ def test_render_running_box():
     snapshot = _snapshot(cost=Cost(spent=4.5, per_hour=4.5))
     text = _frame(snapshot)
     for expected in [
-        "fal dev  troy",
+        "fal dev  demo",
         "● running",
-        "devbox-troy",
+        "devbox-demo",
         "1x GPU-H100",
         "runner-abc",
         "1h 00m",
@@ -242,7 +242,7 @@ def test_render_warns_loudly_when_watchdog_is_off():
         admin_key_set=False,
         warnings=["DEVBOX_ADMIN_KEY is not set, so idle shutdown is off."],
     )
-    text = _frame(_snapshot(probe), FakeBox(probe))
+    text = _frame(_snapshot(probe), FakeDashBox(probe))
     assert "IDLE SHUTDOWN IS OFF" in text
     assert re.search(r"auto-stop\s+off", text)
 
@@ -252,13 +252,13 @@ def test_render_hot_error_and_hold():
         hot={"error": "NameError: name 'pipe' is not defined", "ready": True},
         activity={"held": True, "hold_until": NOW + 1800},
     )
-    text = _frame(_snapshot(probe), FakeBox(probe))
+    text = _frame(_snapshot(probe), FakeDashBox(probe))
     assert "NameError: name 'pipe' is not defined" in text
     assert "30m 00s left" in text
 
 
 def test_render_stopped_box():
-    text = _frame(_snapshot(code="stopped"), FakeBox(code="stopped"))
+    text = _frame(_snapshot(code="stopped"), FakeDashBox(code="stopped"))
     assert "● stopped" in text
     assert "fal dev up" in text
     assert "rate pending" not in text
@@ -304,7 +304,7 @@ def test_probe_text_cannot_inject_markup_or_escapes():
     assert probe["gpus"][0]["temp_c"] == "]0;pwnx"
     console = Console(record=True, width=150, force_terminal=True)
     console.print(
-        render(_snapshot(probe), FakeBox(probe), now=NOW, screen=True), height=60
+        render(_snapshot(probe), FakeDashBox(probe), now=NOW, screen=True), height=60
     )
     assert "[/x], [link=https://e.x]y[/link]" in console.export_text(styles=False)
     assert "\x1b]8" not in console.export_text(styles=True)
@@ -313,8 +313,8 @@ def test_probe_text_cannot_inject_markup_or_escapes():
 def test_footer_message_expires():
     snapshot = _snapshot()
     snapshot.message, snapshot.message_until = "press d again", NOW + 5
-    assert "press d again" in _text(render(snapshot, FakeBox(), now=NOW))
-    assert "press d again" not in _text(render(snapshot, FakeBox(), now=NOW + 6))
+    assert "press d again" in _text(render(snapshot, FakeDashBox(), now=NOW))
+    assert "press d again" not in _text(render(snapshot, FakeDashBox(), now=NOW + 6))
 
 
 def test_panels_stack_on_narrow_terminals():
@@ -329,12 +329,14 @@ def test_screen_keeps_the_footer_visible(height):
     console = Console(
         record=True, width=80, height=height, force_terminal=False, color_system=None
     )
-    console.print(render(_snapshot(), FakeBox(), now=NOW, screen=True), height=height)
+    console.print(
+        render(_snapshot(), FakeDashBox(), now=NOW, screen=True), height=height
+    )
     assert "quit" in console.export_text()
 
 
 def test_poller_runs_one_exec_per_refresh():
-    box = FakeBox()
+    box = FakeDashBox()
     poller = Poller(box)
     poller.poll_once()
     poller.poll_once()
@@ -343,7 +345,7 @@ def test_poller_runs_one_exec_per_refresh():
     assert command[:2] == ["sh", "-c"]
     assert command[3] == f"{config.PROBE_DIR}/probe.py"
     assert json.loads(command[4]) == {
-        "workspace": "/data/devboxes/troy",
+        "workspace": "/data/devboxes/demo",
         "check_dirty": True,
     }
     assert until == config.PROBE_END.encode()
@@ -357,7 +359,7 @@ def test_poller_runs_one_exec_per_refresh():
 
 
 def test_poller_keeps_last_dirty_answer_between_checks():
-    box = FakeBox()
+    box = FakeDashBox()
     poller = Poller(box)
     poller.poll_once()
     box.probe = _probe(work={"dirty": None})
@@ -366,7 +368,7 @@ def test_poller_keeps_last_dirty_answer_between_checks():
 
 
 def test_poller_reports_probe_errors_without_crashing():
-    box = FakeBox()
+    box = FakeDashBox()
     box.run = lambda *a, **k: (1, "python3: not found")
     poller = Poller(box)
     poller.poll_once()
@@ -375,14 +377,14 @@ def test_poller_reports_probe_errors_without_crashing():
 
 
 def test_poller_skips_exec_when_box_is_stopped():
-    box = FakeBox(code="stopped")
+    box = FakeDashBox(code="stopped")
     poller = Poller(box)
     poller.poll_once()
     assert box.run_calls == []
 
 
 def test_poller_drops_probe_when_box_stops():
-    box = FakeBox()
+    box = FakeDashBox()
     poller = Poller(box)
     poller.poll_once()
     box.code = "stopped"
@@ -393,15 +395,15 @@ def test_poller_drops_probe_when_box_stops():
 
 
 def test_probe_command_names_the_boxs_workspace():
-    command = probe_command(FakeBox(), check_dirty=False)
+    command = probe_command(FakeDashBox(), check_dirty=False)
 
     assert command[3] == "/usr/local/lib/devbox-probe/probe.py"
-    assert json.loads(command[4])["workspace"] == "/data/devboxes/troy"
+    assert json.loads(command[4])["workspace"] == "/data/devboxes/demo"
 
 
 def test_probe_script_reads_box_state(tmp_path):
     """Run the real probe, installed like the box does, against a fake box layout."""
-    workspace = tmp_path / "devboxes" / "troy"
+    workspace = tmp_path / "devboxes" / "demo"
     transcripts = workspace / ".home" / ".claude" / "projects" / "p"
     transcripts.mkdir(parents=True)
     (transcripts / "s.jsonl").write_text("{}\n")
@@ -486,13 +488,13 @@ def test_fetch_cost_sums_the_runs_usage(monkeypatch):
         )
 
     monkeypatch.setattr(httpx, "get", get)
-    box = FakeBox()
+    box = FakeDashBox()
 
     cost = fetch_cost(box, runner_uptime=7200)
 
     assert cost == Cost(spent=3.5, per_hour=pytest.approx(4.5))
     assert seen["url"] == f"{flags.PLATFORM_URL}/serverless/usage"
-    assert seen["params"]["app"] == "devbox-troy"
+    assert seen["params"]["app"] == "devbox-demo"
     assert seen["params"]["expand"] == "summary"
     assert seen["headers"] == {"Authorization": "Key k"}
 
@@ -506,7 +508,7 @@ def test_fetch_cost_has_no_rate_before_usage_shows_up(monkeypatch):
         ),
     )
 
-    assert fetch_cost(FakeBox(), 60) == Cost(spent=0, per_hour=None)
+    assert fetch_cost(FakeDashBox(), 60) == Cost(spent=0, per_hour=None)
 
 
 @pytest.mark.parametrize("status", [401, 403])
@@ -517,11 +519,11 @@ def test_fetch_cost_is_none_without_billing_access(monkeypatch, status):
         lambda url, **kw: httpx.Response(status, request=httpx.Request("GET", url)),
     )
 
-    assert fetch_cost(FakeBox(), 60) is None
+    assert fetch_cost(FakeDashBox(), 60) is None
 
 
 def test_refresh_cost_hides_the_line_without_access_and_survives_errors(monkeypatch):
-    poller = Poller(FakeBox())
+    poller = Poller(FakeDashBox())
     poller.update(state=_state(), state_at=time.time())
 
     monkeypatch.setattr(model, "fetch_cost", lambda box, uptime: None)
@@ -573,7 +575,7 @@ def test_hot_restart_runs_on_the_box_not_through_the_app():
 
 
 def test_a_failed_cost_lookup_on_another_host_names_the_platform_url(monkeypatch):
-    box = FakeBox()
+    box = FakeDashBox()
     box.host = "api.dev.example"
     poller = Poller(box)
     poller.poll_once(cost=False)
@@ -587,7 +589,7 @@ def test_a_failed_cost_lookup_on_another_host_names_the_platform_url(monkeypatch
 
 
 def test_a_failed_first_cost_lookup_shows_nothing_rather_than_stale():
-    poller = Poller(FakeBox())
+    poller = Poller(FakeDashBox())
     poller.update(state=_state(), state_at=time.time())
 
     def fail(box, uptime):
@@ -602,7 +604,7 @@ def test_a_failed_first_cost_lookup_shows_nothing_rather_than_stale():
 
 
 def test_cost_follows_the_runner_across_a_down_and_up(monkeypatch):
-    box = FakeBox()
+    box = FakeDashBox()
     poller = Poller(box)
     monkeypatch.setattr(model, "fetch_cost", lambda box, uptime: Cost(9.0, 4.5))
     poller.poll_once(cost=False)
@@ -639,7 +641,7 @@ def test_prime_fetches_the_cost_once(monkeypatch):
     monkeypatch.setattr(
         model, "fetch_cost", lambda box, uptime: calls.append(1) or Cost(1.0, 2.0)
     )
-    poller = Poller(FakeBox())
+    poller = Poller(FakeDashBox())
 
     poller.prime()
 
@@ -648,7 +650,7 @@ def test_prime_fetches_the_cost_once(monkeypatch):
 
 
 def test_action_messages_cannot_drive_the_terminal():
-    poller = Poller(FakeBox())
+    poller = Poller(FakeDashBox())
 
     poller.say("failed: \x1b]0;pwn\x07boom")
 
@@ -657,7 +659,7 @@ def test_action_messages_cannot_drive_the_terminal():
 
 
 def test_a_box_without_the_probe_answers_at_once_and_says_to_redeploy(tmp_path):
-    command = probe_command(FakeBox(), check_dirty=False)
+    command = probe_command(FakeDashBox(), check_dirty=False)
     command[3] = str(tmp_path / "no-such-probe.py")
 
     done = subprocess.run(

@@ -36,7 +36,7 @@ def dev_state(monkeypatch, tmp_path):
     monkeypatch.setattr(team, "accounts", lambda: ACCOUNTS)
 
 
-def _args(name="klein", team=None, host="api.example"):
+def _args(name="demo", team=None, host="api.example"):
     return argparse.Namespace(name=name, host=host, team=team)
 
 
@@ -56,7 +56,7 @@ def _production(monkeypatch, apps):
     return asked
 
 
-def _confirm(client, account=RED, app="devbox-klein", yes=False, name="klein"):
+def _confirm(client, account=RED, app="devbox-demo", yes=False, name="demo"):
     team.confirm_deploy(client, account, app, "api.example", yes=yes, name=name)
 
 
@@ -85,7 +85,7 @@ def test_an_api_key_picks_the_account(monkeypatch):
     box = get_box(_args(team="red"))
 
     assert box.account == key
-    assert state.load_box("devbox-klein", "api.example") == {}
+    assert state.load_box("devbox-demo", "api.example") == {}
 
 
 def test_key_account_is_named_by_its_owner(monkeypatch):
@@ -184,9 +184,9 @@ def test_a_team_that_is_not_yours_is_refused_and_not_remembered():
 
 def test_a_remembered_team_that_is_gone_says_how_to_recover():
     get_box(_args(team="red"))
-    state.update_box("devbox-klein", "api.example", team="gone")
+    state.update_box("devbox-demo", "api.example", team="gone")
 
-    with pytest.raises(DevError, match="remembered for devbox-klein.*--team me"):
+    with pytest.raises(DevError, match="remembered for devbox-demo.*--team me"):
         get_box(_args())
     assert get_box(_args(team="me")).account == PERSONAL
 
@@ -235,7 +235,7 @@ def test_account_description(account, text, runs_as):
 def test_production_apps_are_the_ones_that_are_not_dev_boxes():
     client = MagicMock()
     client.apps.list.return_value = [
-        _app("devbox-klein"),
+        _app("devbox-demo"),
         _app("dev-flux-jane"),
         _app("flux"),
         _app("api"),
@@ -255,7 +255,7 @@ def test_a_team_with_production_apps_must_be_confirmed(monkeypatch, capsys):
     assert len(asks) == 1
     err = capsys.readouterr().err
     assert "team red has production apps (flux, api)" in err
-    assert "klein (devbox-klein) would be deployed next to them" in err
+    assert "demo (devbox-demo) would be deployed next to them" in err
 
 
 def test_declining_the_confirmation_deploys_nothing(monkeypatch):
@@ -265,7 +265,7 @@ def test_declining_the_confirmation_deploys_nothing(monkeypatch):
 
     with pytest.raises(DevError, match="cancelled"):
         _confirm(MagicMock())
-    assert state.load_box("devbox-klein", "api.example") == {}
+    assert state.load_box("devbox-demo", "api.example") == {}
 
 
 def test_without_a_terminal_the_confirmation_needs_yes(monkeypatch):
@@ -276,7 +276,7 @@ def test_without_a_terminal_the_confirmation_needs_yes(monkeypatch):
         _confirm(MagicMock())
     assert str(info.value) == (
         "team red has production apps (flux); "
-        "pass --yes to deploy klein (devbox-klein) anyway"
+        "pass --yes to deploy demo (devbox-demo) anyway"
     )
 
 
@@ -353,8 +353,8 @@ def test_a_confirmation_is_remembered_for_the_box_and_team(monkeypatch):
 
 
 def _fake_box(deployed):
-    box = MagicMock(app="devbox-klein", host="api.example", account=RED)
-    box.name = "klein"
+    box = MagicMock(app="devbox-demo", host="api.example", account=RED)
+    box.name = "demo"
     box.app_info.return_value = object() if deployed else None
     return box
 
@@ -376,7 +376,7 @@ def test_deploy_confirms_before_deploying(monkeypatch, events):
 
     box_commands.cmd_deploy(parse_args(["dev", "deploy", "--yes"]))
 
-    assert events == [("confirm", {"yes": True, "name": "klein"}), "deploy"]
+    assert events == [("confirm", {"yes": True, "name": "demo"}), "deploy"]
 
 
 def test_up_confirms_only_when_it_has_to_deploy(monkeypatch, events):
@@ -388,7 +388,7 @@ def test_up_confirms_only_when_it_has_to_deploy(monkeypatch, events):
 
     monkeypatch.setattr(box_commands, "get_box", lambda args: _fake_box(False))
     box_commands.cmd_up(args)
-    assert events == [("confirm", {"yes": False, "name": "klein"})]
+    assert events == [("confirm", {"yes": False, "name": "demo"})]
 
 
 @pytest.mark.parametrize("command", ["deploy", "up", "app start x.py"])
