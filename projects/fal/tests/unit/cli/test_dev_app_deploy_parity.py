@@ -113,9 +113,7 @@ def test_package_root_is_above_the_top_level_package(repo):
     assert package_root(repo / "pyproject.toml") == repo
 
 
-def test_deploy_box_matches_fal_deploy_options_except_box_settings(
-    repo, monkeypatch
-):
+def test_deploy_box_matches_fal_deploy_options_except_box_settings(repo, monkeypatch):
     from fal.api.client import SyncServerlessClient
     from fal.dev.app_session import deploy_box, resolve_app
     from fal.utils import load_function_from
@@ -149,8 +147,7 @@ def test_deploy_box_matches_fal_deploy_options_except_box_settings(
 
     assert box.environment == real.environment
     assert (
-        "private=https://pkgs.example.com/simple"
-        in (box.environment["requirements"])
+        "private=https://pkgs.example.com/simple" in (box.environment["requirements"])
     )
     assert box.host["machine_type"] == real.host["machine_type"] == "GPU-A100"
     assert box.host["keep_alive"] == 300
@@ -280,9 +277,7 @@ def test_start_ignores_the_pyproject_team(repo, monkeypatch):
         return DeployedBox(
             class_name="Demo",
             run_url="https://fal.run/me/dev-demo",
-            layout=Layout(
-                repo, [".", "pkg/models"], "pkg/models", ".", [r"\.bin$"]
-            ),
+            layout=Layout(repo, [".", "pkg/models"], "pkg/models", ".", [r"\.bin$"]),
         )
 
     monkeypatch.setattr(app_session, "deploy_box", deploy)
@@ -393,3 +388,32 @@ def test_holder_refuses_a_bad_layout_without_changing_state(tmp_path):
     with pytest.raises(ValueError, match="refusing"):
         child.start("m", "C", layout={"paths": ["."], "workdir": "/etc"})
     assert (child.module, child.paths, child.workdir) == ("", ["."], ".")
+
+
+def test_deps_install_explains_an_index_that_refuses_the_box(monkeypatch):
+    from fal.cli import dev_app
+    from fal.dev.app_session import DevAppError
+
+    monkeypatch.setattr(dev_app, "_session", lambda args: None)
+    monkeypatch.setattr(dev_app, "_ensure_booted", lambda session: None)
+    errors = iter(
+        [
+            "deps failed (409): pip: 401 Unauthorized for https://pkgs.example.com",
+            "deps failed (409): no matching distribution for nope",
+            "deps failed (403): Forbidden",
+        ]
+    )
+
+    def deps_call(session, payload, **kwargs):
+        raise DevAppError(next(errors))
+
+    monkeypatch.setattr(dev_app, "_deps_call", deps_call)
+    args = parse_args(["dev", "app", "deps", "install", "private-pkg"])
+    with pytest.raises(DevAppError, match="builds an app's environment") as info:
+        dev_app._deps_install(args)
+    assert "401 Unauthorized" in str(info.value)
+    # Other failures, and a refused CLI key, are passed through as they are.
+    for _ in range(2):
+        with pytest.raises(DevAppError) as info:
+            dev_app._deps_install(args)
+        assert "builds an app's environment" not in str(info.value)

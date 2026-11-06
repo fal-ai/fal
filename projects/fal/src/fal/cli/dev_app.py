@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -760,7 +761,21 @@ def _print_app_versions(status: dict[str, Any]) -> None:
             print(f"  app imports {name}=={found['version']} from {found['path']}")
 
 
+# A package index that refused the box's credentials (or lack of them).
+AUTH_REFUSED = re.compile(
+    r"unauthori[sz]ed|forbidden|\b40[13]\b (client error|error)", re.IGNORECASE
+)
+INDEX_AUTH_HINT = (
+    "A package index refused the box. The platform authenticates some indexes "
+    "only while it builds an app's environment, so a running box cannot install "
+    "from them: add the package to the app's requirements and run "
+    "`fal dev app start` again."
+)
+
+
 def _deps_install(args):
+    from fal.dev.app_session import DevAppError
+
     session = _session(args)
     _ensure_booted(session)
     payload = {
@@ -775,7 +790,14 @@ def _deps_install(args):
     }
     packages = escape(" ".join(args.packages))
     _console().print(f"Installing {packages} into an overlay ...")
-    result = _deps_call(session, payload)
+    try:
+        result = _deps_call(session, payload)
+    except DevAppError as exc:
+        # Only the box's own install errors (409), not a refused CLI key.
+        message = str(exc)
+        if message.startswith("deps failed (409)") and AUTH_REFUSED.search(message):
+            raise DevAppError(f"{exc}\n{INDEX_AUTH_HINT}") from exc
+        raise
     layer = result.get("layer")
     if layer is None:
         _console().print(
