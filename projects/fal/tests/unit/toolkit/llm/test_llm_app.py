@@ -206,8 +206,9 @@ def test_engine_logs_record_milestones_and_throttle_progress(capsys):
     proc.wait()
 
     assert {"weights_loaded_s", "server_ready_s"} <= set(app._boot)
-    # "_end" phases keep the last match: the second graph capture pass.
-    assert app._boot["cuda_graph_end_s"] - app._boot["weights_loaded_s"] >= 0.2
+    # "_end" phases keep the last match: the second graph capture pass, 0.2s
+    # after the first. Lines are stamped when read, so allow scheduling slack.
+    assert app._boot["cuda_graph_end_s"] - app._boot["weights_loaded_s"] >= 0.1
     out = capsys.readouterr().out
     # The first redraw is logged, later ones inside the interval are dropped,
     # and the redraw ending in a newline always is.
