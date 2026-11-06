@@ -28,7 +28,8 @@ def _push(args, hot_box: hot.HotBox, local: str, remote: str) -> None:
     root = Path(local)
     withheld: list[Path] = []
     written = hot_box.push(root, remote, sorted(hot.scan(root, withheld)))
-    args.console.print(f"synced {len(written)} changed files to {escape(remote)}")
+    noun = "file" if len(written) == 1 else "files"
+    args.console.print(f"synced {len(written)} changed {noun} to {escape(remote)}")
     if withheld:
         names = ", ".join(path.as_posix() for path in sorted(withheld)[:3])
         more = f" and {len(withheld) - 3} more" if len(withheld) > 3 else ""

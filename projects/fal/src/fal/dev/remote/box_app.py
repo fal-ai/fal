@@ -13,7 +13,6 @@ workspace as one snapshot file.
 
 import asyncio
 import contextlib
-import fcntl
 import hmac
 import json
 import os
@@ -28,6 +27,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from string import Template
+from typing import Iterator
 
 from fastapi import Request, Response
 
@@ -428,13 +428,22 @@ def _claim_lease() -> None:
     _write_lease("active")
 
 
+@contextlib.contextmanager
+def _lease_lock() -> Iterator[None]:
+    # Imported here: the laptop loads this module to deploy it, and fcntl is POSIX only.
+    import fcntl
+
+    with LEASE_LOCK.open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
 def _lease_heartbeat() -> None:
     """Keep the lease fresh while this runner owns it; stop once released or lost."""
     while True:
         time.sleep(config.LEASE_HEARTBEAT_SECONDS)
         try:
-            with LEASE_LOCK.open("w") as lock:
-                fcntl.flock(lock, fcntl.LOCK_EX)
+            with _lease_lock():
                 lease = signals.read_lease(LEASE)
                 if lease is None or lease[0] != _lease_owner():
                     _warn(
@@ -452,8 +461,7 @@ def _lease_heartbeat() -> None:
 def _release_lease() -> None:
     """Let a waiting runner start: called after the final save."""
     try:
-        with LEASE_LOCK.open("w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        with _lease_lock():
             lease = signals.read_lease(LEASE)
             if lease and lease[0] == _lease_owner():
                 _write_lease("released")

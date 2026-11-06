@@ -473,8 +473,7 @@ def _add_app_commands(subparsers, parents) -> None:
         "Run one request under the torch profiler and download the trace.",
         description="Warm the endpoint up, run one request under torch.profiler, "
         "print the top ops and save a Perfetto/Chrome trace locally. Without "
-        "--data the request is built from the endpoint's input model "
-        "(examples and defaults). CPU ops are recorded in the thread that runs "
+        "--data the request body is {}. CPU ops are recorded in the thread that runs "
         "the endpoint: work an async endpoint hands to other threads shows up "
         "as GPU kernels only.",
     )

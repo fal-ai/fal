@@ -383,6 +383,21 @@ def test_deploy_waits_for_a_runner_still_saving(monkeypatch):
     box.client.runners.stop.assert_not_called()
 
 
+def test_deploy_of_a_new_box_does_not_look_up_its_runners():
+    box = make_box(deployed=False)
+
+    def runners(app, since=None):
+        if not box.client.deploy.called:
+            raise RuntimeError("Application not found")
+        return []
+
+    box.client.apps.runners.side_effect = runners
+
+    box.deploy()
+
+    box.client.deploy.assert_called_once()
+
+
 def test_ssh_proxy_retries_the_runner_and_arming_lookups_together(monkeypatch):
     monkeypatch.setattr(box_module.time, "sleep", lambda s: None)
     monkeypatch.setattr(

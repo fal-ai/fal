@@ -40,8 +40,9 @@ CHUNK = 1024 * 1024
 # Stop adding objects when the team's volume gets this full: /data also holds
 # the team's weights and caches.
 MIN_FREE_BYTES = 20 * 1024**3
-# Files waiting to be stored; more are dropped, as storing is best effort.
-KEEP_QUEUE_SIZE = 256
+# Files waiting to be stored (each up to MAX_FILE_BYTES); more are dropped, as
+# storing is best effort.
+KEEP_QUEUE_SIZE = 16
 TMP_MAX_AGE_SECONDS = 3600
 # An object nobody has used for this long is deleted.
 OBJECT_MAX_AGE_SECONDS = 30 * 24 * 3600

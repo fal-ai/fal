@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import posixpath
 import shlex
 import sys
 import time
@@ -337,6 +338,7 @@ class Box:
         no_save: bool = False,
         dockerfile: str | None = None,
         team_data: bool = False,
+        hint: bool = True,
     ) -> str:
         from fal._version import __version__
 
@@ -368,7 +370,7 @@ class Box:
                     "the box is still shutting down; run `fal dev deploy` again, "
                     "then `fal dev up`"
                 )
-        elif not self.wait_until_stopped(config.LEASE_WAIT_SECONDS):
+        elif app and not self.wait_until_stopped(config.LEASE_WAIT_SECONDS):
             # A runner stopped moments ago may still be saving /work; the new
             # revision must start from that save.
             raise DevError(
@@ -421,10 +423,11 @@ class Box:
             else "The box is restarting on the new image; check with: fal dev status"
         )
         storage = f"volume {volume}" if volume else "the team-shared /data"
-        return (
+        summary = (
             f"deployed {self.app} on {num_gpus}x {machine_type} with {storage} at "
-            f"/data, idle shutdown after {idle_minutes} min. {next_step}"
+            f"/data, idle shutdown after {idle_minutes} min."
         )
+        return f"{summary} {next_step}" if hint else summary
 
     def ensure_volume(self) -> str:
         """Create the box's volume if needed; its name."""
@@ -503,7 +506,7 @@ class Box:
                 f"{self.app} does not exist yet; "
                 "deploying it with the default image ..."
             )
-            log(self.deploy(machine_type=machine_type))
+            log(self.deploy(machine_type=machine_type, hint=False))
         live = newest_live(self.runners())
         if live and machine_type and live[0].machine_type != machine_type:
             raise DevError(
@@ -603,7 +606,7 @@ class Box:
         else:
             log(f"{self.app} is stopped, starting it ...")
             runner_id = self.start(timeout).runner_id
-        sshd_log = Path(config.SSHD_CONFIG).with_name("sshd.log")
+        sshd_log = posixpath.join(posixpath.dirname(config.SSHD_CONFIG), "sshd.log")
         remote = (
             f"test -f {config.SSHD_CONFIG} "
             f"&& printf '%s\\n' {SSH_READY_MARKER.decode().strip()} "
