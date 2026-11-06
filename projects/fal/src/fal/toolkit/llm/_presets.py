@@ -25,7 +25,10 @@ _ALL_REDUCE_FLAG = "--disable-custom-all-reduce"
 _TRUST_REMOTE_CODE_FLAG = "--trust-remote-code"
 _LOAD_STRATEGY_FLAG = "--safetensors-load-strategy"
 _GPU_MEM_FLAG = "--gpu-memory-utilization"
-_BOOLEAN_FLAGS = frozenset({_ALL_REDUCE_FLAG, _TRUST_REMOTE_CODE_FLAG})
+_PROMPT_DETAILS_FLAG = "--enable-prompt-tokens-details"
+_BOOLEAN_FLAGS = frozenset(
+    {_ALL_REDUCE_FLAG, _TRUST_REMOTE_CODE_FLAG, _PROMPT_DETAILS_FLAG}
+)
 
 # Spellings that mean the same thing to an engine, keyed by a canonical group.
 _FLAG_GROUPS: Dict[str, str] = {
@@ -43,6 +46,7 @@ _FLAG_GROUPS: Dict[str, str] = {
     "-q": "quant",
     _ALL_REDUCE_FLAG: "all_reduce",
     _TRUST_REMOTE_CODE_FLAG: "trust_remote_code",
+    _PROMPT_DETAILS_FLAG: "prompt_details",
     _LOAD_STRATEGY_FLAG: "load_strategy",
     _GPU_MEM_FLAG: "gpu_mem",
     "--pipeline-parallel-size": "pp",
@@ -525,6 +529,8 @@ def engine_preset_args(
     - ``max_multiplexing``: ``--max-num-seqs`` (vLLM) or
       ``--max-running-requests`` (SGLang), matching the router's concurrency.
       A recipe may raise the engine cap above it, never lower it.
+    - vLLM: ``--enable-prompt-tokens-details``, so ``usage`` carries
+      ``prompt_tokens_details.cached_tokens``.
     - ``fp8_weights``: online ``--quantization fp8`` (any GPU) unless the
       checkpoint is already quantized (any ``quantization_config``, which
       includes a checkpoint substituted by ``checkpoint_for``).
@@ -580,6 +586,10 @@ def engine_preset_args(
             args.append(_ALL_REDUCE_FLAG)
     if seqs is not None:
         args += [_MAX_SEQS_FLAG[engine], str(seqs)]
+    if engine == "vllm":
+        # Report prompt_tokens_details.cached_tokens in usage, so clients can
+        # see prefix-cache hits. vLLM only: SGLang's equivalent is unverified.
+        args.append(_PROMPT_DETAILS_FLAG)
     for recipe in recipes:
         for flag, value in recipe.args.items():
             if flag == _SPEC_FLAG and spec_denied:

@@ -115,11 +115,119 @@ def test_unary_usage_model_rewrite_and_hints(served):
     assert app._usage_totals == {
         "prompt_tokens": 7,
         "completion_tokens": 5,
+        "cached_tokens": 3,
         "requests": 1,
     }
-    assert r.headers["x-fal-runner-hints"].startswith("pfx-")
+    # No session id sent: nothing advertised.
+    assert r.headers["x-fal-runner-hints"] == ""
     assert httpx.post(f"{url}/v1/completions", json={"prompt": "x"}).status_code == 200
     assert httpx.get(f"{url}/v1/models").json()["data"][0]["id"] == "fake"
+
+
+def test_hints_follow_client_session_ids(served):
+    app, url, _, _ = served
+    msgs = [{"role": "user", "content": "hi"}]
+    post = httpx.post
+    r = post(
+        f"{url}/v1/chat/completions",
+        json={"messages": msgs},
+        headers={"X-Fal-Runner-Hint": "sess-a"},
+    )
+    assert r.headers["x-fal-runner-hints"] == "sess-a"
+    # prompt_cache_key and user work too; the header wins over both.
+    post(f"{url}/v1/chat/completions", json={"messages": msgs, "user": "u-1"})
+    r = post(
+        f"{url}/v1/responses",
+        json={"input": "x", "prompt_cache_key": "k-2", "user": "ignored"},
+    )
+    assert r.headers["x-fal-runner-hints"] == "sess-a,u-1,k-2"
+    # A repeat moves the id to the most recent slot instead of duplicating it.
+    r = post(
+        f"{url}/v1/chat/completions",
+        json={"messages": msgs},
+        headers={"X-Fal-Runner-Hint": "sess-a"},
+    )
+    assert r.headers["x-fal-runner-hints"] == "u-1,k-2,sess-a"
+    # Ids the header cannot carry (or that could never match) are not advertised.
+    before = r.headers["x-fal-runner-hints"]
+    for bad in ("a,b c", "a\r\nX: y", "z" * 65, "naïve"):
+        r = post(f"{url}/v1/chat/completions", json={"user": bad})
+        assert r.status_code == 200
+        assert r.headers["x-fal-runner-hints"] == before
+    # A non-string first choice does not hide a valid later one.
+    r = post(f"{url}/v1/chat/completions", json={"prompt_cache_key": 5, "user": "u-ok"})
+    assert r.headers["x-fal-runner-hints"].split(",")[-1] == "u-ok"
+
+
+@pytest.mark.parametrize("served", [{"prefix_hint_max": 3}], indirect=True)
+def test_hints_are_bounded(served):
+    _, url, _, _ = served
+    for i in range(5):
+        r = httpx.post(f"{url}/v1/chat/completions", json={"user": f"s{i}"})
+    assert r.headers["x-fal-runner-hints"] == "s2,s3,s4"
+
+
+@pytest.mark.parametrize("served", [{"prefix_hints": False}], indirect=True)
+def test_hints_off_by_default(served):
+    _, url, _, _ = served
+    r = httpx.post(f"{url}/v1/chat/completions", json={"user": "s"})
+    assert "x-fal-runner-hints" not in r.headers
+
+
+def test_responses_unary_passthrough_and_usage(served):
+    app, url, _, body_file = served
+    r = httpx.post(f"{url}/v1/responses", json={"model": "x", "input": "hi"})
+    assert r.status_code == 200
+    assert json.loads(body_file.read_text())["model"] == "served-name"
+    assert app._usage_totals["prompt_tokens"] == 7
+    assert app._usage_totals["completion_tokens"] == 5
+    assert app._usage_totals["cached_tokens"] == 3
+
+
+@pytest.mark.parametrize("pad", [0, 20000])
+def test_responses_stream_passthrough_usage(served, pad):
+    app, url, _, body_file = served
+    with httpx.stream(
+        "POST", f"{url}/v1/responses", json={"stream": True, "pad_chars": pad}
+    ) as r:
+        assert r.headers["content-type"].startswith("text/event-stream")
+        text = "".join(r.iter_text())
+    events = [ln[7:] for ln in text.splitlines() if ln.startswith("event: ")]
+    assert events == ["response.output_text.delta"] * 3 + ["response.completed"]
+    assert "[DONE]" not in text
+    # No chat-only stream_options is injected for the Responses API.
+    assert "stream_options" not in json.loads(body_file.read_text())
+    assert app._usage_totals["completion_tokens"] == 5
+    assert app._usage_totals["cached_tokens"] == 3
+
+
+def test_responses_stream_deadline_ends_with_incomplete_event(served):
+    _, url, abort_file, _ = served
+    with httpx.stream(
+        "POST",
+        f"{url}/v1/responses",
+        json={"stream": True},
+        headers={"X-Fal-Request-Deadline": "0.3"},
+    ) as r:
+        text = "".join(r.iter_text())
+    assert "response.incomplete" in text
+    assert '"reason": "deadline"' in text
+    assert _wait_for(abort_file)
+
+
+def test_stream_usage_parsing():
+    chat = b'data: {"choices": [], "usage": {"prompt_tokens": 2}}\n\ndata: [DONE]\n\n'
+    assert _app._parse_stream_usage(chat) == {"prompt_tokens": 2}
+    cut = (
+        b'..."output_text": "xx"}, "usage": {"input_tokens": 9, '
+        b'"input_tokens_details": {"cached_tokens": 4}, "output_tokens": 1}}}\n\n'
+        b"event: response.completed\n"
+    )
+    # The start of the data line fell out of the tail.
+    usage = _app._parse_stream_usage(cut)
+    assert usage["input_tokens"] == 9
+    assert _app._cached_tokens(usage) == 4
+    assert _app._cached_tokens({"prompt_tokens_details": None}) == 0
 
 
 def test_upstream_error_and_bad_body(served):

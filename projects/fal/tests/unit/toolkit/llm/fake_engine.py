@@ -51,7 +51,12 @@ async def _complete(request: Request):
     if LAST_BODY_FILE:
         with open(LAST_BODY_FILE, "w") as f:
             json.dump(body, f)
-    usage = {"prompt_tokens": 7, "completion_tokens": 5, "total_tokens": 12}
+    usage = {
+        "prompt_tokens": 7,
+        "completion_tokens": 5,
+        "total_tokens": 12,
+        "prompt_tokens_details": {"cached_tokens": 3},
+    }
     if body.get("fail"):
         return JSONResponse({"error": "boom"}, status_code=400)
     if body.get("stream"):
@@ -94,6 +99,43 @@ async def _complete(request: Request):
     return {"choices": [{"message": {"content": "hi"}}], "usage": usage}
 
 
+async def _respond(request: Request):
+    body = await request.json()
+    if LAST_BODY_FILE:
+        with open(LAST_BODY_FILE, "w") as f:
+            json.dump(body, f)
+    usage = {
+        "input_tokens": 7,
+        "output_tokens": 5,
+        "total_tokens": 12,
+        "input_tokens_details": {"cached_tokens": 3},
+    }
+    # Padding makes the terminal event larger than the proxy's stream tail.
+    text = "x" * int(body.get("pad_chars", 0))
+    final = {
+        "type": "response.completed",
+        "response": {"status": "completed", "output_text": text, "usage": usage},
+    }
+    if not body.get("stream"):
+        return final["response"]
+
+    async def gen():
+        done = False
+        try:
+            for i in range(3):
+                delta = {"type": "response.output_text.delta", "delta": str(i)}
+                yield f"event: {delta['type']}\ndata: {json.dumps(delta)}\n\n"
+                await asyncio.sleep(0.2)
+            yield f"event: response.completed\ndata: {json.dumps(final)}\n\n"
+            done = True
+        finally:
+            if not done:
+                _mark_abort()
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+app.post("/v1/responses")(_respond)
 app.post("/v1/chat/completions")(_complete)
 app.post("/v1/completions")(_complete)
 

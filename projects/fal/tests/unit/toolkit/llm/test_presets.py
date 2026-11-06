@@ -35,13 +35,42 @@ def isolate_agent_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("IS_ISOLATE_AGENT", "1")
 
 
+def _without_details(args):
+    """Drop the always-on usage flag so tests can compare the rest."""
+    return [a for a in args if a != _presets._PROMPT_DETAILS_FLAG]
+
+
 def _base(engine, gpu_type, num_gpus, seqs=None):
     """Preset args from the generic path (no GPU name, no model facts)."""
-    return engine_preset_args(
-        engine,
-        Machine(gpu_type, None, None, num_gpus),
-        ModelFacts(),
-        max_multiplexing=seqs,
+    return _without_details(
+        engine_preset_args(
+            engine,
+            Machine(gpu_type, None, None, num_gpus),
+            ModelFacts(),
+            max_multiplexing=seqs,
+        )
+    )
+
+
+def test_vllm_reports_prompt_token_details_by_default():
+    args = engine_preset_args(
+        "vllm", Machine("H100", None, None, 1), ModelFacts(), max_multiplexing=8
+    )
+    assert "--enable-prompt-tokens-details" in args
+    sglang = engine_preset_args(
+        "sglang", Machine("H100", None, None, 1), ModelFacts(), max_multiplexing=8
+    )
+    assert "--enable-prompt-tokens-details" not in sglang
+    # A user can turn it off, or restate it, without a duplicate.
+    for user in (
+        ["--no-enable-prompt-tokens-details"],
+        ["--enable-prompt-tokens-details"],
+    ):
+        merged = merge_engine_args(args, user)
+        assert merged.count("--enable-prompt-tokens-details") <= 1
+        assert merged[-len(user) :] == user
+    assert "--enable-prompt-tokens-details" not in merge_engine_args(
+        args, ["--no-enable-prompt-tokens-details"]
     )
 
 
@@ -341,12 +370,14 @@ def _run(engine, config, machine, **kwargs):
     model = model_facts(
         kwargs.pop("model_id", None), config, kwargs.pop("active_params_b", None)
     )
-    return engine_preset_args(
-        engine,
-        machine,
-        model,
-        max_multiplexing=kwargs.pop("max_multiplexing", None),
-        **kwargs,
+    return _without_details(
+        engine_preset_args(
+            engine,
+            machine,
+            model,
+            max_multiplexing=kwargs.pop("max_multiplexing", None),
+            **kwargs,
+        )
     )
 
 
@@ -524,12 +555,11 @@ def test_active_params_override_beats_estimate():
 def test_other_gpus_unchanged():
     model = model_facts("Qwen/Qwen3-8B", QWEN3_8B)
     a100 = Machine("A100", "NVIDIA A100-SXM4-80GB", 81920, 1)
-    assert engine_preset_args("vllm", a100, model, max_multiplexing=32) == [
-        "--max-num-seqs",
-        "32",
-    ]
+    assert _without_details(
+        engine_preset_args("vllm", a100, model, max_multiplexing=32)
+    ) == ["--max-num-seqs", "32"]
     geforce = Machine("RTX", "NVIDIA GeForce RTX 5090", 32607, 1)
-    assert engine_preset_args("vllm", geforce, model) == []
+    assert _without_details(engine_preset_args("vllm", geforce, model)) == []
 
 
 # Recipes are measured at a given GPU count: 1x recipes never apply at TP > 1.

@@ -121,6 +121,8 @@ _MAX_ENGINE_STOP_WAIT_S = 30.0
 _DRAIN_SLACK_S = 1.0
 # A forwarded chunk that already carries a non-null finish reason.
 _FINISH_REASON_RE = re.compile(rb'"finish_reason":\s*"')
+# Hint ids the runner can advertise: header-safe, at most 64 chars.
+_HINT_RE = re.compile(r"[A-Za-z0-9._:-]{1,64}")
 # Platform window between SIGTERM and SIGKILL when the app sets none.
 _DEFAULT_TERMINATION_GRACE_S = 5.0
 _SHUTTING_DOWN_BODY = {
@@ -140,16 +142,49 @@ def _engine_version(engine: str) -> str:
         return "unknown"
 
 
+# ``"usage": {...}`` with one level of nesting, for a Responses API terminal
+# event whose start fell out of the stream tail (it carries the whole output).
+_USAGE_TAIL_RE = re.compile(r'"usage":\s*(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})')
+# Responses API stream events that end a response (no ``[DONE]`` follows).
+_RESPONSES_TERMINAL_RE = re.compile(
+    rb'"type":\s*"response\.(?:completed|incomplete|failed)"'
+)
+
+
 def _parse_stream_usage(tail: bytes) -> Optional[Dict[str, Any]]:
-    for raw in reversed(tail.decode("utf-8", errors="replace").splitlines()):
+    text = tail.decode("utf-8", errors="replace")
+    for raw in reversed(text.splitlines()):
         line = raw.strip()
         if line.startswith("data:") and '"usage"' in line:
             try:
-                usage = json.loads(line[5:]).get("usage")
+                event = json.loads(line[5:])
             except ValueError:
-                return None
+                break
+            # Chat and completions: top level. Responses: under ``response``.
+            usage = event.get("usage")
+            if usage is None and isinstance(event.get("response"), dict):
+                usage = event["response"].get("usage")
             return usage if isinstance(usage, dict) else None
+    # The terminal Responses event can outgrow the tail and lose its start.
+    match = None
+    for match in _USAGE_TAIL_RE.finditer(text):
+        pass
+    if match:
+        try:
+            usage = json.loads(match.group(1))
+        except ValueError:
+            return None
+        return usage if isinstance(usage, dict) else None
     return None
+
+
+def _cached_tokens(usage: Dict[str, Any]) -> int:
+    """Prompt tokens served from the prefix cache (chat or Responses shape)."""
+    for key in ("prompt_tokens_details", "input_tokens_details"):
+        details = usage.get(key)
+        if isinstance(details, dict):
+            return int(details.get("cached_tokens") or 0)
+    return 0
 
 
 def _hub_commit(
@@ -357,6 +392,22 @@ class LLMApp(App):
     Qwen3-8B on RTX PRO 6000 is ``Qwen/Qwen3-8B-FP8``. Clients keep using
     ``model`` (or ``served_model_name``). See ``engine_preset_args``.
 
+    OpenAI compatibility: ``/v1/chat/completions``, ``/v1/completions`` and
+    ``/v1/responses`` are proxied, streaming included. With vLLM the presets
+    add ``--enable-prompt-tokens-details`` (vLLM), so ``usage`` reports prefix-cache
+    hits as ``prompt_tokens_details.cached_tokens`` (``input_tokens_details``
+    on the Responses API). Use ``/v1/responses`` for models that reason
+    between tool calls (gpt-oss) and replay the response ``output`` items,
+    reasoning included, in the next ``input``. ``previous_response_id`` needs
+    one runner and is not isolated per caller, because the engine keeps that
+    state in memory by id.
+
+    For multi-turn conversations on several runners, set ``prefix_hints`` and
+    have clients send a stable session id (letters, digits and ``._:-``, at
+    most 64 characters; anything else is not advertised) on every turn, as the
+    ``X-Fal-Runner-Hint`` header (routing) and in the body as
+    ``prompt_cache_key`` or ``user`` (so the runner can advertise it).
+
     Subclasses overriding ``handle_exit`` or ``teardown`` must call ``super()``:
     they start the shutdown drain and stop the engine.
     """
@@ -401,9 +452,21 @@ class LLMApp(App):
     # Ask the engine for a final usage chunk on streams so token counts are
     # visible to ``record_usage`` (clients see one extra empty-choices chunk).
     report_usage: ClassVar[bool] = True
-    # Publish X-Fal-Runner-Hints derived from recent prompt prefixes.
+    # Cache-affinity routing. The client picks a session id and sends it on
+    # every turn as ``X-Fal-Runner-Hint: <id>`` (or ``prompt_cache_key``, or
+    # ``user``, in the JSON body). The runner then advertises the ids it
+    # served recently in ``X-Fal-Runner-Hints`` and the gateway prefers a free
+    # runner that lists the id, so a conversation keeps hitting the runner
+    # that holds its KV cache. Requests without an id advertise nothing.
     prefix_hints: ClassVar[bool] = False
-    prefix_hint_chars: ClassVar[int] = 256
+    # The gateway matches the id literally, so it is advertised as sent. The
+    # runner no longer derives hints from the prompt (prefix_hint_chars is
+    # gone): without a client id nothing is advertised.
+    # Recent ids advertised: size it to max_multiplexing times a few turns.
+    # Ids are advertised as sent, so every caller of a runner can read them:
+    # use opaque random ids, never user identifiers. The header is about 65
+    # bytes per id, so values above 100 risk a proxy's header limit.
+    prefix_hint_max: ClassVar[int] = 64
     # Self-enforced per-request deadline in seconds (None: none). Streams end
     # with finish_reason "deadline", unary calls get a 504; either way the
     # engine request is aborted. It is also a cap: a per-request
@@ -511,10 +574,15 @@ class LLMApp(App):
 
     def record_usage(self, path: str, usage: Dict[str, Any]) -> None:
         """Called with the engine's token ``usage`` for every completed request."""
-        for key in ("prompt_tokens", "completion_tokens"):
-            self._usage_totals[key] = self._usage_totals.get(key, 0) + int(
-                usage.get(key) or 0
-            )
+        # The Responses API names these input_tokens and output_tokens.
+        counts = {
+            "prompt_tokens": usage.get("prompt_tokens") or usage.get("input_tokens"),
+            "completion_tokens": usage.get("completion_tokens")
+            or usage.get("output_tokens"),
+            "cached_tokens": _cached_tokens(usage),
+        }
+        for key, value in counts.items():
+            self._usage_totals[key] = self._usage_totals.get(key, 0) + int(value or 0)
         self._usage_totals["requests"] = self._usage_totals.get("requests", 0) + 1
 
     def provide_hints(self) -> List[str]:
@@ -537,7 +605,9 @@ class LLMApp(App):
         self._boot: Dict[str, Any] = {}
         self._usage_totals: Dict[str, int] = {}
         self._inflight: Set[asyncio.Event] = set()
-        self._recent_prefixes: Deque[str] = deque(maxlen=8)
+        self._recent_prefixes: Deque[str] = deque(
+            maxlen=min(100, max(1, self.prefix_hint_max))
+        )
         self._engine_log_tail: Deque[str] = deque(maxlen=50)
 
         self._deadline = t0 + self._startup_budget_s()
@@ -1132,18 +1202,52 @@ class LLMApp(App):
     async def completions(self, request: Request) -> Response:
         return await self._proxy(request, "/v1/completions")
 
-    def _note_prefix(self, payload: Dict[str, Any]) -> None:
+    @endpoint("/v1/responses")
+    async def responses(self, request: Request) -> Response:
+        return await self._proxy(request, "/v1/responses")
+
+    def _note_prefix(self, payload: Dict[str, Any], headers: Any) -> None:
         if not self.prefix_hints:
             return
-        text = json.dumps(payload.get("messages") or payload.get("prompt") or "")
-        digest = hashlib.sha1(text[: self.prefix_hint_chars].encode()).hexdigest()
-        hint = f"pfx-{digest[:16]}"
-        if hint in self._recent_prefixes:
-            self._recent_prefixes.remove(hint)
-        self._recent_prefixes.append(hint)
+        raw = next(
+            (
+                v.strip()
+                for v in (
+                    headers.get("x-fal-runner-hint"),
+                    payload.get("prompt_cache_key"),
+                    payload.get("user"),
+                )
+                if isinstance(v, str) and v.strip()
+            ),
+            None,
+        )
+        # The gateway matches the id literally, so a value the header cannot
+        # carry (commas, spaces, non-ASCII, over 64 chars) is not advertised
+        # at all; a hash of it could never match what the client sends.
+        if raw is None or not _HINT_RE.fullmatch(raw):
+            return
+        if raw in self._recent_prefixes:
+            self._recent_prefixes.remove(raw)
+        self._recent_prefixes.append(raw)
 
     def _finish_chunk(self, path: str, reason: str) -> bytes:
-        """Final SSE event with ``finish_reason`` ``reason``, then [DONE]."""
+        """Final SSE event with ``finish_reason`` ``reason`` (a
+        ``response.incomplete`` event for the Responses API), then [DONE] for
+        chat and completions."""
+        if path == "/v1/responses":
+            event = {
+                "type": "response.incomplete",
+                "response": {
+                    "id": f"{reason}-{os.urandom(8).hex()}",
+                    "object": "response",
+                    "created_at": int(time.time()),
+                    "status": "incomplete",
+                    "model": self._served_name(),
+                    "output": [],
+                    "incomplete_details": {"reason": reason},
+                },
+            }
+            return f"event: response.incomplete\ndata: {json.dumps(event)}\n\n".encode()
         chat = path == "/v1/chat/completions"
         choice: Dict[str, Any] = {"index": 0, "finish_reason": reason}
         if chat:
@@ -1183,7 +1287,7 @@ class LLMApp(App):
             return JSONResponse({"error": str(exc)}, status_code=400)
         deadline = None if budget is None else arrival + budget
         payload["model"] = self._served_name()
-        self._note_prefix(payload)
+        self._note_prefix(payload, request.headers)
 
         abort = asyncio.Event()
         self._inflight.add(abort)
@@ -1194,7 +1298,11 @@ class LLMApp(App):
                     request, path, payload, abort, deadline, budget
                 )
 
-            if self.report_usage and "stream_options" not in payload:
+            if (
+                self.report_usage
+                and path != "/v1/responses"  # usage rides response.completed
+                and "stream_options" not in payload
+            ):
                 payload["stream_options"] = {"include_usage": True}
             send = asyncio.ensure_future(
                 self._client.send(
@@ -1342,7 +1450,12 @@ class LLMApp(App):
                     done_sent = done_sent or (
                         out.startswith(b"data: [DONE]") or b"\ndata: [DONE]" in out
                     )
-                    finished = finished or bool(_FINISH_REASON_RE.search(out))
+                    if path == "/v1/responses":
+                        # No [DONE] here: the terminal event ends the stream.
+                        if _RESPONSES_TERMINAL_RE.search(out):
+                            done_sent = finished = True
+                    elif not finished:
+                        finished = bool(_FINISH_REASON_RE.search(out))
                     yield out
         finally:
             aborted.cancel()
