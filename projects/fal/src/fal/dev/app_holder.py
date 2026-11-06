@@ -44,6 +44,10 @@ from fal.app import App
 CHILD_PORT = 8181
 STATE_ROOT = Path("/tmp/fal-dev-app")
 MAX_RESPONSE_BYTES = 20 * 1024 * 1024
+MAX_WARMUPS = 50
+MAX_REPEAT = 100
+# A batch of runs ends within this, inside the box's 3600 s request timeout.
+RUNS_BUDGET_SECONDS = 3300
 LOG_LINES = 2000
 ROUTE_PREFIX = "/__fal_dev/"
 CHILD_PREFIX = "/__fal_dev_child/"
@@ -448,10 +452,7 @@ def _forward(payload: dict) -> dict:
         raise ValueError(f"invalid path {path!r}")
     body = payload.get("body")
     data = json.dumps(body).encode() if body is not None else None
-    try:
-        timeout = float(payload.get("timeout", 3600))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("timeout must be a number") from exc
+    timeout = _timeout(payload)
     started = time.perf_counter()
     connection = http.client.HTTPConnection("127.0.0.1", CHILD_PORT, timeout=timeout)
     try:
@@ -476,6 +477,69 @@ def _forward(payload: dict) -> dict:
     except UnicodeDecodeError:
         result["body_base64"] = base64.b64encode(content).decode()
     return result
+
+
+def _forward_runs(payload: dict) -> dict:
+    """Send the request ``warmups`` + ``repeat`` times, timing each one.
+
+    Runs back to back on the box, so the times leave out the trip to fal.run.
+    Only the last response's body is returned; a failed run ends the batch and
+    returns its response instead. After the first run, each run's socket
+    timeout is what is left of ``RUNS_BUDGET_SECONDS`` (a soft cap: a response
+    that keeps trickling in can run past it). A run that does not fit, or fails
+    to reach the app, ends the batch early with the runs so far (``stopped``
+    says why).
+    """
+    warmups = _count(payload, "warmups", 0, 0, MAX_WARMUPS)
+    repeat = _count(payload, "repeat", 1, 1, MAX_REPEAT)
+    timeout = _timeout(payload)
+    warmup_runs: list[dict[str, Any]] = []
+    runs: list[dict[str, Any]] = []
+    result: dict[str, Any] = {}
+    stopped = ""
+    started = time.monotonic()
+    for index in range(warmups + repeat):
+        if index:
+            left = RUNS_BUDGET_SECONDS - (time.monotonic() - started)
+            if left <= 0:
+                stopped = "the batch reached its time budget"
+                break
+            try:
+                result = _forward({**payload, "timeout": min(timeout, left)})
+            except CHILD_ERRORS as exc:
+                stopped = f"run {index + 1} did not complete: {exc}"
+                break
+        else:
+            result = _forward(payload)
+        run = {
+            "status_code": result["status_code"],
+            "elapsed_seconds": result["elapsed_seconds"],
+        }
+        (warmup_runs if index < warmups else runs).append(run)
+        if result["status_code"] >= 400:
+            break
+    return {
+        **result,
+        "warmup_runs": warmup_runs,
+        "runs": runs,
+        "stopped": stopped,
+    }
+
+
+def _count(payload: dict, key: str, default: int, minimum: int, maximum: int) -> int:
+    value = payload.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{key} must be an integer")
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{key} must be between {minimum} and {maximum}")
+    return value
+
+
+def _timeout(payload: dict) -> float:
+    try:
+        return float(payload.get("timeout", 3600))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("timeout must be a number") from exc
 
 
 def _int(payload: dict, key: str, default: int | None) -> int | None:
@@ -602,7 +666,7 @@ class DevAppHolder:
                 status_code=409, detail=f"the app is not ready (phase: {phase})"
             )
         try:
-            return await asyncio.to_thread(_forward, payload)
+            return await asyncio.to_thread(_forward_runs, payload)
         except CHILD_ERRORS as exc:
             raise fastapi.HTTPException(status_code=409, detail=str(exc)) from exc
 

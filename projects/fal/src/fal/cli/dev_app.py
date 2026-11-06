@@ -19,8 +19,25 @@ from typing import Any
 
 from .parser import FalClientParser, RefAction, add_env_argument
 
+# Kept equal to the holder's limits (fal.dev.app_holder) without importing it.
+MAX_WARMUPS = 50
+MAX_REPEAT = 100
+
 DEFAULT_KEEP_ALIVE = 1800
 POLL_SECONDS = 1.0
+
+
+def _bounded(low: int, high: int):
+    def parse(value: str) -> int:
+        try:
+            number = int(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"invalid integer {value!r}") from None
+        if not low <= number <= high:
+            raise argparse.ArgumentTypeError(f"must be between {low} and {high}")
+        return number
+
+    return parse
 
 
 def _console():
@@ -278,7 +295,7 @@ def _sync_once(session, args, *, full: bool = False) -> None:
     if action in ("restart", "pending"):
         _wait_ready(session)
     if args.request is not None and action in ("reload", "restart", "pending"):
-        _do_request(session, args.request, args.data, started)
+        _do_request(session, args.request, _load_data(args.data), started)
 
 
 def _sync_cmd(args):
@@ -318,16 +335,31 @@ def _load_data(data: str | None) -> Any:
     return json.loads(data)
 
 
-def _do_request(session, path: str, data: str | None, edit_started: float | None):
-    from fal.dev.app_session import call
+def _do_request(
+    session,
+    path: str,
+    body: Any,
+    edit_started: float | None,
+    *,
+    warmups: int = 0,
+    repeat: int = 1,
+):
+    from fal.dev.app_session import DevAppError, call
 
     console = _console()
     started = time.perf_counter()
     result = call(
         session,
         "request",
-        {"path": path, "body": _load_data(data), "method": "POST"},
-        timeout=3600,
+        {
+            "path": path,
+            "body": body,
+            "method": "POST",
+            "warmups": warmups,
+            "repeat": repeat,
+        },
+        # A little past the box's own 3600 s limit, so its answer arrives.
+        timeout=3660,
     )
     total = time.perf_counter() - started
     status = result["status_code"]
@@ -335,6 +367,14 @@ def _do_request(session, path: str, data: str | None, edit_started: float | None
     timing = f"app {result['elapsed_seconds']:.2f}s, round trip {total:.2f}s"
     if edit_started is not None:
         timing += f", edit to result {time.perf_counter() - edit_started:.2f}s"
+    if warmups or repeat > 1:
+        if "runs" not in result:
+            raise DevAppError(
+                "This box predates --warmups/--repeat. "
+                "Run `fal dev app start` again to update it."
+            )
+        _report_runs(path, result, total)
+        return result
     console.print(f"[{color}]{status}[/] {path} ({timing})")
     if "body" in result:
         try:
@@ -347,12 +387,114 @@ def _do_request(session, path: str, data: str | None, edit_started: float | None
     return result
 
 
+def _report_runs(path: str, result: dict, total: float) -> None:
+    from fal.dev import app_bench
+
+    console = _console()
+    status = result["status_code"]
+    color = "green" if status < 400 else "red"
+    runs = [run["elapsed_seconds"] for run in result["runs"]]
+    console.print(
+        f"[{color}]{status}[/] {path}: {len(runs)} run(s) after "
+        f"{len(result['warmup_runs'])} warmup(s), round trip {total:.1f}s"
+    )
+    if result["warmup_runs"]:
+        warm = [run["elapsed_seconds"] for run in result["warmup_runs"]]
+        console.print(f"  warmups  {app_bench.format_runs(warm)}")
+    if runs:
+        console.print(f"  runs     {app_bench.format_runs(runs)}")
+    if status >= 400:
+        console.print(f"[red]Run failed with {status}[/]; no statistics.")
+    elif runs:
+        console.print(f"  {app_bench.format_stats(app_bench.stats(runs))}")
+    if result.get("stopped"):
+        console.print(
+            f"[red]Stopped early[/] after {len(runs)} run(s): {result['stopped']}"
+        )
+
+
 def _request(args):
+    from fal.dev import app_bench
+
     session = _session(args)
+    benchmark = args.warmups > 0 or args.repeat > 1 or args.name
+    if args.name:
+        app_bench.check_name(args.name)
+    body = _load_data(args.data)
     _ensure_booted(session)
-    result = _do_request(session, args.path, args.data, None)
+    result = _do_request(
+        session,
+        args.path,
+        body,
+        None,
+        warmups=args.warmups,
+        repeat=args.repeat,
+    )
     if args.output_file and "body" in result:
         Path(args.output_file).write_text(result["body"])
+    if benchmark and result["status_code"] >= 400:
+        if args.name:
+            _console().print("[red]Not saved[/]: a run failed.")
+        if "body" in result:
+            print(result["body"][-2000:], file=sys.stderr)
+        raise SystemExit(1)
+    if result.get("stopped"):
+        if args.name:
+            _console().print("[red]Not saved[/]: fewer runs than --repeat.")
+        raise SystemExit(1)
+    if not args.name:
+        return
+    if "runs" not in result:
+        # A single request against a box that predates --repeat.
+        result = {**result, "runs": [result], "warmup_runs": []}
+    run = app_bench.record(
+        name=args.name,
+        session=session,
+        path=args.path,
+        body=body,
+        result=result,
+        warmups=args.warmups,
+    )
+    existed = app_bench.path_for(session.name, args.name).exists()
+    saved = app_bench.save(run)
+    verb = "Overwrote" if existed else "Saved"
+    _console().print(f"{verb} benchmark [bold]{args.name}[/] at {saved}")
+
+
+def _benchmark_compare(args):
+    from fal.dev import app_bench
+    from fal.dev.app_session import DevAppError, find_session
+
+    try:
+        session_name = find_session(args.session).name
+    except DevAppError:
+        # Files can still be compared by path without a session.
+        if args.session:
+            raise
+        session_name = None
+    baseline = app_bench.load(args.baseline, session_name)
+    candidate = app_bench.load(args.candidate, session_name)
+    console = _console()
+    for mismatch in app_bench.mismatches(baseline, candidate):
+        console.print(f"[yellow]Not the same benchmark[/] ({mismatch})")
+    for line in app_bench.compare(baseline, candidate):
+        print(line)
+
+
+def _benchmark_list(args):
+    from fal.dev import app_bench
+
+    session = _session(args)
+    runs = app_bench.saved(session.name)
+    if not runs:
+        _console().print(f"No saved benchmarks for {session.name}.")
+        return
+    for run in runs:
+        created = time.strftime("%Y-%m-%d %H:%M", time.localtime(run["created_at"]))
+        print(
+            f"{run['name']:<20} {created}  {run['path']:<12} "
+            f"x{run['repeat']}  {app_bench.format_stats(run['stats'])}"
+        )
 
 
 def _restart(args):
@@ -489,7 +631,48 @@ def add_parser(main_subparsers, parents=None):
     request.add_argument("path", help="Endpoint path, e.g. /")
     request.add_argument("--data", help="JSON body, or @file.json.")
     request.add_argument("--output-file", help="Write the response body here.")
+    request.add_argument(
+        "--warmups",
+        type=_bounded(0, MAX_WARMUPS),
+        default=0,
+        help="Requests to send first and leave out of the timings.",
+    )
+    request.add_argument(
+        "--repeat",
+        type=_bounded(1, MAX_REPEAT),
+        default=1,
+        help="Time this many requests (run back to back on the box) and report "
+        "median, p90, min and max.",
+    )
+    request.add_argument(
+        "--name", help="Save the timings as a named benchmark, for `benchmark compare`."
+    )
     request.set_defaults(func=_request)
+
+    benchmark = subparsers.add_parser(
+        "benchmark",
+        help="Compare saved benchmark runs (`request --repeat N --name NAME`).",
+        parents=parents,
+    )
+    benchmark_commands = benchmark.add_subparsers(
+        title="Commands",
+        metavar="command",
+        dest="benchmark_cmd",
+        required=True,
+        parser_class=FalClientParser,
+    )
+    compare = benchmark_commands.add_parser(
+        "compare",
+        help="Show two saved runs side by side.",
+        parents=[*parents, session_parser],
+    )
+    compare.add_argument("baseline", help="Benchmark name or JSON file.")
+    compare.add_argument("candidate", help="Benchmark name or JSON file.")
+    compare.set_defaults(func=_benchmark_compare)
+    listing = benchmark_commands.add_parser(
+        "list", help="List saved runs.", parents=[*parents, session_parser]
+    )
+    listing.set_defaults(func=_benchmark_list)
 
     restart = subparsers.add_parser(
         "restart",
