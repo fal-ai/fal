@@ -25,7 +25,9 @@ from pathlib import Path
 from fal.dev.files import SKIP_DIRS, secret_like
 from fal.dev.remote.protocol import MAX_FILE_BYTES
 
-SKIP_SUFFIXES = (".pyc", ".pyo")
+# Log files are output, not code: `sync --watch > out.log` in the synced folder would
+# otherwise sync its own log and reload the app in a loop.
+SKIP_SUFFIXES = (".pyc", ".pyo", ".log")
 BATCH_BYTES = 25 * 1024 * 1024
 
 

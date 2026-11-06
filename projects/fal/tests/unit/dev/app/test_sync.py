@@ -36,6 +36,15 @@ def test_sync_roundtrip(tmp_path):
     assert (tmp_path / "dest" / "a.py").read_text() == "a = 2\n"
 
 
+def test_sync_skips_log_files_so_a_logged_watch_cannot_loop(tmp_path):
+    (tmp_path / "a.py").write_text("a = 1\n")
+    (tmp_path / "watch.log").write_text("synced 1 file\n")
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "app.log").write_text("x")
+
+    assert sorted(app_sync.collect(tmp_path)) == ["a.py"]
+
+
 def test_sync_sends_symlinks_and_skips_env(tmp_path):
     src = tmp_path / "src"
     src.mkdir()
