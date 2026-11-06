@@ -6,17 +6,20 @@ select(); that is all the dashboard needs, without a full TUI framework.
 
 from __future__ import annotations
 
+import argparse
 import os
 import select
 import sys
 import threading
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
+from fal.dev import loading
 from fal.dev.box import Box
 from fal.dev.dash import model
 from fal.dev.dash.view import render
@@ -51,6 +54,18 @@ def _read_key(fd: int, timeout: float) -> str | None:
     return data[:1].decode(errors="ignore").lower()
 
 
+def _show_output(path: Path, console: Console) -> bool:
+    """Draw an image in the terminal; False if this terminal cannot show images."""
+    from fal.dev.media import preview, term_media
+
+    term = term_media.terminal_for(argparse.Namespace(preview=None, play=False))
+    if term.protocol == term_media.OFF:
+        return False
+    console.print(Text(f"{path}", style="dim"))
+    preview.show_paths([(str(path), "")], term)
+    return True
+
+
 def print_once(box: Box, console: Console | None = None) -> None:
     """One poll, one frame: for scripts, captures, and terminals without a TTY."""
     console = console or Console()
@@ -74,6 +89,7 @@ def run_dashboard(
     pending_down = 0.0
     pending_quit = False
     busy = threading.Lock()
+    idle_warning = model.IdleWarning()
 
     def act(label: str, func, *args) -> None:
         """Run a slow action without freezing the screen."""
@@ -95,10 +111,12 @@ def run_dashboard(
             return
         threading.Thread(target=run, daemon=True).start()
 
+    # Before Live starts: inside it, sys.stdout is rich's proxy, not the terminal.
+    animate = loading.animation_enabled(sys.stdout)
     try:
         with _cbreak(fd):
             live = Live(
-                render(poller.snapshot, box, screen=True),
+                render(poller.snapshot, box, screen=True, animate=animate),
                 console=console,
                 screen=True,
                 auto_refresh=False,
@@ -106,8 +124,13 @@ def run_dashboard(
             live.start()
             try:
                 while True:
-                    key = _read_key(fd, 1.0)
+                    # Redraw often while a loading state animates.
+                    animating = animate and model.waits(poller.snapshot)
+                    key = _read_key(fd, 1 / loading.FPS if animating else 1.0)
                     runner_id = poller.snapshot.runner_id
+                    if warning := idle_warning.check(poller.snapshot, time.time()):
+                        console.bell()
+                        poller.say(warning, seconds=60)
                     if key == "q":
                         if not busy.locked() or pending_quit:
                             break
@@ -150,6 +173,25 @@ def run_dashboard(
                             except Exception as exc:
                                 poller.say(f"shell failed: {exc}")
                         live.start()
+                    elif key == "o":
+                        image = model.latest_output(box)
+                        if not image:
+                            poller.say(
+                                "no image in hot-out/ here; "
+                                "`fal dev hot run` saves its results there"
+                            )
+                        else:
+                            live.stop()
+                            with _restored(fd):
+                                try:
+                                    if _show_output(image, console):
+                                        console.input("press Enter to return ")
+                                    else:
+                                        model.open_externally(image)
+                                        poller.say(f"opened {image.name}")
+                                except Exception as exc:
+                                    poller.say(f"open failed: {exc}")
+                            live.start()
                     elif key == "h" and runner_id:
                         act("holding", model.hold, box)
                     elif key == "r" and runner_id:
@@ -159,7 +201,8 @@ def run_dashboard(
                             box,
                             runner_id,
                         )
-                    live.update(render(poller.snapshot, box, screen=True), refresh=True)
+                    frame = render(poller.snapshot, box, screen=True, animate=animate)
+                    live.update(frame, refresh=True)
             finally:
                 live.stop()
     except KeyboardInterrupt:

@@ -183,4 +183,4 @@ def make_request(*extra):
     args = parse_args(
         ["dev", "app", "request", "/", "--data", '{"prompt": "a"}', *extra]
     )
-    args.func(args)
+    return args.func(args)

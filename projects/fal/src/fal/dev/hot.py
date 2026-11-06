@@ -12,14 +12,14 @@ import contextlib
 import json
 import re
 import time
+from dataclasses import dataclass
 from pathlib import Path
-
-from rich.console import Console
-from rich.markup import escape
+from typing import Callable, Protocol
 
 from fal.dev import config, files, state
 from fal.dev.box import Box, log
 from fal.dev.errors import DevError
+from fal.dev.loading import STATES, Loading
 from fal.dev.transport import post_json
 
 OUTPUT_DIR = "hot-out"
@@ -33,10 +33,46 @@ STUCK_MARKERS = (
 )
 RETRY_MARKERS = ("[hot] loading the model", "[hot] restarting", "[hot] FULL RESTART")
 READY_MARKER = "[hot] serving"
+# tqdm progress bars (weights, pipeline parts, denoising steps) in the box log.
+PROGRESS = re.compile(r"\d+%\|.*\||\d+(?:\.\d+)?(?:it/s|s/it)\]")
 
 
 class HotTokenRejected(DevError):
     """The box no longer accepts our token: it restarted on a new runner."""
+
+
+@dataclass
+class RunResult:
+    """One /hot/infer answer: an image or JSON on 200, else the error."""
+
+    status: int
+    headers: dict
+    body: bytes
+    seconds: float
+    restarted: str | None = None  # why the weights reloaded first, if they did
+    path: Path | None = None  # where an image result was saved
+
+    @property
+    def ok(self) -> bool:
+        return self.status == 200
+
+    @property
+    def is_image(self) -> bool:
+        return self.headers.get("content-type", "").startswith("image/")
+
+    @property
+    def model_loaded(self) -> bool:
+        """422 is the code failing while the server (and the weights) stay up."""
+        return self.status == 422
+
+    @property
+    def error(self) -> dict:
+        """{"message", "traceback"} for a failed request."""
+        try:
+            info = json.loads(self.body)
+            return {"message": info.get("error"), "traceback": info.get("traceback")}
+        except (ValueError, AttributeError):
+            return {"message": repr(self.body[:500]), "traceback": None}
 
 
 def remote_dir(local: str | None, remote: str | None) -> str:
@@ -49,11 +85,21 @@ def remote_dir(local: str | None, remote: str | None) -> str:
 
 
 def new_log_lines(printed: list[str], lines: list[str]) -> list[str]:
-    """The lines of a log tail not printed yet, given the tail printed last time."""
+    """The lines of a log tail not printed yet, given the tail printed last time.
+
+    Without an exact overlap, skip the leading lines already printed, in order:
+    the last line printed may have been read mid-write and grown since (a
+    progress bar, or output landing on the same line), and once the restarted
+    server answers, the tail comes from its own log instead of the log file.
+    """
     for overlap in range(min(len(printed), len(lines)), 0, -1):
         if printed[-overlap:] == lines[:overlap]:
             return lines[overlap:]
-    return lines
+    shown = iter(printed)
+    skip = 0
+    while skip < len(lines) and lines[skip] in shown:
+        skip += 1
+    return lines[skip:]
 
 
 def _last(lines: list[str], markers: tuple[str, ...]) -> int:
@@ -61,6 +107,11 @@ def _last(lines: list[str], markers: tuple[str, ...]) -> int:
         (i for i, line in enumerate(lines) if any(m in line for m in markers)),
         default=-1,
     )
+
+
+def attempt_lines(lines: list[str]) -> list[str]:
+    """The log from the newest load attempt on: earlier runs were shown already."""
+    return lines[max(0, _last(lines, RETRY_MARKERS)) :]
 
 
 def waiting_for_fix(lines: list[str]) -> bool:
@@ -160,6 +211,9 @@ def read_token(box: Box, runner_id: str) -> str:
 class HotBox:
     """Sends requests to the box's /hot routes through fal.run, signed in as you."""
 
+    # Called with (saved image path, response headers) after each image result.
+    on_image: Callable[[Path, dict], None] | None = None
+
     def __init__(self, box: Box) -> None:
         from fal import flags
 
@@ -191,10 +245,25 @@ class HotBox:
         except ValueError:
             return status, {"error": body.decode(errors="replace")[:500]}
 
-    def wait_ready(self, timeout: int = 1800) -> dict:
+    def wait_ready(
+        self,
+        timeout: int = 1800,
+        headline: str = "starting the hot server: loading weights",
+    ) -> dict:
         """Poll until the server has loaded the model, printing its log as it goes."""
+        with Loading(
+            "model load",
+            title="Hot server",
+            headline=headline,
+            expected=STATES["weights"][1],
+        ) as wait:
+            info = self._wait_ready(timeout, wait)
+            wait.done()
+            return info
+
+    def _wait_ready(self, timeout: int, wait) -> dict:
         deadline = time.time() + timeout
-        printed: list[str] = []
+        printed: list[str] | None = None
         network_errors = 0
         while time.time() < deadline:
             status, info = self.json("status")
@@ -202,18 +271,32 @@ class HotBox:
                 # No response (network); the server keeps loading meanwhile.
                 network_errors += 1
                 if network_errors > 5:
-                    raise DevError(f"lost contact with the box: {info.get('error')}")
+                    raise DevError(
+                        f"no answer from the box for 30s: {info.get('error')}",
+                        title="lost contact with the box",
+                        fixes=[
+                            ("fal dev status", "is the box still up?"),
+                            ("fal dev hot status", "the server keeps loading"),
+                        ],
+                    )
                 time.sleep(5)
                 continue
             network_errors = 0
             lines = info.get("log") or []
+            stuck = status == 409 and waiting_for_fix(lines)
+            if printed is None:
+                # Earlier requests and attempts were shown by earlier commands.
+                printed = lines[: len(lines) - len(attempt_lines(lines))]
+            # Progress bars and blank lines only when the load failed.
             for line in new_log_lines(printed, lines):
-                log(f"  {line}")
+                if stuck or (line.strip() and not PROGRESS.search(line)):
+                    wait.say(f"  {line}")
             printed = lines
-            if status == 409 and waiting_for_fix(lines):
+            if stuck:
                 raise DevError(
-                    "the hot server stopped on an error (see the log above); "
-                    "fix it, then run: fal dev hot start"
+                    "the hot server stopped on an error; its log is above",
+                    title="the hot server stopped",
+                    fixes=[("fal dev hot start", "after you fix load.py")],
                 )
             if status == 200 and info.get("ready") and not info.get("restarting"):
                 return info
@@ -222,7 +305,9 @@ class HotBox:
                 raise DevError(f"hot server error ({status}): {info.get('error')}")
             time.sleep(2)
         raise DevError(
-            f"the hot server was not ready within {timeout}s; see: fal dev hot logs"
+            f"the hot server was not ready within {timeout}s",
+            title="the model did not load",
+            fixes=[("fal dev hot logs", "see what it is doing")],
         )
 
     def push(self, root: Path, remote: str, rels: list[str]) -> list[str]:
@@ -239,17 +324,24 @@ class HotBox:
         status, info = self.json("files", {"dir": remote, "files": contents})
         if status == 403:
             raise HotTokenRejected(
-                "the box restarted since this command began; "
-                "run `fal dev up`, then `fal dev hot start`"
+                "the box restarted since this command began",
+                title="the box restarted",
+                fixes=[
+                    ("fal dev up", "if it is not running"),
+                    ("fal dev hot start", "load the model again"),
+                ],
             )
         if status != 200:
             raise DevError(f"sync failed ({status}): {info.get('error')}")
         return info.get("written", [])
 
-    def request(
-        self, params: dict, output: str | None = None, edited_at: float | None = None
-    ) -> bool:
-        """Send one request; save an image result and print timings. True on success."""
+    def run(
+        self,
+        params: dict,
+        output: str | None = None,
+        on_restart: Callable[[str], None] | None = None,
+    ) -> RunResult:
+        """Send one request, riding out a restart; save an image result."""
         start = time.time()
         status, headers, body = self.post("infer", params, timeout=900)
         reason = None
@@ -263,35 +355,49 @@ class HotBox:
             except (ValueError, AttributeError):
                 pass
         if reason:
-            log(f"FULL RESTART ({reason}): the weights reload ...")
-            info = self.wait_ready()
-            log(f"model loaded in {info['load_seconds']}s")
+            if on_restart:
+                on_restart(reason)
+            else:
+                log(f"FULL RESTART ({reason}): the weights reload ...")
+            info = self.wait_ready(headline=STATES["hot-restart"][0])
+            if not on_restart:
+                log(f"model loaded in {info['load_seconds']}s")
             start = time.time()
             status, headers, body = self.post("infer", params, timeout=900)
-        total = time.time() - start
-        if status != 200:
-            try:
-                info = json.loads(body)
-                log(info.get("traceback") or "")
-                log(f"error ({status}): {info.get('error')}")
-            except ValueError:
-                log(f"error ({status}): {body[:500]!r}")
+        result = RunResult(status, headers, body, time.time() - start, reason or None)
+        if result.ok and result.is_image:
+            name = f"{time.strftime('%H%M%S')}.png"
+            result.path = Path(output) if output else Path(OUTPUT_DIR) / name
+            result.path.parent.mkdir(parents=True, exist_ok=True)
+            result.path.write_bytes(body)
+        return result
+
+    def request(
+        self, params: dict, output: str | None = None, edited_at: float | None = None
+    ) -> bool:
+        """Send one request; save an image result and print timings. True on success."""
+        result = self.run(params, output)
+        if not result.ok:
+            error = result.error
+            if error.get("traceback"):
+                log(error["traceback"])
+            log(f"error ({result.status}): {error['message']}")
             return False
+        headers = result.headers
         timing = (
             f"code v{headers.get('x-hot-code-version')} | "
-            f"infer {headers.get('x-hot-infer-ms')} ms | round trip {total:.2f}s"
+            f"infer {headers.get('x-hot-infer-ms')} ms | "
+            f"round trip {result.seconds:.2f}s"
         )
         if edited_at:
             timing += f" | edit to result {time.time() - edited_at:.2f}s"
-        if headers.get("content-type", "").startswith("image/"):
-            name = f"{time.strftime('%H%M%S')}.png"
-            out = Path(output) if output else Path(OUTPUT_DIR) / name
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(body)
-            print(f"{timing} | {out}")
+        if result.path:
+            print(f"{timing} | {result.path}")
+            if self.on_image:
+                self.on_image(result.path, headers)
         else:
             print(timing)
-            print(body.decode(errors="replace"))
+            print(result.body.decode(errors="replace"))
         return True
 
     def watch(
@@ -300,13 +406,12 @@ class HotBox:
         remote: str,
         run_params: dict | None,
         output: str | None,
-        console: Console,
+        view: WatchView,
     ) -> None:
         """Push each saved file; with run_params, send a request after each push."""
         known = scan(root)
         pending: set[str] = set()  # failed pushes, sent again with the next save
-        suffix = " and run a request" if run_params is not None else ""
-        console.print(f"watching {escape(str(root))}; save a file to sync it{suffix}")
+        view.watching(root, run_params is not None)
         while True:
             time.sleep(0.2)
             current = scan(root)
@@ -320,18 +425,27 @@ class HotBox:
             except HotTokenRejected:
                 raise  # not a failed push: the box needs a new command
             except DevError as exc:
-                log(f"{exc}; will send these files again with the next save")
+                view.sync_failed(changed, str(exc))
                 pending.update(changed)
                 continue
             pending.clear()
             if not written:
                 continue  # saved without changes
-            console.print(
-                f"synced {escape(', '.join(written))} "
-                f"({time.time() - edited_at:.2f}s after save)"
-            )
+            view.synced(written, time.time() - edited_at)
             if run_params is not None:
                 try:
-                    self.request(run_params, output, edited_at)
+                    result = self.run(run_params, output, on_restart=view.restarting)
+                    view.ran(result, edited_at)
                 except Exception as exc:  # keep watching; the next save retries
-                    log(str(exc) or repr(exc))
+                    view.lost(str(exc) or repr(exc))
+
+
+class WatchView(Protocol):
+    """What `hot sync --watch` reports as you save (see fal.dev.cli.watch_view)."""
+
+    def watching(self, root: Path, run: bool) -> None: ...
+    def synced(self, files: list[str], after_save: float) -> None: ...
+    def sync_failed(self, files: list[str], error: str) -> None: ...
+    def restarting(self, reason: str) -> None: ...
+    def ran(self, result: RunResult, edited_at: float) -> None: ...
+    def lost(self, error: str) -> None: ...

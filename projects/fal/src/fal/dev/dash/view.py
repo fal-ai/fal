@@ -20,8 +20,10 @@ from fal.console.icons import (
     get_column_separator_icon,
     get_degrees_celsius_icon,
     get_inline_separator_icon,
+    get_sparkline_icons,
     get_state_dot_icon,
 )
+from fal.dev import loading
 from fal.dev.box import Box
 from fal.dev.dash.model import (
     HOLD_HOURS,
@@ -29,6 +31,7 @@ from fal.dev.dash.model import (
     Cost,
     IdleView,
     Snapshot,
+    estimate_cost,
     idle_view,
 )
 
@@ -56,15 +59,19 @@ KEY_HINTS = [
     ("h", f"hold {HOLD_HOURS:g}h", True),
     ("d", "down", False),
     ("r", "hot restart", True),
+    ("o", "open output", False),
     ("q", "quit", False),
 ]
 FOOTER_LINES = 3
 LOGS_SHOWN = 8
+SPARK_WIDTH = 30
+# Free space below these turns a disk row yellow, then red.
+DISK_LOW_BYTES = (20 * 2**30, 5 * 2**30)
+PROCESS_NAME_WIDTH = 20
 # Lines the platform logs for every runner exec, including the dashboard's own probes.
 NOISE_PREFIXES = ("Skipping authentication for /Isolate/",)
 NOT_RUNNING_HINTS = {
     "stopped": "The box is stopped. Start it with `fal dev up`.",
-    "starting": "The box is starting; details appear once it is ready.",
     "failed": "The box failed to start; see its logs.",
 }
 
@@ -161,6 +168,13 @@ def _cost(cost: Cost, stale: bool) -> Text:
     return text + Text(" (stale)", style=WARNING) if stale else text
 
 
+def _estimate(cost: Cost) -> Text:
+    """Uptime at list price, for logins that cannot read usage: marked as a guess."""
+    return Text.styled(f"~${cost.spent:.2f} est.", style="bold") + Text(
+        f" at ${cost.per_hour:.2f}/h", style=MUTED
+    )
+
+
 def header(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
     state = snapshot.state
     if state is None:
@@ -178,24 +192,98 @@ def header(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
     ]
     if _live(snapshot) and snapshot.cost and not snapshot.cost_hidden:
         segments.append(_cost(snapshot.cost, snapshot.cost_stale))
+    elif _live(snapshot) and snapshot.cost_hidden:
+        guess = estimate_cost(state.machine_type, _uptime(snapshot, now))
+        if guess:
+            segments.append(_estimate(guess))
     line = Text(f" {get_column_separator_icon()} ", style=BORDER).join(segments)
     title = Text.styled("fal dev", style=f"bold {ACCENT}") + Text(
         f"  {box.name}", style=TITLE
     )
-    runner = state.runner.runner_id if state.runner else "-"
+    if state.code == "starting":
+        runner = "pending"
+    else:
+        runner = state.runner.runner_id if state.runner else "-"
     subtitle = Text(f"runner {runner}", style=f"default {MUTED}")
     return _panel(line, title, subtitle=subtitle, subtitle_align="right")
 
 
-def gpu_panel(probe: dict) -> RenderableType:
-    gpus = probe["gpus"]
-    if not gpus:
-        return _panel(
-            Text(probe["gpu_error"] or "no GPUs reported", style=MUTED), "GPU"
+def _waited(snapshot: Snapshot, wait: str, now: float) -> float:
+    return now - snapshot.since.get(wait, now)
+
+
+def booting_panel(snapshot: Snapshot, now: float, animate: bool) -> RenderableType:
+    """The GPU panel while the platform starts a runner: dust and the state."""
+    state = snapshot.state
+    label, expected = loading.STATES["gpu-runner"]
+    runner = state.runner if state else None
+    phase = loading.runner_phase(runner.state.value.lower()) if runner else "requested"
+    # A runner's uptime covers a wait that began before the dash opened.
+    waited = _uptime(snapshot, now)
+    if waited is None:
+        waited = _waited(snapshot, "starting", now)
+    body = loading.dust_panel_body(
+        waited, f"{label}: {phase}", expected=expected, animate=animate
+    )
+    return _panel(body, "GPU")
+
+
+def hot_restart_panel(snapshot: Snapshot, now: float, animate: bool) -> RenderableType:
+    """The hot server reloading its weights: what a restart waits on."""
+    headline, expected = loading.STATES["hot-restart"]
+    body = loading.dust_panel_body(
+        _waited(snapshot, "hot-restart", now),
+        "model load",
+        expected=expected,
+        headline=headline,
+        animate=animate,
+    )
+    return _panel(body, "Hot server")
+
+
+def sparkline(values: list[float], width: int = SPARK_WIDTH) -> Text:
+    """Percent readings as block characters, averaged down to `width` when longer."""
+    ramp = get_sparkline_icons()
+    if len(values) > width:
+        edges = [round(i * len(values) / width) for i in range(width + 1)]
+        values = [sum(values[a:b]) / (b - a) for a, b in zip(edges, edges[1:])]
+    top = len(ramp) - 1
+    chars = "".join(ramp[round(min(max(v, 0), 100) / 100 * top)] for v in values)
+    return Text(chars, style=ACCENT)
+
+
+def _history_rows(history: dict[str, list[tuple[float, float]]] | None) -> Table | None:
+    """Last few minutes of GPU and CPU use, under the bars."""
+    rows = [
+        (name, history[name]) for name in ("gpu", "cpu") if history and name in history
+    ]
+    rows = [(name, points) for name, points in rows if len(points) > 1]
+    if not rows:
+        return None
+    table = Table.grid(padding=(0, 1))
+    for _ in range(3):
+        table.add_column(no_wrap=True)
+    for name, points in rows:
+        span = points[-1][0] - points[0][0]
+        table.add_row(
+            Text(name, style=MUTED),
+            sparkline([value for _, value in points]),
+            Text(duration(span), style=MUTED),
         )
+    return table
+
+
+def gpu_panel(probe: dict, history: dict | None = None) -> RenderableType:
+    gpus = probe["gpus"]
     table = Table.grid(padding=(0, 1))
     for _ in range(5):
         table.add_column(no_wrap=True)
+    if not gpus:
+        note = Text(probe["gpu_error"] or "no GPUs reported", style=MUTED)
+        _add_system_rows(table, probe)
+        if not table.row_count:
+            return _panel(note, "GPU")
+        return _panel(Group(note, table, *_trend(history)), "GPU")
     for gpu in gpus:
         util = gpu["util_pct"]
         power = gpu["power_w"]
@@ -214,10 +302,99 @@ def gpu_panel(probe: dict) -> RenderableType:
                 style=MUTED,
             ),
         )
+    _add_system_rows(table, probe)
     title = Text.styled("GPU", style=TITLE) + Text(
         f"  {gpus[0]['name']}", style=f"default {MUTED}"
     )
-    return _panel(table, title)
+    return _panel(Group(table, *_trend(history)), title)
+
+
+def _trend(history: dict | None) -> list[RenderableType]:
+    trend = _history_rows(history)
+    return [trend] if trend else []
+
+
+def _rate(bytes_per_second: float | None) -> Text:
+    return Text("-" if bytes_per_second is None else f"{size(bytes_per_second)}/s")
+
+
+def _add_system_rows(table: Table, probe: dict) -> None:
+    """CPU, memory, network and disks under the GPU rows.
+
+    Each is absent on a box deployed before the probe read it.
+    """
+    if system := probe.get("system"):
+        _add_cpu_ram_net_rows(table, system)
+    # Free space only: a box's root disk is shared with the node and /data is a
+    # network volume, so their used and total are not this box's.
+    for disk in probe.get("disks") or []:
+        free = disk["free_bytes"]
+        warn, low = DISK_LOW_BYTES
+        style = ERROR if free < low else WARNING if free < warn else ""
+        table.add_row(
+            Text("+".join(disk["paths"]), style=MUTED),
+            Text(""),
+            Text(""),
+            Text(f"{size(free)} free", style=style),
+            Text(""),
+        )
+
+
+def _add_cpu_ram_net_rows(table: Table, system: dict) -> None:
+    cpu = system.get("cpu_pct")
+    cpus = system.get("cpus")
+    table.add_row(
+        Text("cpu", style=MUTED),
+        _bar(cpu),
+        Text(f"{round(cpu) if cpu is not None else '-':>3}%"),
+        Text(f"{cpus:g} cores" if cpus else "", style=MUTED),
+        Text(""),
+    )
+    used = system.get("mem_used_bytes")
+    total = system.get("mem_total_bytes")
+    known = used is not None and bool(total)
+    pct = used / total * 100 if known else None
+    table.add_row(
+        Text("ram", style=MUTED),
+        _bar(pct),
+        Text(f"{round(pct) if pct is not None else '-':>3}%"),
+        Text(f"{used / 2**30:.1f}/{total / 2**30:.0f} GiB" if known else "-"),
+        Text(""),
+    )
+    if "net_in_bps" in system:
+        table.add_row(
+            Text("net", style=MUTED),
+            Text("in ") + _rate(system["net_in_bps"]),
+            Text(""),
+            Text("out ") + _rate(system.get("net_out_bps")),
+            Text(""),
+        )
+
+
+def processes_panel(probe: dict) -> RenderableType | None:
+    """The busiest processes: CPU of one core, resident memory, GPU memory."""
+    processes = (probe.get("system") or {}).get("processes")
+    if not processes:
+        return None
+    table = Table.grid(padding=(0, 1))
+    table.add_column(no_wrap=True, max_width=PROCESS_NAME_WIDTH, overflow="ellipsis")
+    for _ in range(3):
+        table.add_column(no_wrap=True, justify="right")
+    table.add_row(
+        Text("command", style=MUTED),
+        Text("cpu", style=MUTED),
+        Text("ram", style=MUTED),
+        Text("gpu", style=MUTED),
+    )
+    for process in processes:
+        gpu = process.get("gpu_mib")
+        table.add_row(
+            Text(process["name"]),
+            Text(f"{process['cpu_pct']:.0f}%"),
+            Text(size(process["rss_bytes"])),
+            Text("-" if gpu is None else size(gpu * 2**20), style="" if gpu else MUTED),
+        )
+    return _panel(table, "Top processes")
 
 
 def idle_panel(
@@ -272,7 +449,6 @@ def _clock(epoch: float | None) -> str:
 
 def connections_panel(probe: dict, box_now: float) -> RenderableType:
     ssh = probe["activity"]["ssh_sessions"]
-    hot = probe["hot"]
     if probe["claude_running"]:
         last = ago(probe["activity"]["last_claude_activity"], box_now)
         claude_text = Text.styled("running", style=SUCCESS) + Text(
@@ -284,37 +460,43 @@ def connections_panel(probe: dict, box_now: float) -> RenderableType:
         ("ssh", Text(f"{ssh} attached", style=SUCCESS if ssh else MUTED)),
         ("claude remote", claude_text),
     ]
-    if not hot["running"]:
+    if not probe["hot"]["running"]:
         rows.append(("hot reload", Text("not running", style=MUTED)))
-    else:
-        if hot.get("restarting"):
-            state = Text.styled(f"restarting ({hot['restarting']})", style=WARNING)
-        elif not hot["reachable"]:
-            state = Text.styled("starting / not answering", style=WARNING)
-        elif hot.get("ready"):
-            state = Text.styled("ready", style=SUCCESS)
-        else:
-            state = Text.styled("loading model", style=WARNING)
-        version = Text(
-            f" {get_inline_separator_icon()} code v{hot.get('code_version', '-')}",
-            style=MUTED,
-        )
-        rows.append(("hot reload", state + version))
-        if reload := hot.get("last_reload"):
-            ok = "" if reload["ok"] else "  (import failed)"
-            rows.append(
-                (
-                    "last reload",
-                    f"{', '.join(reload['files'])} in {reload['ms']} ms{ok}",
-                )
-            )
-        if infer := hot.get("last_infer"):
-            rows.append(
-                ("last infer", f"{infer['ms']} ms, {ago(infer['at'], box_now)}")
-            )
-        if hot.get("error"):
-            rows.append(("last error", Text(hot["error"], style=ERROR)))
     return _panel(_kv(rows), "Connections")
+
+
+def hot_panel(probe: dict, box_now: float) -> RenderableType | None:
+    """The hot server while it runs: its state, last reload, last request, error."""
+    hot = probe["hot"]
+    if not hot["running"]:
+        return None
+    if hot.get("restarting"):
+        state = Text.styled(f"restarting ({hot['restarting']})", style=WARNING)
+    elif not hot["reachable"]:
+        state = Text.styled("starting / not answering", style=WARNING)
+    elif hot.get("ready"):
+        state = Text.styled("ready", style=SUCCESS)
+    else:
+        state = Text.styled("loading model", style=WARNING)
+    version = Text(
+        f" {get_inline_separator_icon()} code v{hot.get('code_version', '-')}",
+        style=MUTED,
+    )
+    rows: list[tuple[str, RenderableType | str]] = [("state", state + version)]
+    if reload := hot.get("last_reload"):
+        ok = "" if reload["ok"] else "  (import failed)"
+        when = f", {ago(reload['at'], box_now)}" if reload.get("at") else ""
+        rows.append(
+            (
+                "last reload",
+                f"{', '.join(reload['files'])} in {reload['ms']} ms{when}{ok}",
+            )
+        )
+    if infer := hot.get("last_infer"):
+        rows.append(("last infer", f"{infer['ms']} ms, {ago(infer['at'], box_now)}"))
+    if hot.get("error"):
+        rows.append(("last error", Text(hot["error"], style=ERROR)))
+    return _panel(_kv(rows), "Hot reload")
 
 
 def work_panel(probe: dict, box_now: float) -> RenderableType:
@@ -430,12 +612,16 @@ def footer(snapshot: Snapshot, now: float) -> RenderableType:
     )
 
 
-def body(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
+def body(
+    snapshot: Snapshot, box: Box, now: float, animate: bool = False
+) -> RenderableType:
     parts: list[RenderableType] = [header(snapshot, box, now)]
     state = snapshot.state
     if state is None:
         return Group(*parts)
     probe = snapshot.probe
+    if state.code == "starting":
+        return Group(*parts, booting_panel(snapshot, now, animate))
     if not _live(snapshot):
         hint = NOT_RUNNING_HINTS.get(state.code, "")
         return Group(*parts, _panel(Text(hint, style=MUTED), ""))
@@ -448,12 +634,17 @@ def body(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
         view = idle_view(probe, _box_clock(snapshot, now))
         if banner := watchdog_banner(probe, view):
             parts.append(banner)
+        if "hot-restart" in snapshot.since:
+            parts.append(hot_restart_panel(snapshot, now, animate))
+        box_now = _box_clock(snapshot, now)
+        optional = [processes_panel(probe), hot_panel(probe, box_now)]
         panels = [
-            gpu_panel(probe),
+            gpu_panel(probe, snapshot.history),
             idle_panel(snapshot, probe, view, now),
+            *[panel for panel in optional if panel],
             # /work before Connections: it is what `d` acts on.
-            work_panel(probe, _box_clock(snapshot, now)),
-            connections_panel(probe, _box_clock(snapshot, now)),
+            work_panel(probe, box_now),
+            connections_panel(probe, box_now),
         ]
     # Two panels per row when the terminal is wide enough, else stacked.
     parts.append(Columns(panels, equal=True))
@@ -462,11 +653,19 @@ def body(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
 
 
 def render(
-    snapshot: Snapshot, box: Box, now: float | None = None, *, screen: bool = False
+    snapshot: Snapshot,
+    box: Box,
+    now: float | None = None,
+    *,
+    screen: bool = False,
+    animate: bool = False,
 ) -> RenderableType:
-    """One frame; on a full screen the footer stays visible when the body is cut."""
+    """One frame; on a full screen the footer stays visible when the body is cut.
+
+    `animate` draws dust and spinners in loading states (loading's switches).
+    """
     now = time.time() if now is None else now
-    frame = body(snapshot, box, now)
+    frame = body(snapshot, box, now, animate)
     if not screen:
         return Group(frame, footer(snapshot, now))
     layout = Layout()

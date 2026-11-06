@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import BinaryIO, Iterator
+from typing import BinaryIO, Callable, Iterator
 
 import grpc
 
@@ -169,6 +169,7 @@ class Box:
         self.host = host
         self.account = account
         self.client = SyncServerlessClient(host=host, team=account.fal_team)
+        self.start_cancelled: bool | None = None
         self._stub = None
         self._auth: dict[str, str] = {}
         self._auth_at = 0.0
@@ -203,8 +204,10 @@ class Box:
         return bool(info and info.min_concurrency)
 
     def state(self) -> BoxState:
-        runners = self.runners()
         app = self.app_info()
+        if app is None:
+            return BoxState("stopped", None, None)  # never deployed: no runners
+        runners = self.runners()
         live = newest_live(runners)
         if live:
             armed = bool(app and app.min_concurrency)
@@ -222,7 +225,11 @@ class Box:
     def require_runner(self) -> str:
         live = newest_live(self.runners())
         if not live:
-            raise DevError(f"{self.app} is not running. Start it with: fal dev up")
+            raise DevError(
+                f"{self.app} is not running",
+                title="the box is not running",
+                fixes=[("fal dev up", "start it")],
+            )
         if not self.armed():
             raise DevError(
                 f"{self.app} is shutting down. Start it again with: fal dev up"
@@ -484,8 +491,13 @@ class Box:
         )
         return volume
 
-    def wait_until_ready(self, timeout: int) -> RunnerInfo | None:
-        """Poll until a runner is ready; None on timeout. Raises if the start fails."""
+    def wait_until_ready(
+        self, timeout: int, on_wait: Callable[[str], None] | None = None
+    ) -> RunnerInfo | None:
+        """Poll until a runner is ready; None on timeout. Raises if the start fails.
+
+        `on_wait` gets the runner state on each change (default: a log line).
+        """
         deadline = time.time() + timeout
         last_state = None
         while time.time() < deadline:
@@ -497,42 +509,78 @@ class Box:
             # setup() or the image failed and the platform is backing off retries.
             if RunnerState.CRASH_BACKOFF in states:
                 raise DevError(
-                    "the box failed to start. See why with: fal dev logs --all"
+                    "setup() or the image failed, and the platform is retrying it",
+                    title="the box failed to start",
+                    fixes=[
+                        ("fal dev logs --all", "see why"),
+                        ("fal dev down", "if it is still retrying"),
+                    ],
                 )
             pending = sorted(s.value.lower() for s in states - FINAL_STATES)
             state = ", ".join(pending) or "requested"
             if state != last_state:
-                log(f"waiting: {state}")
+                if on_wait:
+                    on_wait(state)
+                else:
+                    log(f"waiting: {state}")
                 last_state = state
             time.sleep(POLL_SECONDS)
         return None
 
-    def start(self, timeout: int, machine_type: str | None = None) -> RunnerInfo:
+    def start(
+        self,
+        timeout: int,
+        machine_type: str | None = None,
+        on_wait: Callable[[str], None] | None = None,
+    ) -> RunnerInfo:
         """Scale to 1 and wait for a ready runner; cancel the start if none comes up."""
         # Only cancel a start this call made: never stop a box that was already up.
         was_live = bool(newest_live(self.runners()))
+        # After a start that did not come up: True if it was scaled back to 0,
+        # False if that failed, None if the box was already up (left running).
+        self.start_cancelled = None
         runner = None
         try:
             self.scale(1, machine_type)
-            runner = self.wait_until_ready(timeout)
+            runner = self.wait_until_ready(timeout, on_wait)
         finally:
             # Any way out without a ready box (timeout, failed start, Ctrl-C) cancels
             # the start.
             if runner is None and not was_live:
+                self.start_cancelled = False  # until the stop is confirmed
                 try:
                     stopped = self.stop()
                 except Exception:
                     stopped = False
+                self.start_cancelled = bool(stopped)
                 if not stopped:
                     log("the box may still be starting; run: fal dev down")
         if runner is None:
+            fixes = [(f"fal dev up --timeout {timeout * 2}", "wait longer")]
+            if machine_type and machine_type != "GPU-RTXPRO6000":
+                fixes.append(
+                    ("fal dev up --machine-type GPU-RTXPRO6000", "another GPU type")
+                )
+            if self.start_cancelled:
+                outcome = "the start was cancelled and the box scaled back to 0"
+            elif was_live:
+                outcome = "the box was already up and is still running"
+            else:
+                outcome = "the box may still be starting, and billing"
+                fixes.insert(0, ("fal dev down", "make sure it stops"))
             raise DevError(
-                f"no machine became ready within {timeout}s; the start was cancelled. "
-                "Try again later."
+                f"no machine became ready within {timeout}s; {outcome}",
+                title="no GPU came free",
+                fixes=fixes,
             )
         return runner
 
-    def up(self, timeout: int, machine_type: str | None = None) -> RunnerInfo:
+    def up(
+        self,
+        timeout: int,
+        machine_type: str | None = None,
+        on_wait: Callable[[str], None] | None = None,
+    ) -> RunnerInfo:
         if self.app_info() is None:
             log(
                 f"{self.app} does not exist yet; "
@@ -546,7 +594,7 @@ class Box:
                 f"Run `fal dev down` first to switch to {machine_type}."
             )
         self.check_admin_key()
-        return self.start(timeout, machine_type)
+        return self.start(timeout, machine_type, on_wait)
 
     def down(self, no_save: bool = False) -> None:
         if not no_save:
@@ -565,7 +613,11 @@ class Box:
             )
         live = newest_live(self.runners())
         if not live:
-            raise DevError(f"{self.app} is not running. Start it with: fal dev up")
+            raise DevError(
+                f"{self.app} is not running",
+                title="the box is not running",
+                fixes=[("fal dev up", "start it")],
+            )
         # Re-arm the box in case the watchdog has just started shutting it down.
         self.scale(1)
         until = int(time.time() + hours * 3600)
@@ -583,33 +635,6 @@ class Box:
         if not self.armed():
             self.scale(1)
         return code == 0
-
-    def status(self) -> list[str]:
-        state = self.state()
-        runner = state.runner
-        if runner and runner.state in LIVE_STATES:
-            uptime_min = int(runner.uptime.total_seconds()) // 60
-            running = (
-                "running"
-                if state.code == "running"
-                else "shutting down (run `fal dev up` to keep it)"
-            )
-            return [
-                f"{self.app}: {running} on {runner.machine_type}",
-                f"runner: {runner.runner_id}  uptime: {uptime_min} min",
-            ]
-        if runner and state.code == "starting":
-            return [
-                f"{self.app}: starting ({runner.state.value.lower()}). "
-                "Cancel with: fal dev down"
-            ]
-        if runner and state.code == "failed":
-            return [f"{self.app}: failed to start. See why with: fal dev logs --all"]
-        if state.code == "stopping":
-            return [f"{self.app}: stopping"]
-        if state.app is None:
-            return [f"{self.app}: not deployed. Create it with: fal dev up"]
-        return [f"{self.app}: stopped"]
 
     def ssh_proxy(self, timeout: int) -> int:
         """SSH ProxyCommand: carry the SSH connection over runner exec.

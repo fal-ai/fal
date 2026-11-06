@@ -11,7 +11,10 @@ from rich.markup import escape
 
 from fal.dev import config, hot, state
 from fal.dev.cli.common import get_box
+from fal.dev.cli.watch_view import LoopView
 from fal.dev.errors import DevError
+from fal.dev.loading import STATES
+from fal.dev.media import preview
 
 
 def _project(args) -> tuple[str | None, str]:
@@ -28,8 +31,11 @@ def _push(args, hot_box: hot.HotBox, local: str, remote: str) -> None:
     root = Path(local)
     withheld: list[Path] = []
     written = hot_box.push(root, remote, sorted(hot.scan(root, withheld)))
-    noun = "file" if len(written) == 1 else "files"
-    args.console.print(f"synced {len(written)} changed {noun} to {escape(remote)}")
+    if written:
+        noun = "file" if len(written) == 1 else "files"
+        args.console.print(f"synced {len(written)} changed {noun} to {escape(remote)}")
+    else:
+        args.console.print(f"{escape(remote)} is already in sync")
     if withheld:
         names = ", ".join(path.as_posix() for path in sorted(withheld)[:3])
         more = f" and {len(withheld) - 3} more" if len(withheld) > 3 else ""
@@ -66,18 +72,28 @@ def cmd_start(args):
 
 def cmd_sync(args):
     hot_box = hot.HotBox(get_box(args))
+    hot_box.on_image = preview.HotPreview(args)
     local, remote = _project(args)
     if not local:
         raise DevError("fal dev hot sync needs a local project folder")
     _push(args, hot_box, local, remote)
     if args.watch:
         params = hot.parse_params(args.param, args.prompt) if args.run else None
-        hot_box.watch(Path(local), remote, params, args.output, args.console)
+        code, status = hot_box.json("status")
+        view = LoopView(
+            args.console, status if code == 200 else None, on_image=hot_box.on_image
+        )
+        try:
+            hot_box.watch(Path(local), remote, params, args.output, view)
+        except KeyboardInterrupt:
+            args.console.print("stopped watching; the box and the model are still up")
 
 
 def cmd_run(args):
     params = hot.parse_params(args.param, args.prompt)
-    return 0 if hot.HotBox(get_box(args)).request(params, args.output) else 1
+    hot_box = hot.HotBox(get_box(args))
+    hot_box.on_image = preview.HotPreview(args)
+    return 0 if hot_box.request(params, args.output) else 1
 
 
 def cmd_restart(args):
@@ -85,7 +101,7 @@ def cmd_restart(args):
     start = time.time()
     _call(hot_box, "restart")
     time.sleep(2)  # let the old process exit before polling
-    info = hot_box.wait_ready()
+    info = hot_box.wait_ready(headline=STATES["hot-restart"][0])
     args.console.print(
         f"restarted in {time.time() - start:.1f}s (model load {info['load_seconds']}s)"
     )

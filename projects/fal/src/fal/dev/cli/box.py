@@ -8,8 +8,6 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from rich.markup import escape
-
 from fal.cli.runners import LogPrinter
 from fal.cli.runners import _get_runner_info as get_runner_info
 from fal.cli.runners import print_logs, shell_session
@@ -17,6 +15,7 @@ from fal.dev import execute
 from fal.dev.box import FINAL_STATES, newest_first, ssh_config
 from fal.dev.cli.common import get_box, note_new_box, remember_name, resolve_name
 from fal.dev.errors import DevError
+from fal.dev.loading import STATES, Loading, runner_phase
 from fal.dev.team import confirm_deploy
 
 
@@ -61,36 +60,74 @@ def cmd_up(args):
     if box.app_info() is None:
         note_new_box(args, box)
         _confirm_deploy(box, args)
+    label, expected = STATES["gpu-runner"]
+    wait = Loading(
+        label,
+        title="GPU",
+        subtitle="runner pending",
+        expected=expected,
+        hint="Ctrl-C cancels the start and stops billing",
+    )
+
+    def on_wait(state: str) -> None:
+        wait.update(f"{label}: {runner_phase(state)}")
+        wait.start()  # only once the runner wait begins, after any deploy
+
     try:
-        runner = box.up(args.timeout, args.machine_type)
+        box.up(args.timeout, args.machine_type, on_wait)
+    except KeyboardInterrupt:
+        wait.close()
+        if box.start_cancelled:
+            args.console.print("cancelled the start: the box scaled back to 0")
+        elif box.start_cancelled is None and wait.started:
+            args.console.print(
+                "stopped waiting; the box was already up and keeps running"
+            )
+        else:
+            args.console.print(
+                "cancelled; check with: fal dev status, stop with: fal dev down"
+            )
+        return 130
+    except BaseException:
+        wait.close()
+        raise
     finally:
         # A box that was created but did not come up is still the folder's box.
         with contextlib.suppress(Exception):
             if box.app_info() is not None:
                 remember_name(args, box.name)
-    args.console.print(
-        f"ready: runner {runner.runner_id} on {escape(str(runner.machine_type))}"
-        f"{_rate(box)}"
-    )
+    waited = wait.elapsed if wait.started else None
     if args.dash:
+        wait.done()
         from fal.dev.cli.dash import show
 
         show(box, args.console)
-    else:
-        args.console.print(
-            "connect with: fal dev shell, or watch it with: fal dev dash"
-        )
+        return None
+    from fal.dev.cli import summary
 
-
-def _rate(box) -> str:
-    """ " at $X/h" when the platform's usage API already knows the box's rate."""
-    from fal.dev.dash.model import fetch_cost
-
+    wait.update("the runner is up: reading the box")
+    wait.hint = "the box is up and billing; Ctrl-C stops waiting, not the box"
     try:
-        cost = fetch_cost(box, 3600)
-    except Exception:
-        return ""
-    return f" at ${cost.per_hour:.2f}/h" if cost and cost.per_hour else ""
+        snap = summary.snapshot(box)
+        card = summary.ready_card(snap, box, waited)
+    except KeyboardInterrupt:
+        wait.close()
+        args.console.print("the box is up and billing; stop it with: fal dev down")
+        return 130
+    except Exception as exc:
+        # The box is up: say so, and do not fail `fal dev up && fal dev shell`.
+        wait.close()
+        args.console.print(
+            f"the box is up and billing (could not read its details: {exc}); "
+            "stop it with: fal dev down",
+            markup=False,
+        )
+        return None
+    finally:
+        wait.close()
+    wait.done()
+    args.console.print(card)
+    return None
 
 
 def cmd_down(args):
@@ -99,8 +136,10 @@ def cmd_down(args):
 
 
 def cmd_status(args):
-    for line in get_box(args).status():
-        print(line)
+    from fal.dev.cli import summary
+
+    box = get_box(args)
+    args.console.print(summary.status_line(summary.snapshot(box), box))
 
 
 def cmd_shell(args):

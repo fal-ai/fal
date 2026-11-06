@@ -1,4 +1,5 @@
 import io
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -138,24 +139,33 @@ def test_require_runner():
 @pytest.mark.parametrize(
     "runners, min_concurrency, deployed, expected",
     [
-        ([make_runner("r1")], 1, True, "devbox-demo: running on GPU-H100"),
-        ([make_runner("r1")], 0, True, "devbox-demo: shutting down"),
-        ([make_runner("r1", RunnerState.DRAINING)], 0, True, "devbox-demo: stopping"),
-        ([make_runner("r1", RunnerState.PENDING)], 1, True, "devbox-demo: starting"),
+        ([make_runner("r1")], 1, True, "devbox-demo  RUNNING  1x GPU-H100  up "),
+        ([make_runner("r1")], 0, True, "devbox-demo  STOPPING"),
+        ([make_runner("r1", RunnerState.DRAINING)], 0, True, "devbox-demo  STOPPING"),
+        (
+            [make_runner("r1", RunnerState.PENDING)],
+            1,
+            True,
+            "devbox-demo  STARTING  waiting for a GPU runner (queued)",
+        ),
         (
             [make_runner("r1", RunnerState.CRASH_BACKOFF)],
             1,
             True,
-            "devbox-demo: failed",
+            "devbox-demo  FAILED  see why with: fal dev logs --all",
         ),
-        ([], 0, True, "devbox-demo: stopped"),
-        ([], 0, False, "devbox-demo: not deployed"),
+        ([], 0, True, "devbox-demo  STOPPED  start it with: fal dev up"),
+        ([], 0, False, "devbox-demo  STOPPED  not deployed"),
     ],
 )
-def test_status(runners, min_concurrency, deployed, expected):
-    lines = make_box(runners, min_concurrency, deployed).status()
+def test_status_line(runners, min_concurrency, deployed, expected):
+    from fal.dev.cli.summary import status_line
+    from fal.dev.dash.model import Snapshot
 
-    assert lines[0].startswith(expected)
+    box = make_box(runners, min_concurrency, deployed)
+    line = status_line(Snapshot(state=box.state(), state_at=time.time()), box)
+
+    assert line.plain.startswith(expected)
 
 
 def test_stop_scales_to_zero_and_stops_live_runners():
@@ -176,8 +186,25 @@ def test_wait_until_ready_raises_on_crash(monkeypatch):
     monkeypatch.setattr(box_module, "POLL_SECONDS", 0)
     box = make_box([make_runner("r1", RunnerState.CRASH_BACKOFF)])
 
-    with pytest.raises(DevError, match="failed to start"):
+    with pytest.raises(DevError, match="image failed"):
         box.wait_until_ready(timeout=5)
+
+
+def test_wait_until_ready_reports_each_state_change(monkeypatch):
+    monkeypatch.setattr(box_module, "POLL_SECONDS", 0)
+    box = make_box([])
+    box.poll_runners = MagicMock(
+        side_effect=[
+            [make_runner("r1", RunnerState.PENDING)],
+            [make_runner("r1", RunnerState.PENDING)],
+            [make_runner("r1", RunnerState.SETUP)],
+            [make_runner("r1")],
+        ]
+    )
+    seen = []
+
+    assert box.wait_until_ready(timeout=5, on_wait=seen.append).runner_id == "r1"
+    assert seen == ["pending", "setup"]
 
 
 def test_start_cancels_when_no_runner_comes_up(monkeypatch):
@@ -542,3 +569,33 @@ def test_the_authorize_script_keeps_a_key_file_without_a_final_newline(tmp_path)
 
     keys = (ssh / "authorized_keys").read_text().splitlines()
     assert keys == ["ssh-ed25519 OLD", "ssh-ed25519 NEW"]
+
+
+def test_start_timeout_says_whether_the_box_stopped(monkeypatch):
+    box = make_box([])
+    box.wait_until_ready = MagicMock(return_value=None)
+    box.stop = MagicMock(return_value=False)
+    with pytest.raises(DevError, match="may still be starting") as info:
+        box.start(timeout=1)
+    assert info.value.fixes[0][0] == "fal dev down"
+    assert box.start_cancelled is False
+    box.stop = MagicMock(return_value=True)
+    with pytest.raises(DevError, match="scaled back to 0"):
+        box.start(timeout=1)
+    assert box.start_cancelled is True
+
+
+def test_a_second_ctrl_c_during_the_cancel_is_not_reported_as_stopped():
+    box = make_box([])
+    box.wait_until_ready = MagicMock(side_effect=KeyboardInterrupt)
+    box.stop = MagicMock(side_effect=KeyboardInterrupt)
+    with pytest.raises(KeyboardInterrupt):
+        box.start(timeout=1)
+    assert box.start_cancelled is False
+
+
+def test_state_of_a_box_never_deployed_does_not_list_runners():
+    box = make_box([], deployed=False)
+    box.client.apps.runners.side_effect = AssertionError("listed runners")
+    state = box.state()
+    assert state.code == "stopped" and state.app is None

@@ -211,6 +211,38 @@ def test_wait_ready_stops_when_the_server_waits_for_a_fix(monkeypatch):
         box.wait_ready(timeout=60)
 
 
+def _said(monkeypatch) -> list[str]:
+    said: list[str] = []
+    wait = MagicMock()
+    wait.say.side_effect = said.append
+    loading = MagicMock()
+    loading.return_value.__enter__.return_value = wait
+    monkeypatch.setattr(hot, "Loading", loading)
+    return said
+
+
+def test_wait_ready_hides_blank_and_progress_lines_until_the_load_fails(monkeypatch):
+    monkeypatch.setattr(hot.time, "sleep", lambda s: None)
+    loading = "00:00:01 [hot] loading the model (load.load()) ..."
+    bar = "Loading weights:  50%|#####     | 199/398"
+    loaded = "00:00:09 [hot] model loaded in 8.2s"
+    file_tail = json.dumps({"log": [loading, "", bar, ""]}).encode()
+    # The restarted server answers with its own log, which has no blank lines.
+    ready = json.dumps(
+        {"ready": True, "load_seconds": 8.2, "log": [loading, loaded]}
+    ).encode()
+    said = _said(monkeypatch)
+    _hot_box([(409, {}, file_tail), (200, {}, ready)]).wait_ready(timeout=60)
+    assert said == [f"  {loading}", f"  {loaded}"]
+
+    failed = "00:00:02 [hot] load.load() failed; fix load.py and save to retry"
+    stuck = json.dumps({"log": [loading, bar, "", failed]}).encode()
+    said = _said(monkeypatch)
+    with pytest.raises(DevError, match="stopped on an error"):
+        _hot_box([(409, {}, stuck)]).wait_ready(timeout=60)
+    assert said == [f"  {line}" for line in (loading, bar, "", failed)]
+
+
 def test_waiting_for_fix_ignores_a_failure_followed_by_a_retry():
     assert not hot.waiting_for_fix(
         ["[hot] load.load() failed", "[hot] loading the model"]
@@ -227,6 +259,26 @@ def test_new_log_lines_prints_each_line_once():
     assert hot.new_log_lines(["a", "b", "c"], ["b", "c", "d"]) == ["d"]
     # A different log (the server restarted): print all of it.
     assert hot.new_log_lines(["a", "b"], ["x", "y"]) == ["x", "y"]
+
+
+def test_new_log_lines_reprints_only_a_grown_last_line():
+    loading = "17:11:59 [hot] loading the model (load.load()) ..."
+    warning = "  deprecate('torch_dtype', '1.0.0', _TORCH_DTYPE_DEPRECATION_MESSAGE)"
+    bar = "Loading pipeline components...:  80%|########  | 4/5"
+    printed = [loading, warning, bar]
+    # The bar line was read mid-write; a warning then landed on the same line.
+    grown = bar + "The config attributes {'force_upcast': True} were passed"
+    lines = [loading, warning, grown, "model loaded in 8.2s"]
+    assert hot.new_log_lines(printed, lines) == [grown, "model loaded in 8.2s"]
+    # The same while the tail slides.
+    assert hot.new_log_lines(printed, lines[1:]) == [grown, "model loaded in 8.2s"]
+    # The restarted server answers with its own log, without the file's extra lines.
+    loaded = "17:16:26 [hot] model loaded in 8.5s"
+    file_tail = [loading, warning, "", bar, ""]
+    assert hot.new_log_lines(file_tail, [loading, loaded]) == [loaded]
+    # An exact match still wins over skipping lines already printed.
+    assert hot.new_log_lines(["a", "b"], ["a", "b", "b"]) == ["b"]
+    assert hot.new_log_lines(["a", "b"], ["a", "c"]) == ["c"]
 
 
 def test_restarting_reads_the_log_order():
@@ -270,3 +322,79 @@ def test_push_leaves_out_a_file_that_became_a_symlink(tmp_path):
     box.push(tmp_path, "/work/x", ["infer.py", "other.py"])
 
     assert list(box.post.call_args.args[1]["files"]) == ["infer.py"]
+
+
+def test_wait_shows_only_the_current_attempt_without_progress_bars():
+    log = [
+        "10:14:36 [hot] infer() raised:",
+        "NameError: name 'sepia' is not defined",
+        "10:15:45 [hot] FULL RESTART: restart requested; the weights reload",
+        "Loading weights: 100%|##########| 398/398 [00:00<00:00, 8386.33it/s]",
+        "10:15:54 [hot] model loaded in 8.2s",
+    ]
+    assert hot.attempt_lines(log) == log[2:]
+    shown = [line for line in hot.attempt_lines(log) if not hot.PROGRESS.search(line)]
+    assert shown == [log[2], log[4]]
+    assert hot.attempt_lines(["a", "b"]) == ["a", "b"]
+
+
+def _waiting_box(monkeypatch, answers):
+    box = hot.HotBox.__new__(hot.HotBox)
+    calls = iter(answers)
+    monkeypatch.setattr(box, "json", lambda action, payload=None: next(calls))
+    monkeypatch.setattr(hot.time, "sleep", lambda s: None)
+    return box
+
+
+class _Said:
+    def __init__(self):
+        self.lines = []
+
+    def say(self, line):
+        self.lines.append(line.strip())
+
+
+OLD = ["10:14 [hot] infer 728 ms", "10:15 [hot] FULL RESTART: restart requested"]
+
+
+def test_wait_ready_shows_this_attempt_without_progress_bars(monkeypatch):
+    bar = "Loading weights: 100%|##| 398/398 [00:00<00:00, 8386.33it/s]"
+    box = _waiting_box(
+        monkeypatch,
+        [
+            (409, {"log": OLD + [bar]}),
+            (200, {"ready": True, "log": OLD + [bar, "10:16 [hot] model loaded"]}),
+        ],
+    )
+    said = _Said()
+    assert box._wait_ready(60, said)["ready"]
+    assert said.lines == [OLD[1], "10:16 [hot] model loaded"]
+
+
+def test_wait_ready_prints_the_whole_failed_attempt_then_raises(monkeypatch):
+    bar = "  50%|#   | 2/4 [00:00<00:00, 11.8it/s]"
+    failed = OLD + [bar, "Traceback ...", "[hot] load.load() failed"]
+    box = _waiting_box(monkeypatch, [(409, {"log": failed})])
+    said = _Said()
+    with pytest.raises(DevError, match="stopped on an error"):
+        box._wait_ready(60, said)
+    assert said.lines == [line.strip() for line in failed[1:]]
+
+
+def test_wait_ready_keeps_lines_of_an_attempt_that_ended_between_polls(monkeypatch):
+    first = OLD + ["w1"]
+    second = first + ["w2", "[hot] load.load() failed", "[hot] restarting", "n1"]
+    box = _waiting_box(
+        monkeypatch,
+        [(409, {"log": first}), (409, {"log": second}), (200, {"ready": True})],
+    )
+    said = _Said()
+    box._wait_ready(60, said)
+    assert said.lines == [
+        OLD[1],
+        "w1",
+        "w2",
+        "[hot] load.load() failed",
+        "[hot] restarting",
+        "n1",
+    ]

@@ -78,12 +78,30 @@ def get_bar_empty_icon(target_console: Console | None = None) -> str:
     return _select_icon("\u2591", ".", target_console=target_console)
 
 
+def get_sparkline_icons(target_console: Console | None = None) -> str:
+    """Eight levels, lowest first."""
+    return _select_icon(
+        "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588",
+        "_.-~=+*#",
+        target_console=target_console,
+    )
+
+
 def get_state_dot_icon(target_console: Console | None = None) -> str:
     return _select_icon("\u25cf", "*", target_console=target_console)
 
 
 def get_degrees_celsius_icon(target_console: Console | None = None) -> str:
     return _select_icon("\u00b0C", " C", target_console=target_console)
+
+
+def get_ellipsis_icon(target_console: Console | None = None) -> str:
+    return _select_icon("\u2026", "...", target_console=target_console)
+
+
+# Drawn only on UTF-8 streams (terminal image previews, `fal dev` loading states).
+UPPER_HALF_BLOCK = "\u2580"
+BRAILLE_SPINNER = "\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f"
 
 
 _ICON_GETTERS = {
