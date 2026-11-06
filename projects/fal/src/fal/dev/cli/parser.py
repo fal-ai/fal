@@ -302,6 +302,11 @@ def _add_box_commands(subparsers, parents) -> None:
     )
     _add_yes(p)
     p.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show the whole deploy log after the run, not its last lines on failure.",
+    )
+    p.add_argument(
         "--timeout",
         type=positive_int,
         default=1800,
