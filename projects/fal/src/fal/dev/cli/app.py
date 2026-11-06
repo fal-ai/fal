@@ -17,6 +17,7 @@ from fal.dev.app import bench, client, deploy
 from fal.dev.app.session import Session, find_session, session_name, slug
 from fal.dev.box import log
 from fal.dev.errors import DevError
+from fal.dev.media import preview
 from fal.dev.remote.protocol import BODY_TAIL_CHARS, check_session_env, redact
 from fal.dev.state import STATE_DIR
 from fal.dev.team import announce, confirm_deploy, key_account, resolve_account
@@ -195,6 +196,7 @@ def _sync_once(session: Session, args, *, full: bool = False) -> None:
 
 
 def cmd_sync(args):
+    preview.configure(args)
     session = _booted(args)
     _sync_once(session, args, full=args.full)
     if not args.watch:
@@ -248,6 +250,7 @@ def _request(
     else:
         size = len(base64.b64decode(result["body_base64"]))
         print(f"<{size} bytes of {result['content_type']}>")
+    preview.show_app_result(result)
     return result
 
 
@@ -280,6 +283,7 @@ def cmd_request(args):
     if args.save is not None:
         bench.check_name(args.save)
     body = _load_data(args.data)
+    preview.configure(args)
     session = _booted(args)
     result = _request(
         session, args.path, body, warmups=args.warmups, repeat=args.repeat

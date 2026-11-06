@@ -1,8 +1,8 @@
 """Every `fal dev` argument definition.
 
 `fal` builds all parsers on each run, so this module imports nothing heavy. A
-command's handler (`cmd_<name>` in box.py, hot.py, app.py or dash.py) is only
-imported once that command runs.
+command's handler (`cmd_<name>` in box.py, hot.py, app.py, dash.py or view.py)
+is only imported once that command runs.
 """
 
 from __future__ import annotations
@@ -180,6 +180,40 @@ def _name_parser(help_text: str, type_=None) -> argparse.ArgumentParser:
     return parser
 
 
+def _preview_parser(*, compare: bool = False) -> argparse.ArgumentParser:
+    """Flags for showing image and video results inline (fal.dev.media.preview)."""
+    parser = argparse.ArgumentParser(add_help=False)
+    group = parser.add_argument_group("Preview")
+    group.add_argument(
+        "--preview",
+        action="store_true",
+        default=None,
+        help=(
+            "Show image and video results inline in the terminal (default: on "
+            "when it is a terminal; $FAL_DEV_PREVIEW=kitty|iterm|sixel|blocks|off "
+            "forces a protocol)."
+        ),
+    )
+    group.add_argument(
+        "--no-preview",
+        dest="preview",
+        action="store_false",
+        help="Only print where results were saved.",
+    )
+    group.add_argument(
+        "--play",
+        action="store_true",
+        help="Loop a small preview of video results (kitty, iTerm2, WezTerm).",
+    )
+    if compare:
+        group.add_argument(
+            "--compare",
+            action="store_true",
+            help="Show each new image next to the previous one.",
+        )
+    return parser
+
+
 def _add_box_commands(subparsers, parents) -> None:
     box = _name_parser(
         "Box name; the app is devbox-<name>. Remembered for the current folder "
@@ -344,6 +378,7 @@ def _add_box_commands(subparsers, parents) -> None:
         "--output",
         help="Where to save an image result (default: hot-out/<time>.png).",
     )
+    hot_preview = _preview_parser(compare=True)
     add_hot(
         "start",
         "Start the hot server and wait for the model to load.",
@@ -352,7 +387,7 @@ def _add_box_commands(subparsers, parents) -> None:
     p = add_hot(
         "sync",
         "Push a project folder to the box; reloads the server.",
-        extra_parents=(project, request),
+        extra_parents=(project, request, hot_preview),
     )
     p.add_argument("--watch", action="store_true", help="Keep pushing as you save.")
     p.add_argument(
@@ -360,7 +395,11 @@ def _add_box_commands(subparsers, parents) -> None:
         action="store_true",
         help="With --watch: send a request after each push.",
     )
-    add_hot("run", "Send one request to the hot server.", extra_parents=(request,))
+    add_hot(
+        "run",
+        "Send one request to the hot server.",
+        extra_parents=(request, hot_preview),
+    )
     add_hot("status", "Show the hot server's state and recent log.")
     add_hot("logs", "Show the hot server's log.")
     add_hot("restart", "Restart the hot server; the weights reload.")
@@ -421,7 +460,12 @@ def _add_app_commands(subparsers, parents) -> None:
         f"(default {DEFAULT_KEEP_ALIVE}).",
     )
 
-    p = add_app("sync", "Upload changed files; endpoints reload in place.")
+    app_preview = _preview_parser()
+    p = add_app(
+        "sync",
+        "Upload changed files; endpoints reload in place.",
+        extra_parents=(app_preview,),
+    )
     p.add_argument("--watch", action="store_true", help="Keep syncing on save.")
     p.add_argument("--full", action="store_true", help="Upload every file.")
     p.add_argument(
@@ -431,7 +475,11 @@ def _add_app_commands(subparsers, parents) -> None:
     )
     p.add_argument("--data", help="JSON body, or @file.json.")
 
-    p = add_app("request", "Send a request to the app on the box.")
+    p = add_app(
+        "request",
+        "Send a request to the app on the box.",
+        extra_parents=(app_preview,),
+    )
     p.add_argument("path", help="Endpoint path, e.g. /")
     p.add_argument("--data", help="JSON body, or @file.json.")
     p.add_argument("--output-file", help="Write the response body here.")
@@ -618,6 +666,19 @@ def _add_dash_command(subparsers, parents) -> None:
     )
 
 
+def _add_view_command(subparsers, parents) -> None:
+    p = add(
+        subparsers,
+        "view",
+        parents,
+        "view",
+        "Show images or videos (files or URLs) inline in the terminal.",
+        extra_parents=(_preview_parser(),),
+        team_help=argparse.SUPPRESS,
+    )
+    p.add_argument("files", nargs="+", help="Image or video files, or URLs.")
+
+
 def add_parser(main_subparsers, parents) -> None:
     dev_help = (
         f"{EXPERIMENTAL}Personal GPU dev boxes: a persistent box you shell or SSH "
@@ -635,3 +696,4 @@ def add_parser(main_subparsers, parents) -> None:
     _add_box_commands(subparsers, parents)
     _add_app_commands(subparsers, parents)
     _add_dash_command(subparsers, parents)
+    _add_view_command(subparsers, parents)

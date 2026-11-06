@@ -13,6 +13,7 @@ import json
 import re
 import time
 from pathlib import Path
+from typing import Callable
 
 from rich.console import Console
 from rich.markup import escape
@@ -160,6 +161,9 @@ def read_token(box: Box, runner_id: str) -> str:
 class HotBox:
     """Sends requests to the box's /hot routes through fal.run, signed in as you."""
 
+    # Called with (saved image path, response headers) after each image result.
+    on_image: Callable[[Path, dict], None] | None = None
+
     def __init__(self, box: Box) -> None:
         from fal import flags
 
@@ -289,6 +293,8 @@ class HotBox:
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(body)
             print(f"{timing} | {out}")
+            if self.on_image:
+                self.on_image(out, headers)
         else:
             print(timing)
             print(body.decode(errors="replace"))

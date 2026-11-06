@@ -86,6 +86,14 @@ def get_degrees_celsius_icon(target_console: Console | None = None) -> str:
     return _select_icon("\u00b0C", " C", target_console=target_console)
 
 
+def get_ellipsis_icon(target_console: Console | None = None) -> str:
+    return _select_icon("\u2026", "...", target_console=target_console)
+
+
+# Half-block cell for terminal image previews; they only draw on UTF-8 streams.
+UPPER_HALF_BLOCK = "\u2580"
+
+
 _ICON_GETTERS = {
     "CHECK_ICON": get_check_icon,
     "CROSS_ICON": get_cross_icon,

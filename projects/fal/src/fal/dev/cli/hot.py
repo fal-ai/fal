@@ -12,6 +12,7 @@ from rich.markup import escape
 from fal.dev import config, hot, state
 from fal.dev.cli.common import get_box
 from fal.dev.errors import DevError
+from fal.dev.media import preview
 
 
 def _project(args) -> tuple[str | None, str]:
@@ -66,6 +67,7 @@ def cmd_start(args):
 
 def cmd_sync(args):
     hot_box = hot.HotBox(get_box(args))
+    hot_box.on_image = preview.HotPreview(args)
     local, remote = _project(args)
     if not local:
         raise DevError("fal dev hot sync needs a local project folder")
@@ -77,7 +79,9 @@ def cmd_sync(args):
 
 def cmd_run(args):
     params = hot.parse_params(args.param, args.prompt)
-    return 0 if hot.HotBox(get_box(args)).request(params, args.output) else 1
+    hot_box = hot.HotBox(get_box(args))
+    hot_box.on_image = preview.HotPreview(args)
+    return 0 if hot_box.request(params, args.output) else 1
 
 
 def cmd_restart(args):

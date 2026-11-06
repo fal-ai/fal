@@ -7,6 +7,8 @@ Layout:
 - box.py, hot.py, state.py: the laptop side of a box and of hot reload.
 - app/: the laptop side of `fal dev app` (a box built from an existing App).
 - dash/: the `fal dev dash` terminal dashboard.
+- media/: image and video results shown inline in the terminal (`hot run`,
+  `app request`, `fal dev view`).
 - remote/: what runs on the box (its fal App, the hot server, the dashboard
   probe, the `fal dev app` holder and child process). It never imports the
   laptop side.
