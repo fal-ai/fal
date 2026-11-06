@@ -1,20 +1,7 @@
-"""`fal dev app`: a GPU dev box for an existing fal App, with hot reload.
-
-`start` deploys a private box that inherits the app's machine, requirements,
-image and secrets, uploads the app's source tree, and runs ``setup()`` once in a
-resident process. `sync` uploads changed files: endpoint edits reload in place
-with the weights still loaded; edits to ``setup()`` (or what it uses) restart
-the process; requirement or image changes need `start` again.
-
-The app process runs with ``FAL_DEV_SESSION`` set to the box name. Anything
-the app shares with its deployed runners, such as a compile cache on /data,
-should be keyed by it so dev runs stay apart. An app that already reads
-another variable for this can have it set too, with `start --session-env NAME`.
-"""
+"""`fal dev app`: handlers for a GPU dev box of an existing fal App."""
 
 from __future__ import annotations
 
-import argparse
 import base64
 import json
 import re
@@ -23,47 +10,31 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fal.cli.parser import FalClientParser, RefAction, add_env_argument
+from rich.markup import escape
 
-# Kept equal to the holder's limits (fal.dev.remote.holder) without importing it.
-MAX_WARMUPS = 50
-MAX_REPEAT = 100
+from fal.config import Config
+from fal.console import console
+from fal.dev.app import bench, sync
+from fal.dev.app.session import (
+    DevAppError,
+    Session,
+    box_exists,
+    call,
+    deploy_box,
+    find_session,
+    new_token,
+    package_root,
+    resolve_app,
+    session_name,
+    stop_box,
+)
+from fal.dev.remote.deps import redact
+from fal.dev.remote.holder import STOPPED_PHASES, check_session_env
 
-DEFAULT_KEEP_ALIVE = 1800
 PROFILES_DIR = Path("~/.fal/dev/profiles").expanduser()
 POLL_SECONDS = 1.0
-
-
-def _bounded(low: int, high: int):
-    def parse(value: str) -> int:
-        try:
-            number = int(value)
-        except ValueError:
-            raise argparse.ArgumentTypeError(f"invalid integer {value!r}") from None
-        if not low <= number <= high:
-            raise argparse.ArgumentTypeError(f"must be between {low} and {high}")
-        return number
-
-    return parse
-
-
-def escape(text: str) -> str:
-    """Show text as is in rich output (package extras look like markup)."""
-    from rich.markup import escape as rich_escape
-
-    return rich_escape(text)
-
-
-def _console():
-    from fal.console import console
-
-    return console
-
-
-def _session(args):
-    from fal.dev.app.session import find_session
-
-    return find_session(args.session)
+PLACE_BATCH = 2000
+PLACE_BATCH_BYTES = 512 * 1024 * 1024
 
 
 def _print_lines(lines: list[str], width: int = 400) -> None:
@@ -73,9 +44,6 @@ def _print_lines(lines: list[str], width: int = 400) -> None:
 
 def _wait_ready(session, *, after: int | None = None, timeout: float = 3600) -> dict:
     """Stream the app's log until it is ready, or raise if it stops."""
-    from fal.dev.remote.holder import STOPPED_PHASES
-    from fal.dev.app.session import DevAppError, call
-
     deadline = time.monotonic() + timeout
     if after is None:
         after = call(session, "logs", {"lines": 0})["total"]
@@ -99,9 +67,7 @@ def _wait_ready(session, *, after: int | None = None, timeout: float = 3600) -> 
 def _collect(
     session, skipped: list[str] | None = None, withheld: list[str] | None = None
 ):
-    from fal.dev.app import sync as app_sync
-
-    return app_sync.collect(
+    return sync.collect(
         Path(session.root),
         skipped,
         ignore=session.ignore,
@@ -118,9 +84,6 @@ def _place_from_store(
     Returns the manifest of the files now in place (the rest must be sent),
     or None when the box has no store.
     """
-    from fal.dev.app import sync as app_sync
-    from fal.dev.app.session import DevAppError, call
-
     try:
         found = call(
             session,
@@ -131,7 +94,7 @@ def _place_from_store(
     except DevAppError as exc:
         # 404: a box from before the object store. Anything else: say so.
         if "(404)" not in str(exc):
-            _console().print(f"[yellow]Object store skipped[/]: {escape(str(exc))}")
+            console.print(f"[yellow]Object store skipped[/]: {escape(str(exc))}")
         return None
     if not found.get("enabled"):
         return None
@@ -145,7 +108,7 @@ def _place_from_store(
         except OSError:
             continue  # gone since collect; the sync sorts it out
     placed: dict[str, str] = {}
-    for batch in app_sync.batches(
+    for batch in sync.batches(
         files, sorted(executable), PLACE_BATCH_BYTES, PLACE_BATCH
     ):
         entries = {rel: [manifest[rel], executable[rel]] for rel in batch}
@@ -155,55 +118,46 @@ def _place_from_store(
             )
         except DevAppError as exc:
             # Whatever was not placed is uploaded instead.
-            _console().print(
-                f"[yellow]Object store place failed[/]: {escape(str(exc))}"
-            )
+            console.print(f"[yellow]Object store place failed[/]: {escape(str(exc))}")
             continue
         placed.update({rel: manifest[rel] for rel in result["placed"]})
     return placed
 
 
-PLACE_BATCH = 2000
-PLACE_BATCH_BYTES = 512 * 1024 * 1024
-
-
 def _sync(
     session, *, full: bool = False, reload: bool = True, from_store: bool = False
 ) -> dict[str, Any] | None:
-    from fal.dev.app import sync as app_sync
-    from fal.dev.app.session import call
-
     skipped: list[str] = []
     withheld: list[str] = []
     files = _collect(session, skipped, withheld)
     if skipped:
-        _console().print(
-            f"[yellow]Not synced (over 10 MiB)[/]: {', '.join(skipped[:8])}"
+        console.print(
+            f"[yellow]Not synced (over 10 MiB)[/]: {escape(', '.join(skipped[:8]))}"
         )
     if withheld and full:
-        _console().print(
+        console.print(
             "[yellow]Not synced (key or credential files)[/]: "
             f"{escape(', '.join(withheld[:8]))}"
         )
-    manifest = app_sync.manifest(files)
+    manifest = sync.manifest(files)
     previous = {} if full else session.manifest
     placed = None
     if full and from_store:
         stored = _place_from_store(session, files, manifest)
         if stored is not None:
             previous, placed = stored, len(stored)
-    changed, deleted = app_sync.diff(previous, manifest)
+    changed, deleted = sync.diff(previous, manifest)
     if not changed and not deleted and not full:
         return None
     # Large trees go in several requests. Deletes and pruning ride on the
     # first, before any writes; the reload on the last.
-    groups = app_sync.batches(files, changed)
+    groups = sync.batches(files, changed)
     result: dict[str, Any] = {}
     for index, group in enumerate(groups):
         last = index == len(groups) - 1
         payload: dict[str, Any] = {"reload": reload and last}
         if group:
-            payload["archive"] = app_sync.pack(files, group)
+            payload["archive"] = sync.pack(files, group)
         if index == 0:
             payload.update(full=full, deleted=deleted)
             if full:
@@ -222,11 +176,10 @@ def _sync(
 
 
 def _report_sync(result: dict[str, Any] | None, started: float) -> None:
-    console = _console()
     if result is None:
         console.print("No changes.")
         return
-    names = ", ".join((result["changed"] + result["deleted"])[:8])
+    names = escape(", ".join((result["changed"] + result["deleted"])[:8]))
     count = len(result["changed"]) + len(result["deleted"])
     elapsed = time.perf_counter() - started
     console.print(f"Synced {count} file(s) in {elapsed:.2f}s: {names}")
@@ -241,41 +194,38 @@ def _report_sync(result: dict[str, Any] | None, started: float) -> None:
         )
     elif action == "restart":
         console.print(
-            f"[yellow]Full restart[/]: {reload['reason']}. setup() runs again."
+            f"[yellow]Full restart[/]: {escape(reload['reason'])}. setup() runs again."
         )
     elif action == "pending":
         console.print(
-            f"Saved; {reload['reason']}, so the edit reloads once it is ready."
+            f"Saved; {escape(reload['reason'])}, so the edit reloads once it is ready."
         )
     elif action == "rebuild":
         console.print(
-            f"[red]Not reloaded[/]: {reload['reason']}. "
+            f"[red]Not reloaded[/]: {escape(reload['reason'])}. "
             "Run `fal dev app start` again to rebuild the box."
         )
     else:
-        console.print(f"[red]Not reloaded[/]: {reload.get('reason')}")
+        console.print(f"[red]Not reloaded[/]: {escape(str(reload.get('reason')))}")
         if reload.get("error"):
             print(reload["error"], file=sys.stderr)
 
 
 def _boot(session) -> dict:
     """Upload the whole source tree and the SDK, then run setup() on the box."""
-    from fal.dev.app import sync as app_sync
-    from fal.dev.app.session import call
-
     started = time.perf_counter()
     result = _sync(session, full=True, reload=False, from_store=True) or {}
     uploaded = len(result.get("changed", []))
     elapsed = time.perf_counter() - started
     if result.get("placed") is None:
-        _console().print(f"Source: {uploaded} file(s) uploaded ({elapsed:.1f}s).")
+        console.print(f"Source: {uploaded} file(s) uploaded ({elapsed:.1f}s).")
     else:
-        _console().print(
+        console.print(
             f"Source: {result['placed']} file(s) copied from the team's object "
             f"store on the box, {uploaded} uploaded ({elapsed:.1f}s)."
         )
     _replay_overlay(session)
-    sdk = app_sync.sdk_files()
+    sdk = sync.sdk_files()
     after = call(session, "logs", {"lines": 0}, timeout=600)["total"]
     call(
         session,
@@ -283,14 +233,14 @@ def _boot(session) -> dict:
         {
             "module": session.module,
             "class_name": session.class_name,
-            "sdk_archive": app_sync.pack(sdk, sorted(sdk)),
-            "sdk_requirements": app_sync.sdk_requirements(),
+            "sdk_archive": sync.pack(sdk, sorted(sdk)),
+            "sdk_requirements": sync.sdk_requirements(),
             "layout": {"paths": session.paths, "workdir": session.workdir},
             "session_env": session.session_env,
         },
         timeout=300,
     )
-    _console().print(f"Running {session.class_name}.setup() on the box ...")
+    console.print(f"Running {session.class_name}.setup() on the box ...")
     return _wait_ready(session, after=after)
 
 
@@ -300,9 +250,6 @@ def _replay_overlay(session) -> None:
     A layer that no longer installs is dropped with a warning, so the box
     still starts and `deps` commands keep working.
     """
-    from fal.dev.remote.deps import redact
-    from fal.dev.app.session import DevAppError
-
     if not session.overlay:
         return
     wanted = [layer["packages"] for layer in session.overlay]
@@ -311,7 +258,6 @@ def _replay_overlay(session) -> None:
         session.overlay = status["replay"]
         session.save()
         return
-    console = _console()
     console.print(f"Installing {len(wanted)} dependency overlay layer(s) ...")
     layers = session.overlay
     # Start from a clean overlay: this runner may hold a partial earlier replay.
@@ -336,13 +282,11 @@ def _replay_overlay(session) -> None:
 
 def _ensure_booted(session) -> bool:
     """Boot again when the box was scaled to zero or replaced since `start`."""
-    from fal.dev.app.session import call
-
     # A cold box first waits for a runner, which can take minutes.
     status = call(session, "status", timeout=600)
     if status["phase"] != "idle" or status["module"]:
         return False
-    _console().print(
+    console.print(
         "[yellow]The box is on a new runner[/] (idle shutdown or replacement): "
         "syncing the source and running setup() again."
     )
@@ -350,22 +294,14 @@ def _ensure_booted(session) -> bool:
     return True
 
 
-def _start(args):
-    from fal.config import Config
-    from fal.dev.remote.holder import check_session_env
-    from fal.dev.app.session import (
-        DevAppError,
-        Session,
-        box_exists,
-        deploy_box,
-        find_session,
-        new_token,
-        package_root,
-        resolve_app,
-        session_name,
-    )
+def _booted(args) -> Session:
+    """The named session, booted again if its box was replaced."""
+    session = find_session(args.name)
+    _ensure_booted(session)
+    return session
 
-    console = _console()
+
+def cmd_start(args):
     session_env = check_session_env(list(args.session_env or []))
     file_path, class_name, app_data = resolve_app(args.app_ref)
     file = Path(file_path)
@@ -376,7 +312,7 @@ def _start(args):
     # A pyproject.toml app is named after its entry there, as on a deploy.
     ref_is_file = (args.app_ref[0] or "").endswith(".py")
     default_name = class_name or file.stem if ref_is_file else args.app_ref[0]
-    name = session_name(args.session, default_name)
+    name = session_name(args.name, default_name)
     # Pin the team now, so a later `fal team set` cannot retarget the session.
     # A team in pyproject.toml is where the app is deployed for real; the box
     # always goes to the caller's own team.
@@ -402,12 +338,12 @@ def _start(args):
     if exists and not ours and not args.replace:
         raise DevAppError(
             f"An app named {name!r} already exists and was not started from this "
-            "machine. Pick another --session, or pass --replace to take it over."
+            "machine. Pick another --name, or pass --replace to take it over."
         )
 
     timings: dict[str, float] = {}
     started = time.perf_counter()
-    console.print(f"Deploying dev box [bold]{name}[/] ...")
+    console.print(f"Deploying dev box [bold]{escape(name)}[/] ...")
     token = new_token()
     deployed = deploy_box(
         str(file),
@@ -448,12 +384,16 @@ def _start(args):
     session.save()
 
     step = time.perf_counter()
-    console.print(f"Waiting for a runner, then uploading {layout.root} ...")
+    console.print(
+        f"Waiting for a runner, then uploading {escape(str(layout.root))} ..."
+    )
     status = _boot(session)
     timings["runner+setup"] = time.perf_counter() - step
     app = status.get("app", {})
     summary = ", ".join(f"{k} {v:.1f}s" for k, v in timings.items())
-    console.print(f"[green]Ready[/] ({summary}). Endpoints: {app.get('endpoints')}")
+    console.print(
+        f"[green]Ready[/] ({summary}). Endpoints: {escape(str(app.get('endpoints')))}"
+    )
     console.print(
         "Next: `fal dev app request / --data '{...}'`, "
         "`fal dev app sync --watch`, `fal dev app stop`."
@@ -472,22 +412,18 @@ def _sync_once(session, args, *, full: bool = False) -> None:
         _do_request(session, args.request, _load_data(args.data), started)
 
 
-def _sync_cmd(args):
-    from fal.dev.app import sync as app_sync
-    from fal.dev.app.session import DevAppError
-
-    session = _session(args)
-    _ensure_booted(session)
+def cmd_sync(args):
+    session = _booted(args)
     _sync_once(session, args, full=args.full)
     if not args.watch:
         return
     root = Path(session.root)
-    _console().print(f"Watching {root} (Ctrl+C to stop) ...")
-    signature = app_sync.stat_signature(_collect(session))
+    console.print(f"Watching {escape(str(root))} (Ctrl+C to stop) ...")
+    signature = sync.stat_signature(_collect(session))
     try:
         while True:
             time.sleep(0.3)
-            current = app_sync.stat_signature(_collect(session))
+            current = sync.stat_signature(_collect(session))
             if current == signature:
                 continue
             signature = current
@@ -496,7 +432,7 @@ def _sync_cmd(args):
                 _sync_once(session, args)
             except (DevAppError, OSError, ValueError) as exc:
                 # Keep watching: the next save may fix it.
-                _console().print(f"[red]{exc}[/]")
+                console.print(f"[red]{escape(str(exc))}[/]")
     except KeyboardInterrupt:
         pass
 
@@ -518,9 +454,6 @@ def _do_request(
     warmups: int = 0,
     repeat: int = 1,
 ):
-    from fal.dev.app.session import DevAppError, call
-
-    console = _console()
     started = time.perf_counter()
     result = call(
         session,
@@ -549,7 +482,7 @@ def _do_request(
             )
         _report_runs(path, result, total)
         return result
-    console.print(f"[{color}]{status}[/] {path} ({timing})")
+    console.print(f"[{color}]{status}[/] {escape(path)} ({timing})")
     if "body" in result:
         try:
             print(json.dumps(json.loads(result["body"]), indent=2))
@@ -557,45 +490,40 @@ def _do_request(
             print(result["body"])
     else:
         size = len(base64.b64decode(result["body_base64"]))
-        print(f"<{size} bytes of {result['content_type']}>")
+        console.print(escape(f"<{size} bytes of {result['content_type']}>"))
     return result
 
 
 def _report_runs(path: str, result: dict, total: float) -> None:
-    from fal.dev.app import bench as app_bench
-
-    console = _console()
     status = result["status_code"]
     color = "green" if status < 400 else "red"
     runs = [run["elapsed_seconds"] for run in result["runs"]]
     console.print(
-        f"[{color}]{status}[/] {path}: {len(runs)} run(s) after "
+        f"[{color}]{status}[/] {escape(path)}: {len(runs)} run(s) after "
         f"{len(result['warmup_runs'])} warmup(s), round trip {total:.1f}s"
     )
     if result["warmup_runs"]:
         warm = [run["elapsed_seconds"] for run in result["warmup_runs"]]
-        console.print(f"  warmups  {app_bench.format_runs(warm)}")
+        console.print(f"  warmups  {escape(bench.format_runs(warm))}")
     if runs:
-        console.print(f"  runs     {app_bench.format_runs(runs)}")
+        console.print(f"  runs     {escape(bench.format_runs(runs))}")
     if status >= 400:
         console.print(f"[red]Run failed with {status}[/]; no statistics.")
     elif runs:
-        console.print(f"  {app_bench.format_stats(app_bench.stats(runs))}")
+        console.print(f"  {escape(bench.format_stats(bench.stats(runs)))}")
     if result.get("stopped"):
         console.print(
-            f"[red]Stopped early[/] after {len(runs)} run(s): {result['stopped']}"
+            f"[red]Stopped early[/] after {len(runs)} run(s): "
+            f"{escape(str(result['stopped']))}"
         )
 
 
-def _request(args):
-    from fal.dev.app import bench as app_bench
-
-    session = _session(args)
-    benchmark = args.warmups > 0 or args.repeat > 1 or args.name is not None
-    if args.name is not None:
-        app_bench.check_name(args.name)
+def cmd_request(args):
+    benchmark = args.warmups > 0 or args.repeat > 1 or args.save is not None
+    if args.save is not None:
+        bench.check_name(args.save)
     body = _load_data(args.data)
-    _ensure_booted(session)
+    session = _booted(args)
     result = _do_request(
         session,
         args.path,
@@ -607,74 +535,70 @@ def _request(args):
     if args.output_file and "body" in result:
         Path(args.output_file).write_text(result["body"])
     if benchmark and result["status_code"] >= 400:
-        if args.name:
-            _console().print("[red]Not saved[/]: a run failed.")
+        if args.save:
+            console.print("[red]Not saved[/]: a run failed.")
         if "body" in result:
             print(result["body"][-2000:], file=sys.stderr)
         raise SystemExit(1)
     if result.get("stopped"):
-        if args.name:
-            _console().print("[red]Not saved[/]: fewer runs than --repeat.")
+        if args.save:
+            console.print("[red]Not saved[/]: fewer runs than --repeat.")
         raise SystemExit(1)
-    if not args.name:
+    if not args.save:
         return
     if "runs" not in result:
         # A single request against a box that predates --repeat.
         result = {**result, "runs": [result], "warmup_runs": []}
-    run = app_bench.record(
-        name=args.name,
+    run = bench.record(
+        name=args.save,
         session=session,
         path=args.path,
         body=body,
         result=result,
         warmups=args.warmups,
     )
-    existed = app_bench.path_for(session.name, args.name).exists()
-    saved = app_bench.save(run)
+    existed = bench.path_for(session.name, args.save).exists()
+    saved = bench.save(run)
     verb = "Overwrote" if existed else "Saved"
-    _console().print(f"{verb} benchmark [bold]{args.name}[/] at {saved}")
+    console.print(
+        f"{verb} benchmark [bold]{escape(args.save)}[/] at {escape(str(saved))}"
+    )
 
 
-def _benchmark_compare(args):
-    from fal.dev.app import bench as app_bench
-    from fal.dev.app.session import DevAppError, find_session
-
+def cmd_benchmark_compare(args):
     try:
-        session_name = find_session(args.session).name
+        name = find_session(args.name).name
     except DevAppError:
         # Files can still be compared by path without a session.
-        if args.session:
+        if args.name:
             raise
-        session_name = None
-    baseline = app_bench.load(args.baseline, session_name)
-    candidate = app_bench.load(args.candidate, session_name)
-    console = _console()
-    for mismatch in app_bench.mismatches(baseline, candidate):
-        console.print(f"[yellow]Not the same benchmark[/] ({mismatch})")
-    for line in app_bench.compare(baseline, candidate):
-        print(line)
+        name = None
+    baseline = bench.load(args.baseline, name)
+    candidate = bench.load(args.candidate, name)
+    for mismatch in bench.mismatches(baseline, candidate):
+        console.print(f"[yellow]Not the same benchmark[/] ({escape(mismatch)})")
+    for line in bench.compare(baseline, candidate):
+        console.print(escape(line))
 
 
-def _benchmark_list(args):
-    from fal.dev.app import bench as app_bench
-
-    session = _session(args)
-    runs = app_bench.saved(session.name)
+def cmd_benchmark_list(args):
+    session = find_session(args.name)
+    runs = bench.saved(session.name)
     if not runs:
-        _console().print(f"No saved benchmarks for {session.name}.")
+        console.print(f"No saved benchmarks for {escape(session.name)}.")
         return
     for run in runs:
         created = time.strftime("%Y-%m-%d %H:%M", time.localtime(run["created_at"]))
-        print(
-            f"{run['name']:<20} {created}  {run['path']:<12} "
-            f"x{run['repeat']}  {app_bench.format_stats(run['stats'])}"
+        console.print(
+            escape(
+                f"{run['name']:<20} {created}  {run['path']:<12} "
+                f"x{run['repeat']}  {bench.format_stats(run['stats'])}"
+            )
         )
 
 
 def _download(session, profile_id: str, name: str, target: Path) -> int:
     """Copy one profile file from the box in chunks; returns its size."""
-    from fal.dev.app.session import call
-
     tmp = target.with_name(f".{target.name}.part")
     offset, size = 0, None
     try:
@@ -703,11 +627,8 @@ def _mib(size: int) -> str:
 
 
 def _profile_one(session, args, path: str, body: Any, out: Path) -> bool:
-    from fal.dev.app.session import call
-
-    console = _console()
     console.print(
-        f"Profiling [bold]{path}[/] ({args.mode}, {args.warmups} warmup(s)) ..."
+        f"Profiling [bold]{escape(path)}[/] ({args.mode}, {args.warmups} warmup(s)) ..."
     )
     payload: dict[str, Any] = {
         "path": path,
@@ -721,20 +642,22 @@ def _profile_one(session, args, path: str, body: Any, out: Path) -> bool:
     request = result.get("request", {})
     status = request.get("status_code")
     if result.get("status") == "request_failed":
-        console.print(f"[red]A warmup request to {path} returned {status}[/].")
+        console.print(f"[red]A warmup request to {escape(path)} returned {status}[/].")
         print(str(request.get("body", ""))[-2000:], file=sys.stderr)
         return False
     if (status or 0) >= 400:
         # The profile may exist, but of a failing request; not worth keeping.
-        console.print(f"[red]The profiled request to {path} returned {status}[/].")
+        console.print(
+            f"[red]The profiled request to {escape(path)} returned {status}[/]."
+        )
         print(str(request.get("body", ""))[-2000:], file=sys.stderr)
         return False
     if result.get("status") != "ok":
         detail = result.get("error") or result.get("status")
-        console.print(f"[red]No profile for {path}[/]: {detail}")
+        console.print(f"[red]No profile for {escape(path)}[/]: {escape(str(detail))}")
         return False
     elapsed = result["elapsed_seconds"]
-    line = f"[green]{status}[/] {path} in {elapsed:.2f}s under the profiler"
+    line = f"[green]{status}[/] {escape(path)} in {elapsed:.2f}s under the profiler"
     if result.get("peak_memory_allocated_bytes"):
         peak = result["peak_memory_allocated_bytes"] / 1024**3
         line += f", peak GPU memory {peak:.1f} GiB"
@@ -753,11 +676,11 @@ def _profile_one(session, args, path: str, body: Any, out: Path) -> bool:
             "newer profiles replace it. Use --light (GPU kernels only), a "
             "smaller request, or a higher --max-trace-mb."
         )
-        console.print(f"Ops table: {folder / 'ops.txt'}")
+        console.print(f"Ops table: {escape(str(folder / 'ops.txt'))}")
         return True
     trace = folder / "trace.json.gz"
     _download(session, result["id"], "trace.json.gz", trace)
-    console.print(f"Trace: {trace} ({_mib(size)})")
+    console.print(f"Trace: {escape(str(trace))} ({_mib(size)})")
     console.print("Open it in https://ui.perfetto.dev (Open trace file).")
     return True
 
@@ -766,20 +689,17 @@ def _slug(path: str) -> str:
     return "".join(c if c.isalnum() else "-" for c in path).strip("-") or "root"
 
 
-def _profile(args):
-    from fal.dev.app.session import DevAppError, call
-
-    session = _session(args)
+def cmd_profile(args):
     if args.all == (args.path is not None):
         raise ValueError("Pass an endpoint path or --all.")
     if args.all and args.data is not None:
         raise ValueError("--data applies to one endpoint; drop --all.")
+    session = _booted(args)
     out = (
         Path(args.output_dir).expanduser()
         if args.output_dir
         else PROFILES_DIR / session.name
     )
-    _ensure_booted(session)
     if not args.all:
         body = _load_data(args.data) if args.data is not None else None
         if not _profile_one(session, args, args.path, body, out):
@@ -789,12 +709,14 @@ def _profile(args):
     failed = False
     for entry in endpoints:
         if "error" in entry:
-            _console().print(f"[yellow]Skipping {entry['path']}[/]: {entry['error']}")
+            console.print(
+                f"[yellow]Skipping {escape(entry['path'])}[/]: {escape(entry['error'])}"
+            )
             continue
         try:
             failed |= not _profile_one(session, args, entry["path"], None, out)
         except (DevAppError, OSError) as exc:
-            _console().print(f"[red]{entry['path']}[/]: {exc}")
+            console.print(f"[red]{escape(entry['path'])}[/]: {escape(str(exc))}")
             failed = True
     if failed:
         raise SystemExit(1)
@@ -807,25 +729,24 @@ def _remember_overlay(session, result: dict[str, Any]) -> None:
 
 
 def _print_layers(layers: list[dict[str, Any]]) -> None:
-    console = _console()
     if not layers:
         console.print("No dependency overlay: the app runs on its own environment.")
         return
     console.print(f"{len(layers)} overlay layer(s), newest first:")
     for layer in layers:
         requested = escape(", ".join(layer["requested"]))
-        console.print(f"  [bold]{layer['id']}[/] ({requested})")
+        console.print(f"  [bold]{escape(layer['id'])}[/] ({requested})")
         for package in layer["installed"]:
             base = package.get("base_version")
             shadows = f" (app has {base})" if base else " (new)"
-            console.print(f"    {package['name']}=={package['version']}{shadows}")
+            console.print(
+                escape(f"    {package['name']}=={package['version']}{shadows}")
+            )
 
 
 def _deps_call(
     session, payload: dict[str, Any], *, remember: bool = True
 ) -> dict[str, Any]:
-    from fal.dev.app.session import call
-
     result = call(session, "deps", payload, timeout=3600)
     if remember:
         _remember_overlay(session, result)
@@ -833,7 +754,6 @@ def _deps_call(
 
 
 def _after_change(session, result: dict[str, Any], restart: bool) -> None:
-    console = _console()
     if result.get("restarted"):
         console.print("Restarting the app so the overlay takes effect ...")
         _wait_ready(session)
@@ -847,11 +767,13 @@ def _print_app_versions(status: dict[str, Any]) -> None:
     versions = status.get("app_versions") or {}
     if "error" in versions:
         error = escape(versions["error"])
-        _console().print(f"[yellow]Could not ask the app[/]: {error}")
+        console.print(f"[yellow]Could not ask the app[/]: {error}")
         return
     for name, found in sorted(versions.items()):
         if found:
-            print(f"  app imports {name}=={found['version']} from {found['path']}")
+            console.print(
+                escape(f"  app imports {name}=={found['version']} from {found['path']}")
+            )
 
 
 # A package index that refused the box's credentials (or lack of them).
@@ -866,11 +788,8 @@ INDEX_AUTH_HINT = (
 )
 
 
-def _deps_install(args):
-    from fal.dev.app.session import DevAppError
-
-    session = _session(args)
-    _ensure_booted(session)
+def cmd_deps_install(args):
+    session = _booted(args)
     payload = {
         "action": "install",
         "packages": args.packages,
@@ -882,7 +801,7 @@ def _deps_install(args):
         "restart": args.restart,
     }
     packages = escape(" ".join(args.packages))
-    _console().print(f"Installing {packages} into an overlay ...")
+    console.print(f"Installing {packages} into an overlay ...")
     try:
         result = _deps_call(session, payload)
     except DevAppError as exc:
@@ -893,9 +812,8 @@ def _deps_install(args):
         raise
     layer = result.get("layer")
     if layer is None:
-        _console().print(
-            f"Nothing to install: {result.get('reason', 'already satisfied')}."
-        )
+        reason = escape(str(result.get("reason", "already satisfied")))
+        console.print(f"Nothing to install: {reason}.")
         return
     pins = ", ".join(
         f"{p['name']}=={p['version']}"
@@ -903,34 +821,31 @@ def _deps_install(args):
         for top in result["layers"][:1]
         for p in top["installed"]
     )
-    _console().print(f"[green]Installed[/] layer {layer['id']}: {pins}")
+    console.print(f"[green]Installed[/] layer {escape(layer['id'])}: {escape(pins)}")
     _after_change(session, result, args.restart)
 
 
-def _deps_uninstall(args):
-    session = _session(args)
-    _ensure_booted(session)
+def cmd_deps_uninstall(args):
+    session = _booted(args)
     result = _deps_call(
         session,
         {"action": "uninstall", "packages": args.packages, "restart": args.restart},
     )
     for layer in result["removed"]:
         names = ", ".join(p["name"] for p in layer["installed"])
-        _console().print(f"Removed layer {layer['id']} ({names})")
+        console.print(f"Removed layer {escape(layer['id'])} ({escape(names)})")
     _after_change(session, result, args.restart)
 
 
-def _deps_reset(args):
-    session = _session(args)
-    _ensure_booted(session)
+def cmd_deps_reset(args):
+    session = _booted(args)
     result = _deps_call(session, {"action": "reset", "restart": args.restart})
-    _console().print(f"Removed {result['removed']} overlay layer(s).")
+    console.print(f"Removed {result['removed']} overlay layer(s).")
     _after_change(session, result, args.restart)
 
 
-def _deps_status(args):
-    session = _session(args)
-    _ensure_booted(session)
+def cmd_deps_status(args):
+    session = _booted(args)
     status = _deps_call(session, {"action": "status", "names": args.packages})
     if args.json:
         # replay has index URLs as given, credentials included.
@@ -939,33 +854,29 @@ def _deps_status(args):
         return
     _print_layers(status["layers"])
     if status.get("restart_needed"):
-        _console().print(
+        console.print(
             "[yellow]The running app predates the last change[/]: "
             "run `fal dev app restart`."
         )
     _print_app_versions(status)
 
 
-def _restart(args):
-    from fal.dev.app.session import call
-
-    session = _session(args)
+def cmd_restart(args):
+    session = find_session(args.name)
     started = time.perf_counter()
     if _ensure_booted(session):
-        _console().print(f"[green]Ready[/] after {time.perf_counter() - started:.1f}s.")
+        console.print(f"[green]Ready[/] after {time.perf_counter() - started:.1f}s.")
         return
     if args.sync:
         _sync(session, reload=False)
     after = call(session, "logs", {"lines": 0})["total"]
     call(session, "start", {}, timeout=300)
     _wait_ready(session, after=after)
-    _console().print(f"[green]Ready[/] after {time.perf_counter() - started:.1f}s.")
+    console.print(f"[green]Ready[/] after {time.perf_counter() - started:.1f}s.")
 
 
-def _logs(args):
-    from fal.dev.app.session import call
-
-    session = _session(args)
+def cmd_logs(args):
+    session = find_session(args.name)
     logs = call(session, "logs", {"lines": args.lines})
     _print_lines(logs["lines"])
     after = logs["total"]
@@ -976,10 +887,8 @@ def _logs(args):
         after = logs["total"]
 
 
-def _status(args):
-    from fal.dev.app.session import DevAppError, call
-
-    session = _session(args)
+def cmd_status(args):
+    session = find_session(args.name)
     info: dict[str, Any] = {
         "session": session.name,
         "app": f"{session.file_path}::{session.class_name}",
@@ -993,300 +902,9 @@ def _status(args):
     print(json.dumps(info, indent=2, default=str))
 
 
-def _stop(args):
-    from fal.dev.app.session import stop_box
-
-    session = _session(args)
+def cmd_stop(args):
+    session = find_session(args.name)
     killed, existed = stop_box(session)
     session.delete()
     deleted = "deleted the app" if existed else "the app was already gone"
-    _console().print(
-        f"Stopped {session.name}: {deleted}, killed {len(killed)} runner(s)."
-    )
-
-
-def add_parser(main_subparsers, parents=None):
-    """Register `app` under a `fal dev` subparser group."""
-    parents = parents or []
-    app_help = "A dev box for an existing fal App, with hot reload."
-    parser = main_subparsers.add_parser(
-        "app",
-        description=__doc__,
-        help=app_help,
-        parents=parents,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    subparsers = parser.add_subparsers(
-        title="Commands",
-        metavar="command",
-        dest="cmd",
-        required=True,
-        parser_class=FalClientParser,
-    )
-    session_parser = argparse.ArgumentParser(add_help=False)
-    session_parser.add_argument(
-        "--session",
-        "-s",
-        help="Box name, always prefixed dev- (defaults to the only session).",
-    )
-
-    start = subparsers.add_parser(
-        "start",
-        help="Deploy a dev box from an app and run its setup() once.",
-        parents=[*parents, session_parser],
-    )
-    start.add_argument(
-        "app_ref",
-        action=RefAction,
-        help="path/to/app.py, path/to/app.py::App, or the name of an app in "
-        "pyproject.toml's tool.fal.apps table (as with `fal deploy`).",
-    )
-    start.add_argument("--machine-type", help="Override the app's machine type.")
-    start.add_argument(
-        "--root",
-        help="Source tree to sync and import from (defaults to the folder holding "
-        "the app's top-level package, widened to its app_files folder).",
-    )
-    add_env_argument(start)
-    start.add_argument(
-        "--session-env",
-        action="append",
-        metavar="NAME",
-        help="Also set environment variable NAME to the box name in the app "
-        "process (repeatable). FAL_DEV_SESSION is always set.",
-    )
-    start.add_argument(
-        "--replace",
-        action="store_true",
-        help="Take over an existing app with the same dev- name.",
-    )
-    start.add_argument(
-        "--keep-alive",
-        type=int,
-        default=DEFAULT_KEEP_ALIVE,
-        help="Seconds without requests before the box shuts down "
-        f"(default {DEFAULT_KEEP_ALIVE}).",
-    )
-    start.set_defaults(func=_start)
-
-    sync = subparsers.add_parser(
-        "sync",
-        help="Upload changed files; endpoints reload in place.",
-        parents=[*parents, session_parser],
-    )
-    sync.add_argument("--watch", action="store_true", help="Keep syncing on save.")
-    sync.add_argument("--full", action="store_true", help="Upload every file.")
-    sync.add_argument(
-        "--request",
-        metavar="PATH",
-        help="Send a request to PATH after each sync (with --data).",
-    )
-    sync.add_argument("--data", help="JSON body, or @file.json.")
-    sync.set_defaults(func=_sync_cmd)
-
-    request = subparsers.add_parser(
-        "request",
-        help="Send a request to the app on the box.",
-        parents=[*parents, session_parser],
-    )
-    request.add_argument("path", help="Endpoint path, e.g. /")
-    request.add_argument("--data", help="JSON body, or @file.json.")
-    request.add_argument("--output-file", help="Write the response body here.")
-    request.add_argument(
-        "--warmups",
-        type=_bounded(0, MAX_WARMUPS),
-        default=0,
-        help="Requests to send first and leave out of the timings.",
-    )
-    request.add_argument(
-        "--repeat",
-        type=_bounded(1, MAX_REPEAT),
-        default=1,
-        help="Time this many requests (run back to back on the box) and report "
-        "median, p90, min and max.",
-    )
-    request.add_argument(
-        "--name", help="Save the timings as a named benchmark, for `benchmark compare`."
-    )
-    request.set_defaults(func=_request)
-
-    benchmark = subparsers.add_parser(
-        "benchmark",
-        help="Compare saved benchmark runs (`request --repeat N --name NAME`).",
-        parents=parents,
-    )
-    benchmark_commands = benchmark.add_subparsers(
-        title="Commands",
-        metavar="command",
-        dest="benchmark_cmd",
-        required=True,
-        parser_class=FalClientParser,
-    )
-    compare = benchmark_commands.add_parser(
-        "compare",
-        help="Show two saved runs side by side.",
-        parents=[*parents, session_parser],
-    )
-    compare.add_argument("baseline", help="Benchmark name or JSON file.")
-    compare.add_argument("candidate", help="Benchmark name or JSON file.")
-    compare.set_defaults(func=_benchmark_compare)
-    listing = benchmark_commands.add_parser(
-        "list", help="List saved runs.", parents=[*parents, session_parser]
-    )
-    listing.set_defaults(func=_benchmark_list)
-
-    profile = subparsers.add_parser(
-        "profile",
-        help="Run one request under the torch profiler and download the trace.",
-        description="Warm the endpoint up, run one request under torch.profiler, "
-        "print the top ops and save a Perfetto/Chrome trace locally. Without "
-        "--data the request is built from the endpoint's input model "
-        "(examples and defaults). CPU ops are recorded in the thread that runs "
-        "the endpoint: work an async endpoint hands to other threads shows up "
-        "as GPU kernels only.",
-        parents=[*parents, session_parser],
-    )
-    profile.add_argument("path", nargs="?", help="Endpoint path, e.g. /")
-    profile.add_argument(
-        "--all", action="store_true", help="Profile every endpoint in turn."
-    )
-    profile.add_argument("--data", help="JSON body, or @file.json.")
-    depth = profile.add_mutually_exclusive_group()
-    depth.add_argument(
-        "--light",
-        dest="mode",
-        action="store_const",
-        const="light",
-        help="GPU kernels only: the smallest trace.",
-    )
-    depth.add_argument(
-        "--deep",
-        dest="mode",
-        action="store_const",
-        const="deep",
-        help="Add shapes, memory, stacks and FLOPs (large traces).",
-    )
-    profile.set_defaults(mode="standard")
-    profile.add_argument(
-        "--warmups",
-        type=_bounded(0, 10),
-        default=1,
-        help="Unprofiled requests to send first (default 1).",
-    )
-    profile.add_argument(
-        "--top", type=_bounded(1, 100), default=15, help="Ops to print (default 15)."
-    )
-    profile.add_argument(
-        "--output-dir",
-        help="Where to save profiles (default ~/.fal/dev/profiles/<session>).",
-    )
-    profile.add_argument(
-        "--max-trace-mb",
-        type=_bounded(1, 100_000),
-        default=200,
-        help="Skip downloading compressed traces over this size (default 200).",
-    )
-    profile.set_defaults(func=_profile)
-
-    deps = subparsers.add_parser(
-        "deps",
-        help="Try other package versions without rebuilding the box.",
-        description="Install packages into an overlay that the app imports ahead "
-        "of its own environment (which is never modified), then restart the app. "
-        "Only what the app's environment does not already satisfy is installed. "
-        "The overlay is kept with the session and installed again on a new runner.",
-        parents=parents,
-    )
-    deps_commands = deps.add_subparsers(
-        title="Commands",
-        metavar="command",
-        dest="deps_cmd",
-        required=True,
-        parser_class=FalClientParser,
-    )
-    no_restart = argparse.ArgumentParser(add_help=False)
-    no_restart.add_argument(
-        "--no-restart",
-        dest="restart",
-        action="store_false",
-        help="Change the overlay without restarting the app.",
-    )
-    install = deps_commands.add_parser(
-        "install",
-        help="Install packages into a new overlay layer.",
-        parents=[*parents, session_parser, no_restart],
-    )
-    install.add_argument("packages", nargs="+", help="Requirement specs.")
-    install.add_argument(
-        "--no-deps", action="store_true", help="Install exactly these packages."
-    )
-    install.add_argument("--pre", action="store_true", help="Allow pre-releases.")
-    install.add_argument("--index-url", help="Package index to use.")
-    install.add_argument(
-        "--extra-index-url",
-        action="append",
-        help="Another index (repeatable). The highest version across indexes "
-        "wins, so a public package can shadow a private one of the same name.",
-    )
-    install.add_argument(
-        "--force",
-        action="store_true",
-        help="Allow changing packages the box's app server runs on "
-        "(fastapi, pydantic, uvicorn, ...).",
-    )
-    install.set_defaults(func=_deps_install)
-    uninstall = deps_commands.add_parser(
-        "uninstall",
-        help="Remove the overlay layers that installed these packages.",
-        parents=[*parents, session_parser, no_restart],
-    )
-    uninstall.add_argument("packages", nargs="+")
-    uninstall.set_defaults(func=_deps_uninstall)
-    reset = deps_commands.add_parser(
-        "reset",
-        help="Remove every overlay layer.",
-        parents=[*parents, session_parser, no_restart],
-    )
-    reset.set_defaults(func=_deps_reset)
-    deps_status = deps_commands.add_parser(
-        "status",
-        help="Show overlay layers and the versions the app imports.",
-        parents=[*parents, session_parser],
-    )
-    deps_status.add_argument(
-        "packages", nargs="*", help="Also show which version the app imports."
-    )
-    deps_status.add_argument("--json", action="store_true")
-    deps_status.set_defaults(func=_deps_status)
-
-    restart = subparsers.add_parser(
-        "restart",
-        help="Restart the app process; setup() runs again.",
-        parents=[*parents, session_parser],
-    )
-    restart.add_argument(
-        "--no-sync", dest="sync", action="store_false", help="Skip syncing first."
-    )
-    restart.set_defaults(func=_restart)
-
-    logs = subparsers.add_parser(
-        "logs",
-        help="Show the app process's output.",
-        parents=[*parents, session_parser],
-    )
-    logs.add_argument("--lines", type=int, default=200)
-    logs.add_argument("--follow", "-f", action="store_true")
-    logs.set_defaults(func=_logs)
-
-    status = subparsers.add_parser(
-        "status", help="Show the box and app state.", parents=[*parents, session_parser]
-    )
-    status.set_defaults(func=_status)
-
-    stop = subparsers.add_parser(
-        "stop",
-        help="Shut the box down and delete it.",
-        parents=[*parents, session_parser],
-    )
-    stop.set_defaults(func=_stop)
-    return parser
+    console.print(f"Stopped {session.name}: {deleted}, killed {len(killed)} runner(s).")

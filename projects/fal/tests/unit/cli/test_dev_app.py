@@ -11,8 +11,9 @@ from fastapi.testclient import TestClient
 
 import fal
 from fal.cli.main import parse_args
-from fal.dev.remote import reload as app_reload
 from fal.dev.app import sync as app_sync
+from fal.dev.app.session import NAME_PREFIX, session_name
+from fal.dev.remote import reload as app_reload
 from fal.dev.remote.child import DevAppServer
 from fal.dev.remote.holder import (
     DevAppHolder,
@@ -21,7 +22,6 @@ from fal.dev.remote.holder import (
     _forward,
     make_holder,
 )
-from fal.dev.app.session import NAME_PREFIX, session_name
 
 APP_SOURCE = """
 import fal
@@ -408,23 +408,23 @@ def test_stop_box_refuses_non_dev_apps():
 
 
 def test_start_refuses_to_take_over_an_unknown_app(monkeypatch, tmp_path):
-    from fal.dev.cli import app as dev_app
     from fal.dev.app import session as app_session
+    from fal.dev.cli import app as dev_app
 
     (tmp_path / "app.py").write_text("import fal\n")
-    monkeypatch.setattr(app_session, "box_exists", lambda *a, **k: True)
+    monkeypatch.setattr(dev_app, "box_exists", lambda *a, **k: True)
     monkeypatch.setattr(
-        app_session,
+        dev_app,
         "find_session",
         lambda name: (_ for _ in ()).throw(app_session.DevAppError("none")),
     )
     deployed = []
-    monkeypatch.setattr(app_session, "deploy_box", lambda *a, **k: deployed.append(1))
+    monkeypatch.setattr(dev_app, "deploy_box", lambda *a, **k: deployed.append(1))
     args = parse_args(
         ["dev", "app", "start", f"{tmp_path / 'app.py'}::App", "--team", "t"]
     )
     with pytest.raises(app_session.DevAppError, match="--replace"):
-        dev_app._start(args)
+        dev_app.cmd_start(args)
     assert not deployed
 
 

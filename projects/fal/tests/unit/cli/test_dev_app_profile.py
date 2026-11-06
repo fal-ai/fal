@@ -258,7 +258,7 @@ def test_holder_artifact_reads_chunks_and_refuses_other_files(tmp_path, monkeypa
 def _fake_profile_box(monkeypatch, trace_bytes):
     import base64
 
-    from fal.dev.app import session as app_session
+    from fal.dev.cli import app as dev_app
 
     trace = gzip.compress(json.dumps({"traceEvents": [{"name": "k"}]}).encode())
     files = {"trace.json.gz": trace, "ops.txt": b"ops table\n"}
@@ -281,7 +281,7 @@ def _fake_profile_box(monkeypatch, trace_bytes):
         piece = data[payload["offset"] : payload["offset"] + 7]
         return {"size": len(data), "data": base64.b64encode(piece).decode()}
 
-    monkeypatch.setattr(app_session, "call", call)
+    monkeypatch.setattr(dev_app, "call", call)
     return calls, trace
 
 

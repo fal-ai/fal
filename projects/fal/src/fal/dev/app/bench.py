@@ -2,7 +2,7 @@
 
 The box times each request (warmups first, then the measured runs) in one call,
 so the numbers exclude the laptop's round trip to fal.run. A run saved with
-``--name`` is a JSON file in ``~/.fal/dev/benchmarks/<session>/<name>.json``.
+``--save`` is a JSON file in ``~/.fal/dev/benchmarks/<session>/<name>.json``.
 """
 
 from __future__ import annotations

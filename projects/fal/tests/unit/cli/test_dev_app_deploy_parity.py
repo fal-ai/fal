@@ -267,9 +267,9 @@ def test_sync_applies_app_files_ignore_from_the_context_folder(repo):
 
 
 def test_start_ignores_the_pyproject_team(repo, monkeypatch):
-    from fal.dev.cli import app as dev_app
     from fal.dev.app import session as app_session
     from fal.dev.app.session import DeployedBox, Layout
+    from fal.dev.cli import app as dev_app
 
     calls = {}
 
@@ -281,12 +281,12 @@ def test_start_ignores_the_pyproject_team(repo, monkeypatch):
             layout=Layout(repo, [".", "pkg/models"], "pkg/models", ".", [r"\.bin$"]),
         )
 
-    monkeypatch.setattr(app_session, "deploy_box", deploy)
-    monkeypatch.setattr(app_session, "box_exists", lambda *a, **k: False)
+    monkeypatch.setattr(dev_app, "deploy_box", deploy)
+    monkeypatch.setattr(dev_app, "box_exists", lambda *a, **k: False)
     monkeypatch.setattr(app_session, "SESSIONS_DIR", repo / ".sessions")
     monkeypatch.setattr(dev_app, "_boot", lambda session: {"app": {}})
     args = parse_args(["dev", "app", "start", "demo", "--team", "mine"])
-    dev_app._start(args)
+    dev_app.cmd_start(args)
 
     assert calls["team"] == "mine"
     assert app_session.find_session(None).name.startswith("dev-demo-")
@@ -392,11 +392,10 @@ def test_holder_refuses_a_bad_layout_without_changing_state(tmp_path):
 
 
 def test_deps_install_explains_an_index_that_refuses_the_box(monkeypatch):
-    from fal.dev.cli import app as dev_app
     from fal.dev.app.session import DevAppError
+    from fal.dev.cli import app as dev_app
 
-    monkeypatch.setattr(dev_app, "_session", lambda args: None)
-    monkeypatch.setattr(dev_app, "_ensure_booted", lambda session: None)
+    monkeypatch.setattr(dev_app, "_booted", lambda args: None)
     errors = iter(
         [
             "deps failed (409): pip: 401 Unauthorized for https://pkgs.example.com",
@@ -411,12 +410,12 @@ def test_deps_install_explains_an_index_that_refuses_the_box(monkeypatch):
     monkeypatch.setattr(dev_app, "_deps_call", deps_call)
     args = parse_args(["dev", "app", "deps", "install", "private-pkg"])
     with pytest.raises(DevAppError, match="builds an app's environment") as info:
-        dev_app._deps_install(args)
+        dev_app.cmd_deps_install(args)
     assert "401 Unauthorized" in str(info.value)
     # Other failures, and a refused CLI key, are passed through as they are.
     for _ in range(2):
         with pytest.raises(DevAppError) as info:
-            dev_app._deps_install(args)
+            dev_app.cmd_deps_install(args)
         assert "builds an app's environment" not in str(info.value)
 
 
@@ -452,32 +451,32 @@ def test_app_process_gets_the_session_name(tmp_path, monkeypatch):
 
 
 def test_start_saves_session_env(repo, monkeypatch):
-    from fal.dev.cli import app as dev_app
     from fal.dev.app import session as app_session
     from fal.dev.app.session import DeployedBox, Layout
+    from fal.dev.cli import app as dev_app
 
     monkeypatch.setattr(
-        app_session,
+        dev_app,
         "deploy_box",
         lambda *a, **k: DeployedBox("Demo", "u", Layout(repo, ["."], ".", ".", [])),
     )
-    monkeypatch.setattr(app_session, "box_exists", lambda *a, **k: False)
+    monkeypatch.setattr(dev_app, "box_exists", lambda *a, **k: False)
     monkeypatch.setattr(app_session, "SESSIONS_DIR", repo / ".sessions")
     monkeypatch.setattr(dev_app, "_boot", lambda session: {"app": {}})
     args = parse_args(
         ["dev", "app", "start", "demo", "--team", "t", "--session-env", "MY_NS"]
     )
-    dev_app._start(args)
+    dev_app.cmd_start(args)
     assert app_session.find_session(None).session_env == ["MY_NS"]
 
     # A name the box would refuse stops the start before anything deploys.
     deployed = []
-    monkeypatch.setattr(app_session, "deploy_box", lambda *a, **k: deployed.append(1))
+    monkeypatch.setattr(dev_app, "deploy_box", lambda *a, **k: deployed.append(1))
     args = parse_args(
         ["dev", "app", "start", "demo", "--team", "t", "--session-env", "LD_PRELOAD"]
     )
     with pytest.raises(ValueError, match="cannot set"):
-        dev_app._start(args)
+        dev_app.cmd_start(args)
     assert not deployed
 
 
@@ -549,8 +548,8 @@ def test_object_store_keeps_checked_copies(tmp_path, roomy, monkeypatch):
 
 
 def test_holder_places_stored_files_and_stores_synced_ones(tmp_path, roomy):
-    from fal.dev.remote import holder as app_holder
     from fal.dev.app import sync as app_sync
+    from fal.dev.remote import holder as app_holder
     from fal.dev.remote.objects import Store
 
     (tmp_path / "data").mkdir()
@@ -595,9 +594,9 @@ def test_holder_places_stored_files_and_stores_synced_ones(tmp_path, roomy):
 
 
 def test_boot_uploads_only_what_the_store_lacks(tmp_path, monkeypatch):
-    from fal.dev.cli import app as dev_app
     from fal.dev.app import session as app_session
     from fal.dev.app.session import Session
+    from fal.dev.cli import app as dev_app
 
     root = tmp_path / "tree"
     root.mkdir()
@@ -627,7 +626,7 @@ def test_boot_uploads_only_what_the_store_lacks(tmp_path, monkeypatch):
             return {"enabled": True, "placed": sorted(payload["files"]), "missing": []}
         return {}
 
-    monkeypatch.setattr(app_session, "call", call)
+    monkeypatch.setattr(dev_app, "call", call)
     result = dev_app._sync(session, full=True, reload=False, from_store=True)
     assert result["placed"] == 2
     assert result["changed"] == ["c.py"]
@@ -644,17 +643,17 @@ def test_boot_uploads_only_what_the_store_lacks(tmp_path, monkeypatch):
             raise app_session.DevAppError("objects failed (404): Not Found")
         return {}
 
-    monkeypatch.setattr(app_session, "call", old_box)
+    monkeypatch.setattr(dev_app, "call", old_box)
     result = dev_app._sync(session, full=True, reload=False, from_store=True)
     assert result["changed"] == ["a.py", "b.py", "c.py"]
 
 
 def test_boot_falls_back_to_uploading(tmp_path, monkeypatch):
     """No store, a failed place, or a damaged object: those files are sent."""
-    from fal.dev.cli import app as dev_app
     from fal.dev.app import session as app_session
     from fal.dev.app import sync as app_sync
     from fal.dev.app.session import DevAppError, Session
+    from fal.dev.cli import app as dev_app
 
     root = tmp_path / "tree"
     root.mkdir()
@@ -680,7 +679,7 @@ def test_boot_falls_back_to_uploading(tmp_path, monkeypatch):
             return {"enabled": True, "placed": [rel], "missing": []}
         return {}
 
-    monkeypatch.setattr(app_session, "call", call)
+    monkeypatch.setattr(dev_app, "call", call)
     result = dev_app._sync(session, full=True, reload=False, from_store=True)
     # One file per place request, as PLACE_BATCH says.
     assert places == [["a.py"], ["b.py"], ["c.py"]]
@@ -692,7 +691,7 @@ def test_boot_falls_back_to_uploading(tmp_path, monkeypatch):
             return {"enabled": False}
         return {}
 
-    monkeypatch.setattr(app_session, "call", no_store)
+    monkeypatch.setattr(dev_app, "call", no_store)
     result = dev_app._sync(session, full=True, reload=False, from_store=True)
     assert result["placed"] is None
     assert result["changed"] == sorted(app_sync.collect(root))

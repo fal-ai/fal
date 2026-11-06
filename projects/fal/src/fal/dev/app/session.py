@@ -127,7 +127,7 @@ def find_session(name: str | None) -> Session:
     if not sessions:
         raise DevAppError("No dev app session. Start one with `fal dev app start`.")
     names = ", ".join(s.name for s in sessions)
-    raise DevAppError(f"Several sessions ({names}); pick one with --session.")
+    raise DevAppError(f"Several sessions ({names}); pick one with --name.")
 
 
 def _headers(team: str | None) -> dict[str, str]:

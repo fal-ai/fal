@@ -2,13 +2,14 @@ import json
 
 import pytest
 
-from fal.dev.cli import app as dev_app
 from fal.cli.main import parse_args
 from fal.cli.parser import FalParserExit
 from fal.dev.app import bench as app_bench
-from fal.dev.remote import holder as app_holder
 from fal.dev.app import session as app_session
 from fal.dev.app.session import Session
+from fal.dev.cli import app as dev_app
+from fal.dev.cli import parser
+from fal.dev.remote import holder as app_holder
 
 
 def _session(**kwargs) -> Session:
@@ -187,7 +188,7 @@ def _fake_box(monkeypatch, statuses, truncated=False):
             "stopped": "run 3 did not complete: boom" if truncated else "",
         }
 
-    monkeypatch.setattr(app_session, "call", call)
+    monkeypatch.setattr(dev_app, "call", call)
     return sent
 
 
@@ -202,7 +203,7 @@ def test_request_saves_a_named_benchmark(home, monkeypatch, capsys):
     session = _session()
     session.save()
     sent = _fake_box(monkeypatch, [200, 200, 200])
-    _request("--warmups", "1", "--repeat", "3", "--name", "base")
+    _request("--warmups", "1", "--repeat", "3", "--save", "base")
 
     assert sent[0]["warmups"] == 1
     assert sent[0]["repeat"] == 3
@@ -213,7 +214,7 @@ def test_request_saves_a_named_benchmark(home, monkeypatch, capsys):
     assert "median 2.000s" in out
     assert "Saved benchmark" in out
 
-    _request("--repeat", "3", "--name", "base")
+    _request("--repeat", "3", "--save", "base")
     assert "Overwrote benchmark" in capsys.readouterr().out
     assert [run["name"] for run in app_bench.saved(session.name)] == ["base"]
 
@@ -227,7 +228,7 @@ def test_failed_or_truncated_benchmarks_are_not_saved(
     _session().save()
     _fake_box(monkeypatch, statuses, truncated=truncated)
     with pytest.raises(SystemExit):
-        _request("--repeat", "3", "--name", "base")
+        _request("--repeat", "3", "--save", "base")
     out = capsys.readouterr().out
     assert "Not saved" in out
     assert app_bench.saved("dev-demo-me") == []
@@ -260,8 +261,8 @@ def test_forward_runs_keeps_runs_when_a_later_run_fails_to_connect(monkeypatch):
 
 
 def test_request_limits_match_the_holder():
-    assert dev_app.MAX_WARMUPS == app_holder.MAX_WARMUPS
-    assert dev_app.MAX_REPEAT == app_holder.MAX_REPEAT
+    assert parser.MAX_WARMUPS == app_holder.MAX_WARMUPS
+    assert parser.MAX_REPEAT == app_holder.MAX_REPEAT
 
 
 def test_request_flags_are_bounded(capsys):
@@ -277,7 +278,7 @@ def test_request_flags_are_bounded(capsys):
 def test_empty_benchmark_name_is_refused(home):
     _session().save()
     with pytest.raises(app_bench.BenchmarkError):
-        _request("--name", "")
+        _request("--save", "")
 
 
 def test_compare_columns_fit_source_digests():

@@ -241,7 +241,7 @@ class HotBox:
                 raise DevError(f"hot server error ({status}): {info.get('error')}")
             time.sleep(2)
         raise DevError(
-            f"the hot server was not ready within {timeout}s; see: fal dev hot log"
+            f"the hot server was not ready within {timeout}s; see: fal dev hot logs"
         )
 
     def push(self, root: Path, remote: str, rels: list[str]) -> list[str]:

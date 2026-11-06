@@ -342,9 +342,10 @@ class FakeBox:
 
 def _cli_session(tmp_path, monkeypatch, box):
     from fal.dev.app import session as app_session
+    from fal.dev.cli import app as dev_app
 
     monkeypatch.setattr(app_session, "SESSIONS_DIR", tmp_path / "sessions")
-    monkeypatch.setattr(app_session, "call", box.call)
+    monkeypatch.setattr(dev_app, "call", box.call)
     app_session.Session(
         name="dev-demo-me",
         app_name="dev-demo-me",
@@ -361,9 +362,9 @@ def _cli_session(tmp_path, monkeypatch, box):
 def test_cli_remembers_the_overlay_and_replays_it_on_a_new_runner(
     tmp_path, monkeypatch
 ):
-    from fal.dev.cli import app as dev_app
     from fal.cli.main import parse_args
     from fal.dev.app import bench as app_bench
+    from fal.dev.cli import app as dev_app
 
     box = FakeBox()
     app_session = _cli_session(tmp_path, monkeypatch, box)
