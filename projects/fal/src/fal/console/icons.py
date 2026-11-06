@@ -90,8 +90,9 @@ def get_ellipsis_icon(target_console: Console | None = None) -> str:
     return _select_icon("\u2026", "...", target_console=target_console)
 
 
-# Half-block cell for terminal image previews; they only draw on UTF-8 streams.
+# Drawn only on UTF-8 streams (terminal image previews, `fal dev` loading states).
 UPPER_HALF_BLOCK = "\u2580"
+BRAILLE_SPINNER = "\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f"
 
 
 _ICON_GETTERS = {

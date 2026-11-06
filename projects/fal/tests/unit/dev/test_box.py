@@ -180,6 +180,23 @@ def test_wait_until_ready_raises_on_crash(monkeypatch):
         box.wait_until_ready(timeout=5)
 
 
+def test_wait_until_ready_reports_each_state_change(monkeypatch):
+    monkeypatch.setattr(box_module, "POLL_SECONDS", 0)
+    box = make_box([])
+    box.poll_runners = MagicMock(
+        side_effect=[
+            [make_runner("r1", RunnerState.PENDING)],
+            [make_runner("r1", RunnerState.PENDING)],
+            [make_runner("r1", RunnerState.SETUP)],
+            [make_runner("r1")],
+        ]
+    )
+    seen = []
+
+    assert box.wait_until_ready(timeout=5, on_wait=seen.append).runner_id == "r1"
+    assert seen == ["pending", "setup"]
+
+
 def test_start_cancels_when_no_runner_comes_up(monkeypatch):
     monkeypatch.setattr(box_module, "POLL_SECONDS", 0)
     box = make_box([])

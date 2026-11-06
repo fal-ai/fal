@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import BinaryIO, Iterator
+from typing import BinaryIO, Callable, Iterator
 
 import grpc
 
@@ -452,8 +452,13 @@ class Box:
         )
         return volume
 
-    def wait_until_ready(self, timeout: int) -> RunnerInfo | None:
-        """Poll until a runner is ready; None on timeout. Raises if the start fails."""
+    def wait_until_ready(
+        self, timeout: int, on_wait: Callable[[str], None] | None = None
+    ) -> RunnerInfo | None:
+        """Poll until a runner is ready; None on timeout. Raises if the start fails.
+
+        `on_wait` gets the runner state on each change (default: a log line).
+        """
         deadline = time.time() + timeout
         last_state = None
         while time.time() < deadline:
@@ -470,19 +475,27 @@ class Box:
             pending = sorted(s.value.lower() for s in states - FINAL_STATES)
             state = ", ".join(pending) or "requested"
             if state != last_state:
-                log(f"waiting: {state}")
+                if on_wait:
+                    on_wait(state)
+                else:
+                    log(f"waiting: {state}")
                 last_state = state
             time.sleep(POLL_SECONDS)
         return None
 
-    def start(self, timeout: int, machine_type: str | None = None) -> RunnerInfo:
+    def start(
+        self,
+        timeout: int,
+        machine_type: str | None = None,
+        on_wait: Callable[[str], None] | None = None,
+    ) -> RunnerInfo:
         """Scale to 1 and wait for a ready runner; cancel the start if none comes up."""
         # Only cancel a start this call made: never stop a box that was already up.
         was_live = bool(newest_live(self.runners()))
         runner = None
         try:
             self.scale(1, machine_type)
-            runner = self.wait_until_ready(timeout)
+            runner = self.wait_until_ready(timeout, on_wait)
         finally:
             # Any way out without a ready box (timeout, failed start, Ctrl-C) cancels
             # the start.
@@ -500,7 +513,12 @@ class Box:
             )
         return runner
 
-    def up(self, timeout: int, machine_type: str | None = None) -> RunnerInfo:
+    def up(
+        self,
+        timeout: int,
+        machine_type: str | None = None,
+        on_wait: Callable[[str], None] | None = None,
+    ) -> RunnerInfo:
         if self.app_info() is None:
             log(
                 f"{self.app} does not exist yet; "
@@ -514,7 +532,7 @@ class Box:
                 f"Run `fal dev down` first to switch to {machine_type}."
             )
         self.check_admin_key()
-        return self.start(timeout, machine_type)
+        return self.start(timeout, machine_type, on_wait)
 
     def down(self, no_save: bool = False) -> None:
         if not no_save:

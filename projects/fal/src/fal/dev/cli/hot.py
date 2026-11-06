@@ -12,6 +12,7 @@ from rich.markup import escape
 from fal.dev import config, hot, state
 from fal.dev.cli.common import get_box
 from fal.dev.errors import DevError
+from fal.dev.loading import STATES
 from fal.dev.media import preview
 
 
@@ -89,7 +90,7 @@ def cmd_restart(args):
     start = time.time()
     _call(hot_box, "restart")
     time.sleep(2)  # let the old process exit before polling
-    info = hot_box.wait_ready()
+    info = hot_box.wait_ready(headline=STATES["hot-restart"][0])
     args.console.print(
         f"restarted in {time.time() - start:.1f}s (model load {info['load_seconds']}s)"
     )

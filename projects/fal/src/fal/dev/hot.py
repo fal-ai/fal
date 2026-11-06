@@ -21,6 +21,7 @@ from rich.markup import escape
 from fal.dev import config, files, state
 from fal.dev.box import Box, log
 from fal.dev.errors import DevError
+from fal.dev.loading import STATES, Loading
 from fal.dev.transport import post_json
 
 OUTPUT_DIR = "hot-out"
@@ -195,8 +196,21 @@ class HotBox:
         except ValueError:
             return status, {"error": body.decode(errors="replace")[:500]}
 
-    def wait_ready(self, timeout: int = 1800) -> dict:
+    def wait_ready(
+        self,
+        timeout: int = 1800,
+        headline: str = "starting the hot server: loading weights",
+    ) -> dict:
         """Poll until the server has loaded the model, printing its log as it goes."""
+        with Loading(
+            "model load",
+            title="Hot server",
+            headline=headline,
+            expected=STATES["weights"][1],
+        ) as wait:
+            return self._wait_ready(timeout, wait)
+
+    def _wait_ready(self, timeout: int, wait) -> dict:
         deadline = time.time() + timeout
         printed: list[str] = []
         network_errors = 0
@@ -212,7 +226,7 @@ class HotBox:
             network_errors = 0
             lines = info.get("log") or []
             for line in new_log_lines(printed, lines):
-                log(f"  {line}")
+                wait.say(f"  {line}")
             printed = lines
             if status == 409 and waiting_for_fix(lines):
                 raise DevError(
@@ -268,7 +282,7 @@ class HotBox:
                 pass
         if reason:
             log(f"FULL RESTART ({reason}): the weights reload ...")
-            info = self.wait_ready()
+            info = self.wait_ready(headline=STATES["hot-restart"][0])
             log(f"model loaded in {info['load_seconds']}s")
             start = time.time()
             status, headers, body = self.post("infer", params, timeout=900)

@@ -217,6 +217,8 @@ class Snapshot:
     errors: dict[str, str] = field(default_factory=dict)
     message: str | None = None
     message_until: float = 0.0  # local clock; the message is hidden after this
+    # Local clock when each wait in `waits()` began, while it lasts.
+    since: dict[str, float] = field(default_factory=dict)
 
     @property
     def runner_id(self) -> str | None:
@@ -225,6 +227,19 @@ class Snapshot:
         if state and state.runner and state.code in ("running", "stopping"):
             return state.runner.runner_id
         return None
+
+
+def waits(snapshot: Snapshot) -> set[str]:
+    """The slow things the dash shows a loading state for right now."""
+    found = set()
+    if snapshot.state and snapshot.state.code == "starting":
+        found.add("starting")
+    probe = snapshot.probe
+    # A probe that stopped answering is stale: do not animate its last answer.
+    fresh = "probe" not in snapshot.errors
+    if snapshot.runner_id and probe and fresh and probe["hot"].get("restarting"):
+        found.add("hot-restart")
+    return found
 
 
 class Poller:
@@ -264,11 +279,16 @@ class Poller:
             if if_runner and self.snapshot.runner_id != if_runner:
                 return
             merged: dict[str, str | None] = {**self.snapshot.errors, **(errors or {})}
-            self.snapshot = replace(
+            snapshot = replace(
                 self.snapshot,
                 errors={source: text for source, text in merged.items() if text},
                 **changes,
             )
+            active = waits(snapshot)
+            since = {k: v for k, v in snapshot.since.items() if k in active}
+            for wait in active - since.keys():
+                since[wait] = time.time()
+            self.snapshot = replace(snapshot, since=since)
         self.on_change()
 
     def say(self, message: str, seconds: float = 10.0) -> None:

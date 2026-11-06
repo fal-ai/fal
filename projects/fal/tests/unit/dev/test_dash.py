@@ -681,3 +681,91 @@ def test_probe_output_from_another_version_is_an_error_not_a_crash():
     del short["activity"]["held"]
     with pytest.raises(ValueError, match="another fal version"):
         parse_probe(json.dumps(short))
+
+
+def test_header_says_runner_pending_until_a_runner_is_up():
+    snapshot = Snapshot(state=_state("starting"), state_at=NOW)
+    assert "runner pending" in _frame(snapshot)
+    assert "runner runner-abc" in _frame(_snapshot())
+    assert "runner -" in _frame(Snapshot(state=_state("stopped"), state_at=NOW))
+
+
+def test_booting_box_shows_the_dust_panel_with_the_runner_state():
+    state = _state("starting")
+    state.runner.state = RunnerState.PENDING
+    state.runner.uptime = timedelta(seconds=42)
+    text = _frame(Snapshot(state=state, state_at=NOW))
+    assert "GPU" in text
+    assert "waiting for a GPU runner: pending  42s  typically ~1m40s" in text
+
+
+def test_hot_restart_shows_the_hot_server_panel():
+    probe = _probe(hot={"running": True, "restarting": "load.py changed"})
+    snapshot = _snapshot(probe, since={"hot-restart": NOW - 12})
+    text = _frame(snapshot)
+    assert "Hot server" in text
+    assert "restarting the hot server: loading weights" in text
+    assert "model load  12s  typically ~35s" in text
+    assert "Hot server" not in _frame(_snapshot())
+
+
+def test_poller_times_waits_from_when_they_began():
+    box = FakeDashBox(_probe(hot={"running": True, "restarting": "manual"}))
+    poller = Poller(box)
+    poller.poll_once(cost=False)
+    began = poller.snapshot.since["hot-restart"]
+    poller.poll_once(cost=False)
+    assert poller.snapshot.since["hot-restart"] == began
+    box.probe = _probe()
+    poller.poll_once(cost=False)
+    assert "hot-restart" not in poller.snapshot.since
+
+
+def test_a_stale_probe_does_not_keep_animating():
+    probe = _probe(hot={"running": True, "restarting": "manual"})
+    assert model.waits(_snapshot(probe)) == {"hot-restart"}
+    assert model.waits(_snapshot(probe, errors={"probe": "timed out"})) == set()
+
+
+def test_dash_waits_draw_dust_only_when_animating():
+    snapshot = Snapshot(state=_state("starting"), state_at=NOW)
+
+    def braille(animate):
+        frame = _text(render(snapshot, FakeDashBox(), now=NOW, animate=animate))
+        return any(0x2800 <= ord(ch) <= 0x28FF for ch in frame)
+
+    assert braille(True)
+    assert not braille(False)
+
+
+def test_dashboard_decides_on_animation_before_live_replaces_stdout(monkeypatch):
+    from fal.dev.dash import tui
+
+    seen = []
+
+    class _Live:
+        def __init__(self, renderable, **kwargs):
+            seen.append(renderable)
+
+        def start(self):
+            raise KeyboardInterrupt  # end the loop after the first frame
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(tui.os, "name", "posix")
+    monkeypatch.setattr(tui.sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(tui.sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(tui.sys.stdin, "fileno", lambda: 0, raising=False)
+    monkeypatch.setattr(
+        tui, "_cbreak", lambda fd: __import__("contextlib").nullcontext()
+    )
+    monkeypatch.setattr(tui, "Live", _Live)
+    monkeypatch.setattr(tui.model.Poller, "start", lambda self: None)
+    calls = []
+    monkeypatch.setattr(
+        tui.loading, "animation_enabled", lambda stream: calls.append(stream) or True
+    )
+    monkeypatch.setattr(tui, "render", lambda *a, **k: k["animate"])
+    tui.run_dashboard(FakeDashBox())
+    assert seen == [True] and len(calls) == 1

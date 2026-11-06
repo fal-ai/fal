@@ -13,6 +13,7 @@ from fal.cli.runners import print_logs, shell_session
 from fal.dev.box import FINAL_STATES, newest_first, ssh_config
 from fal.dev.cli.common import get_box, resolve_name
 from fal.dev.errors import DevError
+from fal.dev.loading import STATES, Loading
 from fal.dev.team import confirm_deploy
 
 
@@ -53,7 +54,17 @@ def cmd_up(args):
     box = get_box(args)
     if box.app_info() is None:
         _confirm_deploy(box, args)
-    runner = box.up(args.timeout, args.machine_type)
+    label, expected = STATES["gpu-runner"]
+    wait = Loading(label, title="GPU", subtitle="runner pending", expected=expected)
+
+    def on_wait(state: str) -> None:
+        wait.update(f"{label}: {state}")
+        wait.start()  # only once the runner wait begins, after any deploy
+
+    try:
+        runner = box.up(args.timeout, args.machine_type, on_wait)
+    finally:
+        wait.close()
     args.console.print(
         f"ready: runner {runner.runner_id} ({escape(str(runner.machine_type))})"
     )

@@ -17,6 +17,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
+from fal.dev import loading
 from fal.dev.box import Box
 from fal.dev.dash import model
 from fal.dev.dash.view import render
@@ -95,10 +96,12 @@ def run_dashboard(
             return
         threading.Thread(target=run, daemon=True).start()
 
+    # Before Live starts: inside it, sys.stdout is rich's proxy, not the terminal.
+    animate = loading.animation_enabled(sys.stdout)
     try:
         with _cbreak(fd):
             live = Live(
-                render(poller.snapshot, box, screen=True),
+                render(poller.snapshot, box, screen=True, animate=animate),
                 console=console,
                 screen=True,
                 auto_refresh=False,
@@ -106,7 +109,9 @@ def run_dashboard(
             live.start()
             try:
                 while True:
-                    key = _read_key(fd, 1.0)
+                    # Redraw often while a loading state animates.
+                    animating = animate and model.waits(poller.snapshot)
+                    key = _read_key(fd, 1 / loading.FPS if animating else 1.0)
                     runner_id = poller.snapshot.runner_id
                     if key == "q":
                         if not busy.locked() or pending_quit:
@@ -159,7 +164,8 @@ def run_dashboard(
                             box,
                             runner_id,
                         )
-                    live.update(render(poller.snapshot, box, screen=True), refresh=True)
+                    frame = render(poller.snapshot, box, screen=True, animate=animate)
+                    live.update(frame, refresh=True)
             finally:
                 live.stop()
     except KeyboardInterrupt:

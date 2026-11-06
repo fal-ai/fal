@@ -22,6 +22,7 @@ from fal.console.icons import (
     get_inline_separator_icon,
     get_state_dot_icon,
 )
+from fal.dev import loading
 from fal.dev.box import Box
 from fal.dev.dash.model import (
     HOLD_HOURS,
@@ -64,7 +65,6 @@ LOGS_SHOWN = 8
 NOISE_PREFIXES = ("Skipping authentication for /Isolate/",)
 NOT_RUNNING_HINTS = {
     "stopped": "The box is stopped. Start it with `fal dev up`.",
-    "starting": "The box is starting; details appear once it is ready.",
     "failed": "The box failed to start; see its logs.",
 }
 
@@ -182,9 +182,45 @@ def header(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
     title = Text.styled("fal dev", style=f"bold {ACCENT}") + Text(
         f"  {box.name}", style=TITLE
     )
-    runner = state.runner.runner_id if state.runner else "-"
+    if state.code == "starting":
+        runner = "pending"
+    else:
+        runner = state.runner.runner_id if state.runner else "-"
     subtitle = Text(f"runner {runner}", style=f"default {MUTED}")
     return _panel(line, title, subtitle=subtitle, subtitle_align="right")
+
+
+def _waited(snapshot: Snapshot, wait: str, now: float) -> float:
+    return now - snapshot.since.get(wait, now)
+
+
+def booting_panel(snapshot: Snapshot, now: float, animate: bool) -> RenderableType:
+    """The GPU panel while the platform starts a runner: dust and the state."""
+    state = snapshot.state
+    label, expected = loading.STATES["gpu-runner"]
+    runner = state.runner if state else None
+    phase = runner.state.value.lower() if runner else "requested"
+    # A runner's uptime covers a wait that began before the dash opened.
+    waited = _uptime(snapshot, now)
+    if waited is None:
+        waited = _waited(snapshot, "starting", now)
+    body = loading.dust_panel_body(
+        waited, f"{label}: {phase}", expected=expected, animate=animate
+    )
+    return _panel(body, "GPU")
+
+
+def hot_restart_panel(snapshot: Snapshot, now: float, animate: bool) -> RenderableType:
+    """The hot server reloading its weights: what a restart waits on."""
+    headline, expected = loading.STATES["hot-restart"]
+    body = loading.dust_panel_body(
+        _waited(snapshot, "hot-restart", now),
+        "model load",
+        expected=expected,
+        headline=headline,
+        animate=animate,
+    )
+    return _panel(body, "Hot server")
 
 
 def gpu_panel(probe: dict) -> RenderableType:
@@ -430,12 +466,16 @@ def footer(snapshot: Snapshot, now: float) -> RenderableType:
     )
 
 
-def body(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
+def body(
+    snapshot: Snapshot, box: Box, now: float, animate: bool = False
+) -> RenderableType:
     parts: list[RenderableType] = [header(snapshot, box, now)]
     state = snapshot.state
     if state is None:
         return Group(*parts)
     probe = snapshot.probe
+    if state.code == "starting":
+        return Group(*parts, booting_panel(snapshot, now, animate))
     if not _live(snapshot):
         hint = NOT_RUNNING_HINTS.get(state.code, "")
         return Group(*parts, _panel(Text(hint, style=MUTED), ""))
@@ -448,6 +488,8 @@ def body(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
         view = idle_view(probe, _box_clock(snapshot, now))
         if banner := watchdog_banner(probe, view):
             parts.append(banner)
+        if "hot-restart" in snapshot.since:
+            parts.append(hot_restart_panel(snapshot, now, animate))
         panels = [
             gpu_panel(probe),
             idle_panel(snapshot, probe, view, now),
@@ -462,11 +504,19 @@ def body(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
 
 
 def render(
-    snapshot: Snapshot, box: Box, now: float | None = None, *, screen: bool = False
+    snapshot: Snapshot,
+    box: Box,
+    now: float | None = None,
+    *,
+    screen: bool = False,
+    animate: bool = False,
 ) -> RenderableType:
-    """One frame; on a full screen the footer stays visible when the body is cut."""
+    """One frame; on a full screen the footer stays visible when the body is cut.
+
+    `animate` draws dust and spinners in loading states (loading's switches).
+    """
     now = time.time() if now is None else now
-    frame = body(snapshot, box, now)
+    frame = body(snapshot, box, now, animate)
     if not screen:
         return Group(frame, footer(snapshot, now))
     layout = Layout()
