@@ -10,18 +10,19 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import re
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
-from fal.dev import config
-from fal.dev.box import Box, DevError, log
-from fal.dev.state import STATE_DIR
+from rich.console import Console
+from rich.markup import escape
 
-SKIP_DIRS = {".venv", "__pycache__", ".git", "node_modules", "hot-out"}
+from fal.dev import config, files, state
+from fal.dev.box import Box, log
+from fal.dev.errors import DevError
+from fal.dev.transport import post_json
+
+OUTPUT_DIR = "hot-out"
 MAX_FILE_BYTES = 1_000_000
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{20,}")
 # Log lines from the box that mean the server waits for a fix instead of loading.
@@ -32,7 +33,6 @@ STUCK_MARKERS = (
 )
 RETRY_MARKERS = ("[hot] loading the model", "[hot] restarting", "[hot] FULL RESTART")
 READY_MARKER = "[hot] serving"
-CREDENTIALS_TTL_SECONDS = 300
 
 
 class HotTokenRejected(DevError):
@@ -91,18 +91,14 @@ def project_paths(
 def scan(root: Path) -> dict[str, float]:
     """Modification time of every small file under root that is worth syncing."""
     found = {}
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [
-            d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")
-        ]
-        for filename in filenames:
-            path = Path(dirpath) / filename
-            try:
-                stat = path.stat()
-            except OSError:
-                continue
-            if stat.st_size <= MAX_FILE_BYTES and not filename.startswith("."):
-                found[path.relative_to(root).as_posix()] = stat.st_mtime
+    skip_dirs = files.SKIP_DIRS | {OUTPUT_DIR}
+    for rel in files.walk(root, skip_dirs=skip_dirs, hidden=False):
+        try:
+            stat = (root / rel).stat()
+        except OSError:
+            continue
+        if stat.st_size <= MAX_FILE_BYTES:
+            found[rel.as_posix()] = stat.st_mtime
     return found
 
 
@@ -125,17 +121,15 @@ def parse_params(items: list[str] | None, prompt: str | None) -> dict:
 def _owner(box: Box) -> str:
     """The account the box's app belongs to, for its fal.run URL."""
     from fal.api.deploy import _get_user
-    from fal.config import Config
 
-    team = box.team or Config().get_internal("team")
-    if team:
-        return team
+    if box.team:
+        return box.team
     return _get_user(box.client._create_rest_client()).username
 
 
 def read_token(box: Box, runner_id: str) -> str:
     """This runner's /hot token, read once over runner exec (admin only) and cached."""
-    cache = STATE_DIR / f"hot-{box.app}.json"
+    cache = state.STATE_DIR / f"hot-{box.app}.json"
     try:
         cached = json.loads(cache.read_text())
         if cached["runner_id"] == runner_id:
@@ -169,40 +163,23 @@ class HotBox:
         runner_id = box.require_runner()
         self.base = f"https://{flags.FAL_RUN_HOST}/{_owner(box)}/{box.app}/hot"
         self.box = box
-        self._credentials: dict = {}
-        self._credentials_at = 0.0
         self.token = read_token(box, runner_id)
-
-    def _auth_headers(self) -> dict:
-        # Refreshed now and then: a long watch session can outlive a login's access
-        # token, and building them may cost an API call.
-        if time.time() - self._credentials_at > CREDENTIALS_TTL_SECONDS:
-            self._credentials = self.box.client._credentials.to_headers()
-            self._credentials_at = time.time()
-        return self._credentials
 
     def post(
         self, action: str, payload: dict | None = None, timeout: int = 60
     ) -> tuple[int, dict, bytes]:
         """POST to a /hot route; status 0 when there is no response (network, auth)."""
         try:
-            req = urllib.request.Request(
+            response = post_json(
                 f"{self.base}/{action}",
-                data=json.dumps(payload or {}).encode(),
-                headers={
-                    **self._auth_headers(),
-                    config.HOT_TOKEN_HEADER: self.token,
-                    "Content-Type": "application/json",
-                },
-                method="POST",
+                payload or {},
+                {**self.box.auth_headers(), config.HOT_TOKEN_HEADER: self.token},
+                timeout,
             )
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                headers = {k.lower(): v for k, v in resp.headers.items()}
-                return resp.status, headers, resp.read()
-        except urllib.error.HTTPError as exc:
-            return exc.code, {k.lower(): v for k, v in exc.headers.items()}, exc.read()
         except Exception as exc:
             return 0, {}, json.dumps({"error": str(exc) or repr(exc)}).encode()
+        headers = {k.lower(): v for k, v in response.headers.items()}
+        return response.status_code, headers, response.content
 
     def json(self, action: str, payload: dict | None = None) -> tuple[int, dict]:
         status, _, body = self.post(action, payload)
@@ -237,6 +214,7 @@ class HotBox:
                 )
             if status == 200 and info.get("ready") and not info.get("restarting"):
                 return info
+            # 409: the server is not up yet; 502-504: the gateway has no answer.
             if status not in (200, 409, 502, 503, 504):
                 raise DevError(f"hot server error ({status}): {info.get('error')}")
             time.sleep(2)
@@ -248,6 +226,8 @@ class HotBox:
         files = {}
         for rel in rels:
             try:
+                if (root / rel).is_symlink():
+                    continue  # became a link since the scan
                 files[rel] = (root / rel).read_text()
             except (OSError, UnicodeDecodeError):
                 continue  # deleted since the scan, or binary
@@ -302,7 +282,7 @@ class HotBox:
             timing += f" | edit to result {time.time() - edited_at:.2f}s"
         if headers.get("content-type", "").startswith("image/"):
             name = f"{time.strftime('%H%M%S')}.png"
-            out = Path(output) if output else Path("hot-out") / name
+            out = Path(output) if output else Path(OUTPUT_DIR) / name
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(body)
             print(f"{timing} | {out}")
@@ -316,13 +296,14 @@ class HotBox:
         root: Path,
         remote: str,
         run_params: dict | None,
-        output: str | None = None,
+        output: str | None,
+        console: Console,
     ) -> None:
         """Push each saved file; with run_params, send a request after each push."""
         known = scan(root)
         pending: set[str] = set()  # failed pushes, sent again with the next save
         suffix = " and run a request" if run_params is not None else ""
-        print(f"watching {root}; save a file to sync it{suffix}")
+        console.print(f"watching {escape(str(root))}; save a file to sync it{suffix}")
         while True:
             time.sleep(0.2)
             current = scan(root)
@@ -334,7 +315,7 @@ class HotBox:
             try:
                 written = self.push(root, remote, sorted(pending | set(changed)))
             except HotTokenRejected:
-                raise
+                raise  # not a failed push: the box needs a new command
             except DevError as exc:
                 log(f"{exc}; will send these files again with the next save")
                 pending.update(changed)
@@ -342,8 +323,8 @@ class HotBox:
             pending.clear()
             if not written:
                 continue  # saved without changes
-            print(
-                f"synced {', '.join(written)} "
+            console.print(
+                f"synced {escape(', '.join(written))} "
                 f"({time.time() - edited_at:.2f}s after save)"
             )
             if run_params is not None:

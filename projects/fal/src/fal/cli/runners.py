@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from queue import Empty, Queue
-from threading import Thread
+from threading import Event, Thread, Timer
 from typing import TYPE_CHECKING, Iterator, List
 
 if TYPE_CHECKING:
@@ -135,7 +135,10 @@ def _get_tty_size(fd: int):
 def _shell(args):
     """Open an interactive shell on a runner."""
     # Always a PTY: the login shell expects one even when local stdin is piped.
-    return _shell_session(args, command=None, interactive=True, remote_tty=True)
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    return shell_session(
+        client, args.id, None, interactive=True, remote_tty=True, console=args.console
+    )
 
 
 def _exec(args):
@@ -152,12 +155,40 @@ def _exec(args):
     # A PTY mangles bytes (echo, CR/NL translation, signal characters), so only
     # ask for one when a real terminal is attached.
     remote_tty = args.interactive and sys.stdin.isatty()
-    return _shell_session(
-        args, command=command, interactive=args.interactive, remote_tty=remote_tty
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    return shell_session(
+        client,
+        args.id,
+        command,
+        interactive=args.interactive,
+        remote_tty=remote_tty,
+        console=args.console,
     )
 
 
-def _shell_session(args, command, interactive, *, remote_tty, stdout=None, stderr=None):
+# How long output may keep arriving after the exit code, when reading up to a marker.
+UNTIL_GRACE_SECONDS = 2.0
+
+
+def _give_up(call, gave_up: Event) -> None:
+    gave_up.set()
+    call.cancel()
+
+
+def shell_session(
+    client: SyncServerlessClient,
+    runner_id: str,
+    command: list[str] | None,
+    *,
+    interactive: bool,
+    remote_tty: bool,
+    console: Console | None,
+    stdout=None,
+    stderr=None,
+    timeout: float | None = None,
+    until: bytes | None = None,
+    stub=None,
+):
     """Stream a shell session on a runner; command=None opens a login shell.
 
     `remote_tty` controls whether the remote command runs under a pseudo-terminal.
@@ -165,20 +196,24 @@ def _shell_session(args, command, interactive, *, remote_tty, stdout=None, stder
     commands see EOF. Remote output goes to `stdout` and `stderr` (default: this
     process's corresponding streams). Servers predating stream identification
     produce output with no stream set, which is treated as stdout.
+
+    Connection errors are printed to `console`, or raised if there is none.
+    `timeout` limits the whole call in seconds. The exit code can arrive before
+    the last of the output: with `until`, stdout is read up to that marker.
+    A `stub` from an earlier call can be passed to reuse its connection.
     """
     if stdout is None:
         stdout = sys.stdout.buffer
     if stderr is None:
         stderr = sys.stderr.buffer
 
-    client = SyncServerlessClient(host=args.host, team=args.team)
-    stub = client._create_host()._connection.stub
-    runner_id = args.id
+    stub = stub or client._create_host()._connection.stub
 
     if interactive and os.name == "nt":
-        args.console.print(
-            "[red]Error:[/] Interactive runner shell is not supported on Windows."
-        )
+        message = "Interactive runner shell is not supported on Windows."
+        if console is None:
+            raise NotImplementedError(message)
+        console.print(f"[red]Error:[/] {message}")
         return 1
 
     is_tty = interactive and sys.stdin.isatty()
@@ -264,38 +299,58 @@ def _shell_session(args, command, interactive, *, remote_tty, stdout=None, stder
         if is_tty:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
+    marker_seen = False
+    tail = b""
+    call = None
+    grace: Timer | None = None
+    gave_up = Event()
     try:
-        for output in stub.ShellRunner(stream_inputs()):
-            if output.HasField("exit_code"):
-                exit_code = output.exit_code
-                break
+        call = stub.ShellRunner(stream_inputs(), timeout=timeout)
+        for output in call:
             if output.data:
-                stream = (
-                    stderr
-                    if output.HasField("stream") and output.stream == 2
-                    else stdout
-                )
+                to_stderr = output.HasField("stream") and output.stream == 2
+                stream = stderr if to_stderr else stdout
                 stream.write(output.data)
                 stream.flush()
-            if output.close:
+                if until and not to_stderr:
+                    window = tail + output.data
+                    marker_seen = marker_seen or until in window
+                    tail = window[-len(until) :]
+            if output.HasField("exit_code"):
+                exit_code = output.exit_code
+                if until and not marker_seen:
+                    # Late output follows the exit code at once or not at all.
+                    grace = Timer(UNTIL_GRACE_SECONDS, _give_up, (call, gave_up))
+                    grace.start()
+            if output.close or (marker_seen if until else output.HasField("exit_code")):
                 break
         exit_code = exit_code or 0
     except grpc.RpcError as exc:
         restore_tty()
-        if exc.code() == grpc.StatusCode.UNAVAILABLE:
+        if gave_up.is_set():
+            pass  # cancelled once the grace period ran out; the exit code stands
+        elif console is None:
+            raise
+        elif exc.code() == grpc.StatusCode.UNAVAILABLE:
             from fal.api.api import _format_unavailable_error
 
-            args.console.print(
+            console.print(
                 f"\n[red]Connection error:[/] {_format_unavailable_error(exc)}"
             )
         else:
-            args.console.print(f"\n[red]Connection error:[/] {exc.details()}")
+            console.print(f"\n[red]Connection error:[/] {exc.details()}")
     except Exception as exc:
         restore_tty()
-        args.console.print(f"\n[red]Error:[/] {exc}")
+        if console is None:
+            raise
+        console.print(f"\n[red]Error:[/] {exc}")
     finally:
+        if grace is not None:
+            grace.cancel()
         stop_flag = True
         restore_tty()
+        if call is not None and hasattr(call, "cancel"):
+            call.cancel()  # ends the stream when the loop stopped early
 
     return exit_code
 
@@ -715,20 +770,75 @@ DEFAULT_STREAM_SINCE = timedelta(minutes=1)
 
 
 def _logs(args):
-    params: dict[str, str] = {"job_id": args.id}
-    if args.search is not None:
-        params["search"] = args.search
+    lines_count: int | None = None
+    lines_oldest = False
+    if args.lines is not None:
+        lines_str = args.lines
+        if lines_str.startswith("+"):
+            lines_str = lines_str[1:]
+            lines_oldest = True
+        try:
+            lines_count = int(lines_str)
+        except ValueError:
+            args.parser.error("Invalid -n|--lines value. Use an integer or +integer.")
 
     client = SyncServerlessClient(host=args.host, team=args.team)
+    print_logs(
+        client,
+        args.id,
+        args.console,
+        follow=args.follow,
+        since=args.since,
+        until=args.until,
+        search=args.search,
+        lines=lines_count,
+        oldest=lines_oldest,
+        output=args.output,
+    )
+
+
+def recent_logs(
+    client: SyncServerlessClient, runner_id: str, since: datetime, count: int
+) -> list[dict]:
+    """The newest `count` log lines of a runner since `since`, oldest first."""
     rest_client = client._create_rest_client()
-    runner_info = _get_runner_info(rest_client, args.id)
-    follow: bool = args.follow
-    since = args.since
+    with httpx.Client(
+        base_url=rest_client.base_url, headers=rest_client.get_headers(), timeout=15
+    ) as http:
+        items, _ = _post_history(http, {"job_id": runner_id}, since, None, count)
+    return list(reversed(items))  # the API returns newest first
+
+
+def print_logs(
+    client: SyncServerlessClient,
+    runner_id: str,
+    console: Console,
+    *,
+    follow: bool,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    search: str | None = None,
+    lines: int | None = None,
+    oldest: bool = False,
+    output: str = "pretty",
+) -> None:
+    """Print a runner's logs, as `fal runners logs` does.
+
+    A followed runner's logs start a minute ago unless `since` says otherwise;
+    otherwise they start when the runner did. Both ends are kept within the
+    runner's lifetime.
+    """
+    params: dict[str, str] = {"job_id": runner_id}
+    if search is not None:
+        params["search"] = search
+
+    rest_client = client._create_rest_client()
+    runner_info = _get_runner_info(rest_client, runner_id)
     if follow:
         since = since or (datetime.now(timezone.utc) - DEFAULT_STREAM_SINCE)
     else:
         since = since or runner_info.started_at
-    until = args.until or runner_info.ended_at
+    until = until or runner_info.ended_at
 
     # Normalize to aware UTC for comparisons
     if since is not None:
@@ -752,39 +862,23 @@ def _logs(args):
     if since is not None and until is not None and until < since:
         since, until = until, since
 
-    lines_arg = args.lines
-    lines_count: int | None = None
-    lines_oldest = False
-    if lines_arg is not None:
-        if lines_arg.startswith("+"):
-            lines_str = lines_arg[1:]
-            lines_oldest = True
-        else:
-            lines_str = lines_arg
-        try:
-            lines_count = int(lines_str)
-        except ValueError:
-            args.parser.error("Invalid -n|--lines value. Use an integer or +integer.")
-
     if follow:
         logs_gen = _stream_logs(rest_client, params, since, until)
     else:
-        logs_gen = _get_logs(
-            rest_client, params, since, until, lines_count, oldest=lines_oldest
-        )
+        logs_gen = _get_logs(rest_client, params, since, until, lines, oldest=oldest)
 
-    printer = LogPrinter(args.console)
+    printer = LogPrinter(console)
 
     if follow:
         for log in logs_gen:
-            if args.output == "json":
-                args.console.print(json.dumps(log))
+            if output == "json":
+                console.print(json.dumps(log))
             else:
                 printer.print(log)
         return
 
-    if args.output == "json":
-        args.console.print(json.dumps({"logs": list(logs_gen)}))
+    if output == "json":
+        console.print(json.dumps({"logs": list(logs_gen)}))
     else:
         for log in reversed(list(logs_gen)):
             printer.print(log)

@@ -1,9 +1,9 @@
 """A personal, persistent dev box: a private fal app kept at one runner while in use.
 
-`fal dev deploy` deploys box_app.py as `devbox-<name>`; `up` and `down` scale it
-between one runner and none. Its files live on /data, so they survive restarts:
-the box's own team-owned volume (`devbox-<name>`) mounted at /data, or with
---team-data the team-shared /data.
+`fal dev deploy` deploys remote/box_app.py as `devbox-<name>`; `up` and `down`
+scale it between one runner and none. Its files live on /data, so they survive
+restarts: the box's own team-owned volume (`devbox-<name>`) mounted at /data, or
+with --team-data the team-shared /data.
 """
 
 from __future__ import annotations
@@ -11,17 +11,25 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import shlex
 import sys
 import time
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 from typing import BinaryIO, Iterator
 
+import grpc
+
 from fal.api.client import SyncServerlessClient
+from fal.cli.runners import recent_logs, shell_session
+from fal.config import Config
 from fal.dev import config
+from fal.dev.errors import DevError
 from fal.sdk import AliasInfo, RunnerInfo, RunnerState
 
-BOX_APP = Path(__file__).parent / "remote" / "box_app.py"
+REMOTE = Path(__file__).parent / "remote"
+BOX_APP = REMOTE / "box_app.py"
 LIVE_STATES = {RunnerState.RUNNING, RunnerState.IDLE}
 # Runner states that will not come back; anything else may still bill.
 FINAL_STATES = {RunnerState.DEAD, RunnerState.TERMINATED, RunnerState.TERMINATING}
@@ -30,10 +38,11 @@ POLL_SECONDS = 10
 SSH_READY_MARKER = b"__devbox_sshd_ready__\n"
 # Pythons the default image's torch pin has wheels for.
 SUPPORTED_PYTHON = ((3, 10), (3, 13))
-
-
-class DevError(Exception):
-    """A `fal dev` failure with a message meant for the user."""
+# Commands on the runner that take longer than this are given up on.
+RUN_TIMEOUT_SECONDS = 60
+SAVE_TIMEOUT_SECONDS = 1800
+# Credentials are rebuilt this often; building them can cost an API call.
+AUTH_TTL_SECONDS = 300
 
 
 def log(message: str) -> None:
@@ -101,6 +110,25 @@ class _HoldUntilMarker:
         self.out.flush()
 
 
+@dataclass(frozen=True)
+class BoxState:
+    """What the platform says about the box (not the box itself)."""
+
+    # running, stopping (being shut down), starting, stopped or failed (to start)
+    code: str
+    app: AliasInfo | None
+    # The newest runner that is up or on its way, if any.
+    runner: RunnerInfo | None
+
+    @property
+    def machine_type(self) -> str | None:
+        if self.runner:
+            return self.runner.machine_type
+        return (
+            self.app.machine_types[0] if self.app and self.app.machine_types else None
+        )
+
+
 class Box:
     def __init__(
         self, name: str, *, host: str | None = None, team: str | None = None
@@ -108,31 +136,57 @@ class Box:
         self.name = name
         self.app = config.app_name(name)
         self.host = host
-        self.team = team
-        self.client = SyncServerlessClient(host=host, team=team)
+        self.team = team or Config().get_internal("team")
+        self.client = SyncServerlessClient(host=host, team=self.team)
+        self._stub = None
+        self._auth: dict[str, str] = {}
+        self._auth_at = 0.0
 
-    # --- queries ---
+    def auth_headers(self) -> dict[str, str]:
+        """Headers that sign calls to the platform as you, rebuilt now and then."""
+        from fal.sdk import get_credentials
 
-    def runners(self, since=None) -> list[RunnerInfo]:
+        if time.time() - self._auth_at > AUTH_TTL_SECONDS:
+            self._auth = get_credentials(team=self.team).to_headers()
+            self._auth_at = time.time()
+        return self._auth
+
+    def runners(self, since: datetime | None = None) -> list[RunnerInfo]:
         return self.client.apps.runners(self.app, since=since)
 
     def poll_runners(self, attempts: int = 3) -> list[RunnerInfo]:
         """List runners, retrying briefly so one network blip does not abort a start."""
-        for attempt in range(attempts):
+        for _ in range(attempts - 1):
             try:
                 return self.runners()
             except Exception:
-                if attempt == attempts - 1:
-                    raise
                 time.sleep(POLL_SECONDS)
-        return []
+        return self.runners()
 
     def app_info(self) -> AliasInfo | None:
-        return next((a for a in self.client.apps.list() if a.alias == self.app), None)
+        apps = self.client.apps.list(filter=self.app)
+        return next((a for a in apps if a.alias == self.app), None)
 
     def armed(self) -> bool:
         info = self.app_info()
         return bool(info and info.min_concurrency)
+
+    def state(self) -> BoxState:
+        runners = self.runners()
+        app = self.app_info()
+        live = newest_live(runners)
+        if live:
+            armed = bool(app and app.min_concurrency)
+            return BoxState("running" if armed else "stopping", app, live[0])
+        pending = newest_first([r for r in runners if r.state not in FINAL_STATES])
+        if not pending:
+            return BoxState("stopped", app, None)
+        states = {r.state for r in pending}
+        if RunnerState.CRASH_BACKOFF in states:
+            return BoxState("failed", app, pending[0])
+        if states <= STOPPING_STATES:
+            return BoxState("stopping", app, pending[0])
+        return BoxState("starting", app, pending[0])
 
     def require_runner(self) -> str:
         live = newest_live(self.runners())
@@ -144,32 +198,59 @@ class Box:
             )
         return live[0].runner_id
 
-    # --- runner commands ---
+    def run(
+        self,
+        runner_id: str,
+        command: list[str],
+        *,
+        timeout: float = RUN_TIMEOUT_SECONDS,
+        until: bytes | None = None,
+    ) -> tuple[int, str]:
+        """Run a command on the runner; its exit code and combined output.
 
-    def _session_args(self, runner_id: str) -> SimpleNamespace:
-        from rich.console import Console
-
-        # Errors go to stderr: under ssh-proxy, stdout is the SSH connection.
-        return SimpleNamespace(
-            host=self.host, team=self.team, id=runner_id, console=Console(stderr=True)
-        )
-
-    def run(self, runner_id: str, command: list[str]) -> tuple[int, str]:
-        """Run a command on the runner; its exit code and combined output."""
-        from fal.cli.runners import _shell_session
-
+        With `until`, output is read up to that marker rather than up to the exit
+        code, which can arrive before the last of the output; the exit code is
+        then not meaningful. A command still running after `timeout` seconds is
+        given up on.
+        """
         out = io.BytesIO()
-        code = _shell_session(
-            self._session_args(runner_id),
-            command=command,
-            interactive=False,
-            remote_tty=False,
-            stdout=out,
-            stderr=out,
-        )
+        for retry in (True, False):
+            out.seek(0)
+            out.truncate()
+            if self._stub is None:
+                self._stub = self.client._create_host()._connection.stub
+            try:
+                code = shell_session(
+                    self.client,
+                    runner_id,
+                    command,
+                    interactive=False,
+                    remote_tty=False,
+                    console=None,
+                    stdout=out,
+                    stderr=out,
+                    timeout=timeout,
+                    until=until,
+                    stub=self._stub,
+                )
+                break
+            except Exception as exc:
+                self._stub = None
+                # The cached channel carries the access token it was built with.
+                expired = (
+                    isinstance(exc, grpc.RpcError)
+                    and exc.code() == grpc.StatusCode.UNAUTHENTICATED
+                )
+                if not (expired and retry):
+                    reason = exc.details() if isinstance(exc, grpc.RpcError) else exc
+                    raise DevError(
+                        f"could not run a command on the box: {reason}"
+                    ) from exc
         return code, out.getvalue().decode(errors="replace")
 
-    # --- lifecycle ---
+    def logs(self, runner_id: str, count: int, since: datetime) -> list[dict]:
+        """The newest `count` log lines of a runner since `since`, oldest first."""
+        return recent_logs(self.client, runner_id, since, count)
 
     def scale(self, min_concurrency: int, machine_type: str | None = None) -> None:
         self.client.apps.scale(
@@ -208,14 +289,21 @@ class Box:
         if not live:
             return
         log(f"saving {config.LOCAL_WORK} ...")
-        code, output = self.run(live[0].runner_id, [config.SAVE_COMMAND])
+        guidance = (
+            "the box is still running and the save may still be in progress. Retry, "
+            "or to stop anyway and lose changes since the last save, add --no-save"
+        )
+        try:
+            code, output = self.run(
+                live[0].runner_id, [config.SAVE_COMMAND], timeout=SAVE_TIMEOUT_SECONDS
+            )
+        except DevError as exc:
+            raise DevError(f"could not save {config.LOCAL_WORK} ({exc}); {guidance}")
         output = " ".join(output.split())
         if code != 0:
             raise DevError(
-                f"could not save {config.LOCAL_WORK} ({output or f'exit {code}'}); "
-                "the box is still running. To stop anyway and lose changes since the "
-                "last save, "
-                "add --no-save"
+                f"could not save {config.LOCAL_WORK} "
+                f"({output or f'exit {code}'}); {guidance}"
             )
         log(output)
 
@@ -229,21 +317,20 @@ class Box:
         if entry is None:
             log(
                 f"warning: the {config.ADMIN_KEY_SECRET} secret is not set, "
-                "so this box "
-                "will not shut itself down when idle. Remember to run: fal dev down"
+                "so this box will not shut itself down when idle. "
+                "Remember to run: fal dev down"
             )
         elif entry.default_exposed is not False:
             log(
                 f"warning: {config.ADMIN_KEY_SECRET} is exposed to every app on the "
-                "team. "
-                "Set it again with: fal secrets set --not-exposed-by-default "
+                "team. Set it again with: fal secrets set --not-exposed-by-default "
                 f"{config.ADMIN_KEY_SECRET}=<admin key>"
             )
 
     def deploy(
         self,
         *,
-        gpu: str | None = None,
+        machine_type: str | None = None,
         num_gpus: int = config.DEFAULT_NUM_GPUS,
         idle_minutes: int = config.DEFAULT_IDLE_MINUTES,
         claude: bool = False,
@@ -289,7 +376,7 @@ class Box:
                 "again in a few minutes"
             )
         current = app.machine_types[0] if app and app.machine_types else None
-        machine_type = gpu or current or config.DEFAULT_GPU
+        machine_type = machine_type or current or config.DEFAULT_GPU
         settings = {
             config.ENV_NAME: self.name,
             config.ENV_MACHINE_TYPE: machine_type,
@@ -310,9 +397,8 @@ class Box:
                     (str(BOX_APP), "DevBox"),
                     app_name=self.app,
                     auth="private",
-                    # Apply the app's scale settings; without this the termination
-                    # grace period, which gives teardown() time to save /work, is
-                    # never set.
+                    # Without this the app's termination grace period, which gives
+                    # teardown() time to save /work, is never set.
                     reset_scale=True,
                 )
             if not was_stopped:
@@ -341,11 +427,7 @@ class Box:
         )
 
     def ensure_volume(self) -> str:
-        """Create the box's volume if needed; its name.
-
-        A new volume starts empty: the box copies its workspace from the team
-        /data on start, which needs the ADMIN key.
-        """
+        """Create the box's volume if needed; its name."""
         from fal.exceptions.volumes import (
             VolumeAccountNotEligibleError,
             VolumeAlreadyExistsError,
@@ -361,33 +443,11 @@ class Box:
                 f"this team cannot use volumes ({exc}); deploy with --team-data to "
                 "keep the box on the team-shared /data"
             ) from exc
-        log(f"created volume {volume} for the box's /data")
-        if self.team_workspace_exists() and not self.has_admin_key():
-            log(
-                "warning: this box has a workspace on the team /data. The box copies "
-                f"it into {volume} when it starts, which needs the "
-                f"{config.ADMIN_KEY_SECRET} secret; until it is set the box starts "
-                "with an empty workspace (the team copy is untouched). Set it with: "
-                f"fal secrets set --not-exposed-by-default "
-                f"{config.ADMIN_KEY_SECRET}=<admin key>"
-            )
+        log(
+            f"created volume {volume} for the box's /data. It starts empty: to keep "
+            "an existing box's files on the team /data, deploy with --team-data"
+        )
         return volume
-
-    def team_workspace_exists(self) -> bool:
-        from fal.files import FalFileSystem
-
-        workspace = f"{config.WORKSPACE_ROOT}/{self.name}"
-        try:
-            return bool(FalFileSystem(host=self.host, team=self.team).ls(workspace))
-        except Exception:
-            return False
-
-    def has_admin_key(self) -> bool:
-        try:
-            secrets = self.client.secrets.list()
-        except Exception:
-            return True  # unknown: let the box report it
-        return any(s.name == config.ADMIN_KEY_SECRET for s in secrets)
 
     def wait_until_ready(self, timeout: int) -> RunnerInfo | None:
         """Poll until a runner is ready; None on timeout. Raises if the start fails."""
@@ -437,22 +497,21 @@ class Box:
             )
         return runner
 
-    def up(self, timeout: int, gpu: str | None = None) -> RunnerInfo:
+    def up(self, timeout: int, machine_type: str | None = None) -> RunnerInfo:
         if self.app_info() is None:
             log(
                 f"{self.app} does not exist yet; "
                 "deploying it with the default image ..."
             )
-            log(self.deploy(gpu=gpu))
+            log(self.deploy(machine_type=machine_type))
         live = newest_live(self.runners())
-        if live and gpu and live[0].machine_type != gpu:
+        if live and machine_type and live[0].machine_type != machine_type:
             raise DevError(
                 f"the box is running on {live[0].machine_type}. "
-                "Run `fal dev down` first "
-                f"to switch to {gpu}."
+                f"Run `fal dev down` first to switch to {machine_type}."
             )
         self.check_admin_key()
-        return self.start(timeout, gpu)
+        return self.start(timeout, machine_type)
 
     def down(self, no_save: bool = False) -> None:
         if not no_save:
@@ -475,46 +534,47 @@ class Box:
         # Re-arm the box in case the watchdog has just started shutting it down.
         self.scale(1)
         until = int(time.time() + hours * 3600)
-        command = config.hold_command(until)
-        code, output = self.run(live[0].runner_id, ["sh", "-c", command])
-        if code != 0:
+        script = (REMOTE / "scripts" / "hold.sh").read_text()
+        kept = str(config.HOLD_KEPT_EXIT)
+        code, output = self.run(
+            live[0].runner_id,
+            ["sh", "-c", script, "sh", config.HOLD_FILE, str(until), kept],
+        )
+        if code not in (0, config.HOLD_KEPT_EXIT):
             raise DevError(
                 f"could not set the hold: {output.strip() or f'exit {code}'}"
             )
         # An idle shutdown that was already under way may have landed after the re-arm.
         if not self.armed():
             self.scale(1)
-        return config.HOLD_KEPT not in output.split()
+        return code == 0
 
     def status(self) -> list[str]:
-        runners = self.runners()
-        live = newest_live(runners)
-        if live:
-            runner = live[0]
+        state = self.state()
+        runner = state.runner
+        if runner and runner.state in LIVE_STATES:
             uptime_min = int(runner.uptime.total_seconds()) // 60
-            state = (
+            running = (
                 "running"
-                if self.armed()
+                if state.code == "running"
                 else "shutting down (run `fal dev up` to keep it)"
             )
             return [
-                f"{self.app}: {state} on {runner.machine_type}",
+                f"{self.app}: {running} on {runner.machine_type}",
                 f"runner: {runner.runner_id}  uptime: {uptime_min} min",
             ]
-        states = {r.state for r in runners} - FINAL_STATES
-        if states and states <= STOPPING_STATES:
-            return [f"{self.app}: stopping"]
-        pending = sorted(s.value.lower() for s in states - STOPPING_STATES)
-        if pending:
+        if runner and state.code == "starting":
             return [
-                f"{self.app}: starting ({', '.join(pending)}). "
+                f"{self.app}: starting ({runner.state.value.lower()}). "
                 "Cancel with: fal dev down"
             ]
-        if self.app_info() is None:
+        if runner and state.code == "failed":
+            return [f"{self.app}: failed to start. See why with: fal dev logs --all"]
+        if state.code == "stopping":
+            return [f"{self.app}: stopping"]
+        if state.app is None:
             return [f"{self.app}: not deployed. Create it with: fal dev up"]
         return [f"{self.app}: stopped"]
-
-    # --- SSH ---
 
     def ssh_proxy(self, timeout: int) -> int:
         """SSH ProxyCommand: carry the SSH connection over runner exec.
@@ -524,24 +584,22 @@ class Box:
         can be reported instead of handed to the SSH client. A stopped (or
         stopping) box is started first, so connecting wakes it.
         """
-        from fal.cli.runners import _shell_session
+        from rich.console import Console
 
         # Editors give up on a failed connect, so ride out brief fal API errors.
         for attempt in range(3):
             try:
-                live = newest_live(self.runners())
-                armed = self.armed()
+                state = self.state()
                 break
             except Exception:
                 if attempt == 2:
                     raise
                 time.sleep(5)
-        if live and armed:
-            runner_id = live[0].runner_id
-        elif live:
-            # Re-arm a box that is shutting down; its runner is still there.
-            self.scale(1)
-            runner_id = live[0].runner_id
+        if state.runner and state.runner.state in LIVE_STATES:
+            runner_id = state.runner.runner_id
+            if state.code == "stopping":
+                # Re-arm a box that is shutting down; its runner is still there.
+                self.scale(1)
         else:
             log(f"{self.app} is stopped, starting it ...")
             runner_id = self.start(timeout).runner_id
@@ -552,11 +610,14 @@ class Box:
             f"&& exec /usr/sbin/sshd -i -f {config.SSHD_CONFIG} -E {sshd_log}"
         )
         out = _HoldUntilMarker(sys.stdout.buffer)
-        code = _shell_session(
-            self._session_args(runner_id),
-            command=["sh", "-c", remote],
+        code = shell_session(
+            self.client,
+            runner_id,
+            ["sh", "-c", remote],
             interactive=True,
             remote_tty=False,
+            # Errors go to stderr: stdout is the SSH connection.
+            console=Console(stderr=True),
             stdout=out,
         )
         if not out.ready:
@@ -568,18 +629,20 @@ class Box:
         return code
 
 
-def ssh_config(name: str, fal_command: str, team: str | None = None) -> str:
+def ssh_config(
+    name: str, fal_command: str, host: str | None = None, team: str | None = None
+) -> str:
     """An ~/.ssh/config entry for Cursor / VS Code Remote-SSH."""
-    import shlex
-
-    host = config.app_name(name)
+    alias = config.app_name(name)
     proxy = f"{shlex.quote(fal_command)} dev ssh-proxy --name {name}"
+    if host:
+        proxy += f" --host {shlex.quote(host)}"
     if team:
         proxy += f" --team {shlex.quote(team)}"
     # Leading blank line: appending to a config without a trailing newline stays valid.
     return (
-        f"\nHost {host}\n"
-        f"    HostName {host}\n"
+        f"\nHost {alias}\n"
+        f"    HostName {alias}\n"
         "    User root\n"
         f"    ProxyCommand {proxy}\n"
         "    ServerAliveInterval 30\n"

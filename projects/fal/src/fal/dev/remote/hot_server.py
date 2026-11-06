@@ -8,8 +8,8 @@ works in any virtualenv). A project is a folder with:
 
 Saving any other .py file in the folder reloads it and infer.py, in the same
 process, so the next request runs the new code with the weights still on the
-GPU. Saving load.py (or requirements.txt) is a full
-restart: the process exits with RESTART_EXIT_CODE and `devbox-hot` reinstalls
+GPU. Saving load.py (or requirements.txt) is a full restart: the process exits
+with the --restart-code it was started with, and `devbox-hot` reinstalls
 requirements and starts it again, which reloads the weights.
 
 `infer()` returns a PIL image (sent as PNG), bytes, or anything JSON-serializable.
@@ -35,7 +35,7 @@ from pathlib import Path
 
 # Changes to these mean new weights or new dependencies: restart the process.
 RESTART_FILES = {"load.py", "requirements.txt"}
-RESTART_EXIT_CODE = 3
+# Not fal.dev.files.SKIP_DIRS: this file runs on the box without fal.
 SKIP_DIRS = {".venv", "__pycache__", ".git", "node_modules"}
 POLL_SECONDS = 0.25
 
@@ -79,6 +79,7 @@ class Project:
         self.load_seconds = 0.0
         self.last_change = max(self.files.values(), default=time.time())
         self.last_reload: dict = {}
+        self.last_infer: dict = {}
         self.restart_reason: str | None = None
 
     def load(self) -> None:
@@ -191,6 +192,7 @@ class Project:
                     {},
                 )
             infer_ms = (time.time() - start) * 1000
+            self.last_infer = {"at": time.time(), "ms": round(infer_ms)}
         content_type, body = encode(result)
         headers = {
             "X-Hot-Infer-Ms": f"{infer_ms:.0f}",
@@ -210,6 +212,7 @@ class Project:
             "code_version": self.generation,
             "load_seconds": round(self.load_seconds, 1),
             "last_reload": self.last_reload,
+            "last_infer": self.last_infer,
             "error": self.error,
             "restarting": self.restart_reason,
             "pid": os.getpid(),
@@ -249,7 +252,8 @@ def watch(project: Project, server: ThreadingHTTPServer) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project", type=Path)
-    parser.add_argument("--port", type=int, default=7860)
+    parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--restart-code", type=int, required=True)
     args = parser.parse_args()
     project = Project(args.project.resolve())
 
@@ -303,13 +307,13 @@ def main() -> None:
         # Wait for a fix instead of exiting into a tight restart loop.
         while scan(project.root) == project.files:
             time.sleep(POLL_SECONDS)
-        sys.exit(RESTART_EXIT_CODE)
+        sys.exit(args.restart_code)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     threading.Thread(target=watch, args=(project, server), daemon=True).start()
     log(f"serving {project.root} on 127.0.0.1:{args.port}")
     server.serve_forever()
     # Only the watcher stops the server: a restart was requested or load code changed.
-    sys.exit(RESTART_EXIT_CODE)
+    sys.exit(args.restart_code)
 
 
 if __name__ == "__main__":

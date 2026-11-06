@@ -25,6 +25,7 @@ _REST_HOST_ENV = os.getenv("FAL_REST_HOST")
 _RUN_HOST_ENV = os.getenv("FAL_RUN_HOST")
 _QUEUE_RUN_HOST_ENV = os.getenv("FAL_QUEUE_RUN_HOST")
 _WS_RUN_HOST_ENV = os.getenv("FAL_WS_RUN_HOST")
+_PLATFORM_URL_ENV = os.getenv("FAL_PLATFORM_URL")
 
 # Legacy: FAL_HOST takes precedence over config.host (unless FAL_GRPC_HOST is set)
 GRPC_HOST = _GRPC_HOST_ENV or os.getenv("FAL_HOST") or config_host or "api.alpha.fal.ai"
@@ -44,6 +45,11 @@ REST_URL = f"{REST_SCHEME}://{REST_HOST}"
 # fal.run / env.fal.run
 FAL_RUN_HOST = _RUN_HOST_ENV or (
     GRPC_HOST.replace("api.", "", 1).replace("alpha.", "", 1).replace(".ai", ".run", 1)
+)
+
+# The platform API (api.fal.ai/v1)
+PLATFORM_URL = (
+    _PLATFORM_URL_ENV or f"{REST_SCHEME}://{GRPC_HOST.replace('alpha.', '', 1)}/v1"
 )
 
 FAL_QUEUE_RUN_HOST = _QUEUE_RUN_HOST_ENV or f"queue.{FAL_RUN_HOST}"

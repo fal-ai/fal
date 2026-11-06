@@ -2,13 +2,17 @@ import argparse
 import importlib
 import subprocess
 import sys
+from datetime import timedelta
+from unittest.mock import MagicMock
 
 import pytest
 
 from fal.cli.main import _get_main_parser, parse_args
 from fal.cli.parser import FalParserExit
 from fal.dev import config, state
+from fal.dev.cli import box as box_commands
 from fal.dev.cli.common import default_name, resolve_name
+from fal.sdk import RunnerState
 
 
 @pytest.fixture(autouse=True)
@@ -206,3 +210,89 @@ def test_every_dev_command_resolves_its_handler():
         module, handler = leaf.get_default("func").__name__.split(".")
         implementation = importlib.import_module(f"fal.dev.cli.{module}")
         assert callable(getattr(implementation, f"cmd_{handler}")), leaf.prog
+
+
+def test_dev_dash_takes_no_app_or_idle_override():
+    for flag in (["--app", "x"], ["--idle-minutes", "30"]):
+        with pytest.raises(FalParserExit):
+            parse_args(["dev", "dash", *flag])
+
+
+def _runner(runner_id, state, uptime):
+    runner = MagicMock(runner_id=runner_id, state=state)
+    runner.uptime = timedelta(seconds=uptime)
+    return runner
+
+
+@pytest.fixture
+def fake_box(monkeypatch):
+    box = MagicMock(app="devbox-k", host=None, team=None)
+    box.require_runner.return_value = "r1"
+    monkeypatch.setattr(box_commands, "get_box", lambda args: box)
+    return box
+
+
+def test_dev_shell_and_exec_open_a_session_on_the_boxs_runner(monkeypatch, fake_box):
+    sessions = []
+    monkeypatch.setattr(
+        box_commands,
+        "shell_session",
+        lambda *args, **kwargs: sessions.append((args, kwargs)) or 0,
+    )
+    shell = parse_args(["dev", "shell"])
+    shell.console = MagicMock()
+    exec_ = parse_args(["dev", "exec", "--", "nvidia-smi"])
+    exec_.console = MagicMock()
+
+    assert box_commands.cmd_shell(shell) == 0
+    assert box_commands.cmd_exec(exec_) == 0
+
+    (args, kwargs), (exec_args, _) = sessions
+    assert args == (fake_box.client, "r1", None)
+    assert (kwargs["interactive"], kwargs["remote_tty"]) == (True, True)
+    assert exec_args == (fake_box.client, "r1", ["nvidia-smi"])
+
+
+def test_dev_logs_follow_the_live_runner(monkeypatch, fake_box):
+    printed = []
+    monkeypatch.setattr(
+        box_commands, "print_logs", lambda *args, **kw: printed.append((args, kw))
+    )
+    args = parse_args(["dev", "logs"])
+    args.console = MagicMock()
+
+    box_commands.cmd_logs(args)
+
+    assert printed == [((fake_box.client, "r1", args.console), {"follow": True})]
+
+
+def test_dev_logs_all_reads_the_runner_that_is_still_around(monkeypatch, fake_box):
+    printed = []
+    monkeypatch.setattr(
+        box_commands, "print_logs", lambda *args, **kw: printed.append((args, kw))
+    )
+    fake_box.runners.return_value = [
+        _runner("gone", RunnerState.TERMINATED, 5),
+        _runner("backing-off", RunnerState.CRASH_BACKOFF, 900),
+        _runner("older", RunnerState.PENDING, 1800),
+    ]
+    args = parse_args(["dev", "logs", "--all"])
+    args.console = MagicMock()
+
+    box_commands.cmd_logs(args)
+
+    ((call_args, kwargs),) = printed
+    assert call_args[1] == "backing-off"
+    assert kwargs["follow"] is False
+    assert kwargs["since"] is not None
+
+
+def test_dev_ssh_config_proxy_keeps_the_host_and_team(monkeypatch, capsys):
+    args = parse_args(
+        ["dev", "ssh-config", "--name", "k", "--host", "api.test", "--team", "t"]
+    )
+
+    box_commands.cmd_ssh_config(args)
+
+    entry = capsys.readouterr().out
+    assert "dev ssh-proxy --name k --host api.test --team t" in entry

@@ -10,8 +10,8 @@ from pathlib import Path
 from rich.markup import escape
 
 from fal.dev import config, hot, state
-from fal.dev.box import DevError
 from fal.dev.cli.common import get_box
+from fal.dev.errors import DevError
 
 
 def _project(args) -> tuple[str | None, str]:
@@ -63,7 +63,7 @@ def cmd_sync(args):
     _push(args, hot_box, local, remote)
     if args.watch:
         params = hot.parse_params(args.param, args.prompt) if args.run else None
-        hot_box.watch(Path(local), remote, params, args.output)
+        hot_box.watch(Path(local), remote, params, args.output, args.console)
 
 
 def cmd_run(args):

@@ -11,8 +11,8 @@ ARG FAL_SPEC=fal
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl ca-certificates git git-lfs tmux htop vim less openssh-client openssh-server build-essential \
-        zstd rsync \
+        build-essential ca-certificates curl git git-lfs htop less openssh-client \
+        openssh-server rsync tmux vim zstd \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.19 /uv /uvx /usr/local/bin/

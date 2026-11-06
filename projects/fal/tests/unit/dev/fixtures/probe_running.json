@@ -1,6 +1,5 @@
 {
   "now": 1762380000.0,
-  "hostname": "runner-abc",
   "gpus": [
     {
       "index": 0,
@@ -15,32 +14,54 @@
   ],
   "gpu_error": null,
   "activity": {
-    "last_tty_input": 1762379700.0,
     "ssh_sessions": 0,
     "gpu_busy": false,
     "hold_until": null,
     "held": false,
     "last_claude_activity": 1762379100.0
   },
-  "idle_state": null,
+  "idle_state": {
+    "last_active": 1762379880.0,
+    "idle_minutes": 60,
+    "reasons": [
+      "hot request"
+    ]
+  },
   "admin_key_set": true,
   "warnings": [],
-  "claude": {"running": true},
   "hot": {
     "running": true,
     "reachable": true,
     "ready": true,
     "code_version": 3,
     "load_seconds": 31.9,
-    "last_reload": {"files": ["infer.py"], "ms": 9.4, "ok": true},
+    "last_reload": {
+      "files": [
+        "infer.py"
+      ],
+      "ms": 9.4,
+      "ok": true
+    },
     "restarting": null,
     "pid": 4242,
-    "last_infer": {"at": 1762379880.0, "ms": 571}
+    "last_infer": {
+      "at": 1762379880.0,
+      "ms": 571
+    }
   },
   "work": {
-    "snapshot": {"mtime": 1762379400.0, "size": 62914560},
+    "snapshot": {
+      "mtime": 1762379400.0,
+      "size": 62914560
+    },
     "last_save": 1762379400.0,
-    "lease": {"owner": "runner-abc", "state": "active", "heartbeat": 1762379990, "mine": true},
+    "lease": {
+      "owner": "runner-abc",
+      "state": "active",
+      "heartbeat": 1762379990,
+      "mine": true
+    },
     "dirty": true
-  }
+  },
+  "claude_running": true
 }

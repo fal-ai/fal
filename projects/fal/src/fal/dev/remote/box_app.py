@@ -1,26 +1,22 @@
 """A persistent GPU dev box running as a fal serverless app.
 
-One app per developer (`devbox-<name>`), deployed and driven by `fal dev`. The
-app does little as an endpoint; it exists so that `min_concurrency=1` keeps
-exactly one GPU runner alive that you shell into.
+One app per developer (`devbox-<name>`), deployed and driven by `fal dev`. Its
+endpoints are only a wake-up call and the routes of `fal dev hot`; the app
+exists so that `min_concurrency=1` keeps one GPU runner alive that you shell into.
 
-What persists across stop/start: everything under /data, the box's own volume
-(or, deployed with --team-data, the team-shared /data). The container's local
-disk is fresh on every start, so the workspace, dotfiles and shell history live
-in /data/devboxes/<name>. /work is on the fast local disk and is kept in the
+Everything under /data survives a restart: the box's own volume, or with
+--team-data the team-shared /data. The container's local disk is fresh on every
+start, so the workspace, dotfiles and shell history live in
+/data/devboxes/<name>. /work is on the fast local disk and is kept in the
 workspace as one snapshot file.
 """
-
-from __future__ import annotations
 
 import asyncio
 import contextlib
 import fcntl
-import glob
 import hmac
 import json
 import os
-import posixpath
 import re
 import secrets as token_secrets
 import shlex
@@ -29,9 +25,9 @@ import subprocess
 import threading
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
+from string import Template
 
 from fastapi import Request, Response
 
@@ -39,6 +35,7 @@ import fal
 from fal.api.client import SyncServerlessClient
 from fal.container import ContainerImage
 from fal.dev import config
+from fal.dev.remote import signals
 
 # Evaluated on your laptop during `fal dev deploy` (see config.py) and shipped
 # with the app (fal itself ships by value). Always deploy through `fal dev deploy`,
@@ -51,15 +48,12 @@ VOLUME = os.environ.get(config.ENV_VOLUME) or None
 
 APP_NAME = config.app_name(BOX_NAME)
 WORKSPACE = Path(config.WORKSPACE_ROOT) / BOX_NAME
-HOLD_FILE = Path(config.HOLD_FILE)
 LOCAL_WORK = Path(config.LOCAL_WORK)
 SNAPSHOT = WORKSPACE / config.SNAPSHOT_FILE
 LEASE = WORKSPACE / config.LEASE_FILE
 # Serializes this runner's lease writes (heartbeat vs. release).
 LEASE_LOCK = Path("/tmp/devbox-lease.lock")
-# Touched after each restore and save; a file under /work newer than it is a change.
 SAVE_STAMP = Path(config.SAVE_STAMP)
-# Shown by every new shell when idle shutdown cannot work.
 WARNING_FILE = Path(config.WARNING_FILE)
 # Dotfiles and config directories that live in the workspace and get
 # symlinked into $HOME on start.
@@ -70,8 +64,8 @@ PERSISTED_HOME_DIRS = [
     ".cursor-server/extensions",
     ".vscode-server/extensions",
 ]
-WATCHDOG_INTERVAL_SECONDS = 60
 SHUTDOWN_RETRY_SECONDS = 600
+GPU_FAILURES_BEFORE_WARNING = 3
 CLAUDE_CONFIG_DIR = WORKSPACE / config.CLAUDE_CONFIG_SUBDIR
 # The last screen of `claude remote-control` when it exits, for the box's logs.
 CLAUDE_EXIT_LOG = Path("/tmp/devbox-claude-exit.log")
@@ -79,6 +73,7 @@ CLAUDE_EXIT_LOG = Path("/tmp/devbox-claude-exit.log")
 # retried slowly.
 CLAUDE_QUICK_EXIT_SECONDS = 60
 CLAUDE_RETRY_SECONDS = 300
+JSON_TYPE = "application/json"
 
 DOCKERFILE = Path(
     os.environ.get(config.ENV_DOCKERFILE) or Path(__file__).with_name("Dockerfile")
@@ -86,77 +81,85 @@ DOCKERFILE = Path(
 # cloudpickle needs the box's Python to match the one that deploys.
 PYTHON_VERSION = os.environ.get(config.ENV_PYTHON_VERSION, "3.11")
 FAL_SPEC = os.environ.get(config.ENV_FAL_SPEC, "fal")
+
 # Read on your laptop at deploy time and written to the box by setup().
 HOT_SERVER_SOURCE = Path(__file__).with_name("hot_server.py").read_text()
+PROBE_FILES = {
+    "probe.py": Path(__file__).with_name("probe.py").read_text(),
+    "signals.py": Path(signals.__file__).read_text(),
+    "config.py": Path(config.__file__).read_text(),
+}
+SCRIPTS = Path(__file__).with_name("scripts")
+SAVE_SCRIPT = (SCRIPTS / "devbox-save.sh").read_text()
+HOT_SCRIPT = (SCRIPTS / "devbox-hot.sh").read_text()
+BASHRC_BLOCK = (SCRIPTS / "bashrc.sh").read_text()
+SSHD_TEMPLATE = (SCRIPTS / "sshd_config").read_text()
 # Last request to a /hot route; counts as activity for idle shutdown.
 _last_hot_request = 0.0
 
 
-def _last_tty_input() -> float:
-    """Most recent keyboard input on any pseudo-terminal (an open shell).
+def _fill(template: str, **values: object) -> str:
+    """The template with its `$NAME` placeholders filled in; other `$` stay."""
+    return Template(template).safe_substitute(values)
 
-    Only input counts: a forgotten terminal that keeps printing (htop, tail -f)
-    must not keep the box alive. Reading from a terminal updates its atime.
+
+def _write_atomic(path: Path, text: str) -> None:
+    """Replace a file so that no reader sees it half written."""
+    tmp = path.with_name(f".{path.name}.{socket.gethostname()}.tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+
+
+def _install_script(path: str, text: str) -> None:
+    script = Path(path)
+    script.write_text(text)
+    script.chmod(0o755)
+
+
+def _user_env() -> dict[str, str]:
+    """The environment for what runs your code, without the watchdog's ADMIN key.
+
+    Only a speed bump: everything on the box runs as root and can read the app's
+    environment from /proc, so the box is one trust domain.
     """
-    latest = 0.0
-    for pts in glob.glob("/dev/pts/[0-9]*"):
-        try:
-            latest = max(latest, os.stat(pts).st_atime)
-        except OSError:
-            continue
-    return latest
+    return {k: v for k, v in os.environ.items() if k != config.ADMIN_KEY_SECRET}
 
 
-def _ssh_connected() -> bool:
-    """True while an SSH client (Cursor, VS Code, a terminal) is connected.
+def _kill_tmux(session: str) -> None:
+    subprocess.run(
+        ["tmux", "kill-session", "-t", session], capture_output=True, check=False
+    )
 
-    `fal dev ssh-proxy` runs one `sshd -i` per connection and no sshd daemon
-    runs otherwise, so any sshd process means a client is attached. sshd
-    renames itself (`sshd: root@notty`), so match the name, not the flags.
-    sshd drops clients that stop answering (a sleeping laptop) within a few minutes.
+
+def _held() -> bool:
+    """True while a `fal dev hold` is in effect."""
+    return (signals.hold_until(config.HOLD_FILE) or 0) > time.time()
+
+
+_gpu_failures = 0
+
+
+def _gpu_activity() -> str | None:
+    """Why the GPUs count as activity, if they do.
+
+    A busy GPU is an unattended training run. A failed query counts too: it must
+    never be what shuts down a busy box. Failing for a while is warned about once,
+    since the box then never idles out.
     """
-    for cmdline in glob.glob("/proc/[0-9]*/cmdline"):
-        try:
-            argv0 = Path(cmdline).read_bytes().split(b"\0")[0]
-        except OSError:
-            continue
-        if argv0.rsplit(b"/", 1)[-1].startswith(b"sshd"):
-            return True
-    return False
-
-
-def _gpu_busy() -> bool:
-    """True if any GPU is above the busy threshold (an unattended training run)."""
-    try:
-        out = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=utilization.gpu",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        ).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return any(int(v) >= config.GPU_BUSY_PCT for v in out.split() if v.isdigit())
-
-
-def _last_claude_activity() -> float:
-    """Most recent change to any Claude Code transcript.
-
-    That is a message from the Claude app or a running turn: Remote Control
-    sessions take no terminal input, so they need their own activity signal.
-    """
-    latest = 0.0
-    for transcript in glob.glob(str(CLAUDE_CONFIG_DIR / "projects" / "*" / "*.jsonl")):
-        try:
-            latest = max(latest, os.stat(transcript).st_mtime)
-        except OSError:
-            continue
-    return latest
+    global _gpu_failures  # noqa: PLW0603
+    readings, error = signals.gpus()
+    if error:
+        _gpu_failures += 1
+        if _gpu_failures == GPU_FAILURES_BEFORE_WARNING:
+            _warn(
+                f"GPU status is unknown ({error}), so idle shutdown is off until "
+                "it can be read. Run `fal dev down` when done."
+            )
+        return "GPU status unknown"
+    if _gpu_failures >= GPU_FAILURES_BEFORE_WARNING:
+        _clear_warning("GPU status is unknown")
+    _gpu_failures = 0
+    return "GPU busy" if signals.gpu_busy(readings, config.GPU_BUSY_PCT) else None
 
 
 def _claude_server() -> None:
@@ -175,30 +178,16 @@ def _claude_server() -> None:
         "--spawn same-dir --no-create-session-in-dir"
     )
     # The pane saves its own last screen when the server exits, to explain why.
-    # Restart the server by stopping claude, never by killing the tmux session:
-    # that orphans claude, nothing in the container reaps it, and the zombie
-    # makes every later server refuse to start ("already served") until the box
-    # restarts.
+    # The server is restarted by stopping claude, never by killing the tmux
+    # session: that orphans claude, and nothing in the container reaps it.
     command = (
         f"{server}; code=$?; tmux capture-pane -p -S -40 > {CLAUDE_EXIT_LOG}; "
         f"echo exit $code >> {CLAUDE_EXIT_LOG}"
     )
-    # Claude runs whatever the Claude app asks; leave the ADMIN key out of its
-    # environment. Only a speed bump: everything on the box runs as root and can
-    # read the app's environment from /proc, so the box is one trust domain.
-    env = {k: v for k, v in os.environ.items() if k != config.ADMIN_KEY_SECRET}
     started = None
     while True:
         try:
-            running = (
-                subprocess.run(
-                    ["tmux", "has-session", "-t", session],
-                    capture_output=True,
-                    check=False,
-                ).returncode
-                == 0
-            )
-            if not running:
+            if not signals.tmux_session(session):
                 if started is not None:
                     log = (
                         CLAUDE_EXIT_LOG.read_text().strip()
@@ -238,7 +227,7 @@ def _claude_server() -> None:
                         config.CLAUDE_WORKDIR,
                         command,
                     ],
-                    env=env,
+                    env=_user_env(),
                     check=True,
                 )
                 started = time.time()
@@ -251,14 +240,6 @@ def _claude_server() -> None:
         except Exception as exc:  # never let the supervisor die silently
             print(f"[devbox] claude supervisor error: {exc!r}", flush=True)
         time.sleep(10)
-
-
-def _held() -> bool:
-    """True while a `fal dev hold` is in effect."""
-    try:
-        return time.time() < float(HOLD_FILE.read_text().strip())
-    except (OSError, ValueError):
-        return False
 
 
 def _admin_client() -> SyncServerlessClient | None:
@@ -327,154 +308,6 @@ def _check_admin_key() -> None:
         )
 
 
-def _migrate_from_team_data() -> None:
-    """Copy this box's workspace from the team-shared /data into its volume.
-
-    A volume hides the team /data, so the copy goes through the fal files API,
-    with the ADMIN key. It runs on each start until it succeeds once, and never
-    overwrites a file in the volume or changes the team copy. Runs while holding
-    the lease, so two runners never copy at once.
-    """
-    marker = WORKSPACE / config.MIGRATED_MARKER
-    if VOLUME is None or marker.exists():
-        return
-    hint = (
-        "if this box had a workspace on the team /data, set "
-        f"{config.ADMIN_KEY_SECRET} (an ADMIN key of this team) and restart the box "
-        "(fal dev down, fal dev up) to copy it; files the box creates before then "
-        "are kept over the team copy's, and the team copy is untouched"
-    )
-    client = _admin_client()
-    if client is None:
-        _warn(f"{config.ADMIN_KEY_SECRET} is not set: {hint}")
-        return
-    try:
-        if APP_NAME not in {app.alias for app in client.apps.list()}:
-            _warn(f"{config.ADMIN_KEY_SECRET} belongs to another team: {hint}")
-            return
-        copied, failed = _copy_team_workspace(client)
-        if failed:
-            raise RuntimeError(f"{len(failed)} files failed, first {failed[0]}")
-        marker.write_text(f"{copied} files copied\n")
-    except Exception as exc:
-        _warn(f"could not copy the workspace from the team /data ({exc}): {hint}")
-        return
-    if copied:
-        print(f"[devbox] copied {copied} files from the team /data", flush=True)
-
-
-def _copy_team_workspace(client: SyncServerlessClient) -> tuple[int, list[str]]:
-    """Download the team /data workspace's missing files.
-
-    One bad file does not stop the rest: returns how many were copied and the
-    ones that failed, with why.
-    """
-    import httpx
-
-    prefix = f"{WORKSPACE}/"
-    with httpx.Client(
-        base_url=client._rest_url,
-        headers=client._credentials.to_headers(),
-        timeout=httpx.Timeout(60, read=600),
-    ) as http:
-
-        def url(kind: str, path: str) -> str:
-            return f"/files/{kind}/{urllib.parse.quote(path, safe='/')}"
-
-        failed: list[str] = []
-
-        sizes: dict[str, int] = {}
-
-        def walk(path: str) -> list[str]:
-            response = http.get(url("list", path))
-            if response.status_code == 404:
-                return []
-            response.raise_for_status()
-            files = []
-            for entry in response.json():
-                # Only ever write inside this box's workspace.
-                child = posixpath.normpath(entry["path"])
-                if not child.startswith(prefix):
-                    failed.append(f"{child}: outside the workspace")
-                    continue
-                if entry["is_file"]:
-                    sizes[child] = entry["size"]
-                    files.append(child)
-                else:
-                    files += walk(child)
-            return files
-
-        paths = [
-            Path(p)
-            for p in walk(str(WORKSPACE))
-            # Runtime files of the team copy's runners: lease, partial saves.
-            if not (p.endswith(".tmp") or Path(p).name == config.LEASE_FILE)
-        ]
-        # The snapshot last, so a box that started fresh restores a complete one.
-        paths.sort(key=lambda p: p == SNAPSHOT)
-        copied = 0
-        for path in paths:
-            target = path
-            size = sizes[str(path)]
-            if (
-                path == SNAPSHOT
-                and SNAPSHOT.exists()
-                and SNAPSHOT.stat().st_size != size
-            ):
-                # This box already saved /work on its volume; keep both.
-                target = SNAPSHOT.with_name(f"{SNAPSHOT.name}.from-team-data")
-            if target.exists():
-                continue
-            try:
-                _download(http, url("file", str(path)), target, size)
-                if target != path:
-                    _warn(
-                        f"{LOCAL_WORK} was saved before the team copy arrived; "
-                        f"the team snapshot is at {target} (zstd -dc it | tar -x)"
-                    )
-            except Exception as exc:
-                failed.append(f"{path}: {exc}")
-                continue
-            copied += 1
-    return copied, failed
-
-
-def _download(http, url: str, target: Path, size: int) -> None:
-    """Download to `target` through a temp file; resumes an interrupted download.
-
-    Raises, dropping the temp file, if the result is not `size` bytes.
-    """
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_name(f"{target.name}.migrating.tmp")
-    done = tmp.stat().st_size if tmp.exists() else 0
-    # Uncompressed, so Range offsets and the size check count the same bytes.
-    headers = {"Accept-Encoding": "identity"}
-    if done:
-        headers["Range"] = f"bytes={done}-"
-    with http.stream("GET", url, headers=headers) as response:
-        if response.status_code == 416:
-            # A finished leftover, or the file shrank: start over.
-            tmp.unlink()
-            return _download(http, url, target, size)
-        response.raise_for_status()
-        resumed = response.status_code == 206 and response.headers.get(
-            "Content-Range", ""
-        ).startswith(f"bytes {done}-")
-        # The files API does not keep modes; keys must stay private.
-        fd = os.open(
-            tmp, os.O_WRONLY | os.O_CREAT | (0 if resumed else os.O_TRUNC), 0o600
-        )
-        with open(fd, "ab" if resumed else "wb") as out:
-            for chunk in response.iter_bytes(1 << 20):
-                out.write(chunk)
-    if tmp.stat().st_size != size:
-        got = tmp.stat().st_size
-        tmp.unlink()
-        raise OSError(f"downloaded {got} bytes, expected {size}")
-    print(f"[devbox] copied {target} ({size >> 20} MiB)", flush=True)
-    tmp.rename(target)
-
-
 def _scale_to_zero() -> bool:
     """Drop min_concurrency to 0; keep_alive then reaps this idle runner."""
     error = _scale_self(0)
@@ -484,18 +317,13 @@ def _scale_to_zero() -> bool:
 
 
 def _publish_idle_state(last_active: float, reasons: list[str]) -> None:
-    """Write the watchdog's view for `fal dev dash`, which cannot see all signals."""
+    """Write the watchdog's view for `fal dev dash`, which cannot see all of it."""
     state = {
         "last_active": last_active,
         "idle_minutes": IDLE_MINUTES,
         "reasons": reasons,
-        # No "watchdog" on/off: the key can be set yet invalid. The dash reads that
-        # from the box's warnings instead.
     }
-    path = Path(config.IDLE_STATE_FILE)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state))
-    os.replace(tmp, path)
+    _write_atomic(Path(config.IDLE_STATE_FILE), json.dumps(state))
 
 
 def _idle_watchdog() -> None:
@@ -506,27 +334,30 @@ def _idle_watchdog() -> None:
     """
     last_active = time.time()
     while True:
-        time.sleep(WATCHDOG_INTERVAL_SECONDS)
+        time.sleep(config.WATCHDOG_INTERVAL_SECONDS)
         try:
             now = time.time()
             checks = (
-                ("GPU busy", _gpu_busy),
                 ("hold", _held),
-                ("SSH session", _ssh_connected),
+                ("SSH session", lambda: signals.ssh_sessions() > 0),
             )
             active = [name for name, check in checks if check()]
-            signals = {
-                "terminal input": _last_tty_input(),
+            if gpu := _gpu_activity():
+                active.insert(0, gpu)
+            seen = {
+                "terminal input": signals.last_tty_input(),
                 "hot request": _last_hot_request,
             }
             if CLAUDE_ENABLED:
-                signals["Claude session"] = _last_claude_activity()
-            latest = max(signals, key=lambda name: signals[name])
+                # A message from the Claude app or a running turn: Remote Control
+                # sessions take no terminal input, so they need their own signal.
+                seen["Claude session"] = signals.claude_activity(str(CLAUDE_CONFIG_DIR))
+            latest = max(seen, key=lambda name: seen[name])
             if active:
                 last_active = now
-            elif signals[latest] > last_active:
+            elif seen[latest] > last_active:
                 active = [latest]
-            last_active = max(last_active, signals[latest])
+            last_active = max(last_active, seen[latest])
             # Only for the dashboard: never let it get in the way of shutting down.
             with contextlib.suppress(OSError):
                 _publish_idle_state(last_active, active)
@@ -558,19 +389,8 @@ def _lease_owner() -> str:
     return socket.gethostname()
 
 
-def _read_lease() -> tuple[str, str, float] | None:
-    """(owner, state, heartbeat time) from the lease file; None if unreadable."""
-    try:
-        owner, state, at = LEASE.read_text().split()
-        return owner, state, float(at)
-    except (OSError, ValueError):
-        return None
-
-
 def _write_lease(state: str) -> None:
-    tmp = LEASE.with_name(f"{LEASE.name}.{_lease_owner()}.tmp")
-    tmp.write_text(f"{_lease_owner()} {state} {time.time():.0f}\n")
-    os.replace(tmp, LEASE)
+    _write_atomic(LEASE, f"{_lease_owner()} {state} {time.time():.0f}\n")
 
 
 def _claim_lease() -> None:
@@ -582,7 +402,7 @@ def _claim_lease() -> None:
     deadline = time.time() + config.LEASE_WAIT_SECONDS
     announced = False
     while True:
-        lease = _read_lease()
+        lease = signals.read_lease(LEASE)
         if lease is None:
             break
         owner, state, at = lease
@@ -615,7 +435,7 @@ def _lease_heartbeat() -> None:
         try:
             with LEASE_LOCK.open("w") as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
-                lease = _read_lease()
+                lease = signals.read_lease(LEASE)
                 if lease is None or lease[0] != _lease_owner():
                     _warn(
                         f"another runner took over {LOCAL_WORK}; "
@@ -634,51 +454,11 @@ def _release_lease() -> None:
     try:
         with LEASE_LOCK.open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            lease = _read_lease()
+            lease = signals.read_lease(LEASE)
             if lease and lease[0] == _lease_owner():
                 _write_lease("released")
     except OSError as exc:
         print(f"[devbox] could not release {LEASE}: {exc}", flush=True)
-
-
-def _save_script() -> str:
-    """`devbox-save`: write /work to the workspace as one snapshot file, if changed."""
-    snapshot = shlex.quote(str(SNAPSHOT))
-    lease = shlex.quote(str(LEASE))
-    return f"""#!/bin/bash
-# Saves {LOCAL_WORK} to {SNAPSHOT}.
-# The box runs it every {config.SAVE_INTERVAL_MINUTES} min
-# and before it stops; `fal dev down` runs it too. --force saves even without changes.
-set -euo pipefail
-exec 9>/tmp/devbox-save.lock
-flock 9
-stamp={SAVE_STAMP}
-me=$(hostname)
-if [ "${{1:-}}" != --force ] && [ -f "$stamp" ] \
-        && [ -z "$(find {LOCAL_WORK} -newer "$stamp" -print -quit)" ]; then
-    echo "devbox-save: no changes since the last save"
-    exit 0
-fi
-start=$(date +%s)
-touch "$stamp.next"
-tmp={snapshot}.$me.tmp
-# tar exits 1 when a file changes while it is read; the next save picks that up.
-{{ tar -C {LOCAL_WORK.parent} -cf - {LOCAL_WORK.name} || [ $? -eq 1 ]; }} \
-    | zstd -q -1 -T0 -f -o "$tmp"
-# Only the lease owner replaces the snapshot; a newer runner has taken over otherwise.
-owner=$(cut -d' ' -f1 {lease} 2>/dev/null || true)
-if [ -n "$owner" ] && [ "$owner" != "$me" ]; then
-    kept={snapshot}.orphan-$me-$(date +%s)
-    mv -f "$tmp" "$kept"
-    echo "devbox-save: runner $owner now owns {LOCAL_WORK};" \
-        "this copy was kept at $kept" >&2
-    exit 1
-fi
-mv -f "$tmp" {snapshot}
-mv -f "$stamp.next" "$stamp"
-size=$(du -h {snapshot} | cut -f1)
-echo "devbox-save: saved {LOCAL_WORK} ($size) in $(( $(date +%s) - start ))s"
-"""
 
 
 def _restore_work() -> None:
@@ -711,9 +491,19 @@ def _restore_work() -> None:
                 f"the snapshot is kept at {kept}"
             )
     SAVE_STAMP.touch()
-    save = Path(config.SAVE_COMMAND)
-    save.write_text(_save_script())
-    save.chmod(0o755)
+    _install_script(
+        config.SAVE_COMMAND,
+        _fill(
+            SAVE_SCRIPT,
+            WORK=LOCAL_WORK,
+            WORK_PARENT=LOCAL_WORK.parent,
+            WORK_NAME=LOCAL_WORK.name,
+            SNAPSHOT=shlex.quote(str(SNAPSHOT)),
+            LEASE=shlex.quote(str(LEASE)),
+            STAMP=SAVE_STAMP,
+            INTERVAL=config.SAVE_INTERVAL_MINUTES,
+        ),
+    )
 
 
 def _save_work() -> bool:
@@ -765,28 +555,20 @@ def _prepare_home() -> None:
             link.symlink_to(target)
 
     bashrc = home / ".bashrc"
-    marker = "# >>> devbox >>>"
     existing = bashrc.read_text() if bashrc.exists() else ""
-    if marker not in existing:
-        bashrc.write_text(
-            existing
-            + f"""
-{marker}
-export DEVBOX_WORKSPACE="{WORKSPACE}"
-export DEVBOX_WORK="{LOCAL_WORK}"
-export CLAUDE_CONFIG_DIR="{CLAUDE_CONFIG_DIR}"
-export HISTFILE="{WORKSPACE}/.bash_history"
-export HISTSIZE=100000
-[ -f "{WARNING_FILE}" ] && cat "{WARNING_FILE}"
-[ -f "{WORKSPACE}/.devboxrc" ] && . "{WORKSPACE}/.devboxrc"
-cd "{LOCAL_WORK}"
-# <<< devbox <<<
-"""
+    if "# >>> devbox >>>" not in existing:
+        block = _fill(
+            BASHRC_BLOCK,
+            WORKSPACE=WORKSPACE,
+            WORK=LOCAL_WORK,
+            CLAUDE_DIR=CLAUDE_CONFIG_DIR,
+            WARNING_FILE=WARNING_FILE,
         )
+        bashrc.write_text(f"{existing}\n{block}")
 
 
 def _sshd_config(host_key: Path) -> str:
-    """sshd settings for the `sshd -i` sessions of `fal dev ssh-proxy`: keys only."""
+    """sshd settings for the `sshd -i` sessions of `fal dev ssh-proxy`."""
     # SSH sessions start with a clean environment; carry over the image's
     # (PATH, CUDA, ...) so they match `fal dev shell`. Never the watchdog's key.
     skip = {config.ADMIN_KEY_SECRET, "HOME", "PWD", "OLDPWD", "SHLVL", "_", "TERM"}
@@ -797,20 +579,7 @@ def _sshd_config(host_key: Path) -> str:
         and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", k)
         and not re.search(r'["\\\n]', v)
     ]
-    return f"""\
-HostKey {host_key}
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-PermitRootLogin prohibit-password
-AuthorizedKeysFile .ssh/authorized_keys
-# ~/.ssh lives on /data, whose permissions sshd's strict checks do not expect.
-StrictModes no
-AllowTcpForwarding yes
-ClientAliveInterval 30
-ClientAliveCountMax 6
-Subsystem sftp internal-sftp
-SetEnv {" ".join(env)}
-"""
+    return _fill(SSHD_TEMPLATE, HOST_KEY=host_key, ENV=" ".join(env))
 
 
 def _prepare_ssh() -> None:
@@ -820,13 +589,11 @@ def _prepare_ssh() -> None:
     restarts, outside the workspace folder people open and commit from.
     """
     try:
-        Path("/run/sshd").mkdir(
-            parents=True, exist_ok=True
-        )  # sshd's privilege separation dir
+        # sshd's privilege separation dir
+        Path("/run/sshd").mkdir(parents=True, exist_ok=True)
         host_key = WORKSPACE / ".home" / ".ssh" / "devbox_host_ed25519"
-        if not host_key.with_suffix(
-            ".pub"
-        ).exists():  # also redoes a key cut off mid-write
+        # Also redoes a key cut off mid-write.
+        if not host_key.with_suffix(".pub").exists():
             host_key.unlink(missing_ok=True)
             subprocess.run(
                 ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(host_key)],
@@ -842,47 +609,24 @@ def _prepare_ssh() -> None:
         _warn(f"SSH access is unavailable ({exc})")
 
 
-def _hot_script() -> str:
-    """`devbox-hot <dir>`: run the hot server, restarting it when it asks.
-
-    A restart reinstalls requirements first.
-    """
-    return f"""#!/bin/bash
-# Serves the project in <dir> (load.py + infer.py) on 127.0.0.1:{config.HOT_PORT}.
-# The server exits with code 3 when load.py or the requirements change; it is then
-# started again, so the weights reload. Started by `fal dev hot start` in tmux.
-cd "$1" || exit 1
-while true; do
-    if [ -f requirements.txt ]; then
-        [ -x .venv/bin/python ] || uv venv -q --system-site-packages .venv
-        if ! uv pip install -q --python .venv/bin/python -r requirements.txt; then
-            echo "[hot] installing requirements.txt failed; fix it and save"
-            before=$(stat -c %Y requirements.txt)
-            while [ "$(stat -c %Y requirements.txt)" = "$before" ]; do sleep 1; done
-            continue
-        fi
-    fi
-    py=python3
-    [ -x .venv/bin/python ] && py=.venv/bin/python
-    "$py" -u {config.HOT_SERVER} . --port {config.HOT_PORT}
-    code=$?
-    if [ "$code" -ne 3 ]; then
-        echo "[hot] server exited with code $code"
-        exit "$code"
-    fi
-    echo "[hot] restarting"
-done
-"""
-
-
-def _prepare_hot() -> None:
-    """Install `devbox-hot` and the server, and write this runner's /hot token."""
+def _prepare_tools() -> None:
+    """Install the hot server and the dashboard probe; write the runner's /hot token."""
     server = Path(config.HOT_SERVER)
     server.parent.mkdir(parents=True, exist_ok=True)
     server.write_text(HOT_SERVER_SOURCE)
-    command = Path(config.HOT_COMMAND)
-    command.write_text(_hot_script())
-    command.chmod(0o755)
+    probe_dir = Path(config.PROBE_DIR)
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    for name, source in PROBE_FILES.items():
+        (probe_dir / name).write_text(source)
+    _install_script(
+        config.HOT_COMMAND,
+        _fill(
+            HOT_SCRIPT,
+            SERVER=config.HOT_SERVER,
+            PORT=config.HOT_PORT,
+            RESTART_CODE=config.HOT_RESTART_EXIT_CODE,
+        ),
+    )
     token = Path(config.HOT_TOKEN_FILE)
     token.touch(mode=0o600)
     token.write_text(token_secrets.token_urlsafe(32))
@@ -910,21 +654,21 @@ def _hot_start(body: dict) -> dict:
             f"{project} needs a load.py and an infer.py (see `fal dev hot --help`)"
         )
     session = config.HOT_TMUX_SESSION
-    subprocess.run(
-        ["tmux", "kill-session", "-t", session], capture_output=True, check=False
-    )
+    _kill_tmux(session)
     Path(config.HOT_LOG).write_text("")
     project_arg = shlex.quote(str(project))
     command = f"{config.HOT_COMMAND} {project_arg} 2>&1 | tee -a {config.HOT_LOG}"
-    # The server runs your code; leave the ADMIN key out of its environment (see
-    # _claude_server: not a security boundary).
-    env = {k: v for k, v in os.environ.items() if k != config.ADMIN_KEY_SECRET}
     subprocess.run(
         ["tmux", "new-session", "-d", "-s", session, "-c", str(project), command],
-        env=env,
+        env=_user_env(),
         check=True,
     )
     return {"started": str(project), "tmux_session": session}
+
+
+def _hot_stop(body: dict) -> dict:
+    _kill_tmux(config.HOT_TMUX_SESSION)
+    return {"stopped": True}
 
 
 def _hot_write_files(body: dict) -> dict:
@@ -944,11 +688,18 @@ def _hot_write_files(body: dict) -> dict:
         except (OSError, UnicodeDecodeError):
             pass
         target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_name(f".{target.name}.devbox-tmp")
-        tmp.write_text(content)
-        os.replace(tmp, target)  # the server never sees a half-written file
+        _write_atomic(target, content)  # the server never sees a half-written file
         written.append(rel)
     return {"written": written}
+
+
+# The /hot actions that run on the box itself; any other goes to the hot server.
+HOT_ACTIONS = {
+    "start": _hot_start,
+    "stop": _hot_stop,
+    "files": _hot_write_files,
+    "log": lambda body: {"log": _hot_log(200)},
+}
 
 
 def _hot_forward(action: str, body: bytes) -> tuple[int, dict, bytes]:
@@ -956,7 +707,7 @@ def _hot_forward(action: str, body: bytes) -> tuple[int, dict, bytes]:
     req = urllib.request.Request(
         f"http://127.0.0.1:{config.HOT_PORT}/{action}",
         data=body or b"{}",
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": JSON_TYPE},
         method="POST",
     )
     try:
@@ -972,7 +723,7 @@ def _hot_forward(action: str, body: bytes) -> tuple[int, dict, bytes]:
             "log": _hot_log(200),
         }
         # Not 503: fal takes a runner that answers 503 out of service and replaces it.
-        return 409, {"Content-Type": "application/json"}, json.dumps(detail).encode()
+        return 409, {"Content-Type": JSON_TYPE}, json.dumps(detail).encode()
 
 
 class DevBox(fal.App):
@@ -1000,12 +751,11 @@ class DevBox(fal.App):
         WORKSPACE.mkdir(parents=True, exist_ok=True)
         _claim_lease()
         threading.Thread(target=_lease_heartbeat, daemon=True).start()
-        _migrate_from_team_data()
         _restore_work()
         _prepare_home()
         _check_admin_key()
         _prepare_ssh()
-        _prepare_hot()
+        _prepare_tools()
         threading.Thread(target=_idle_watchdog, daemon=True).start()
         threading.Thread(target=_save_loop, daemon=True).start()
         if CLAUDE_ENABLED:
@@ -1023,18 +773,10 @@ class DevBox(fal.App):
         _save_work()
         _release_lease()
 
-    # fal apps need at least one endpoint; this one reports the box's state.
+    # fal apps need at least one endpoint.
     @fal.endpoint("/")
     def status(self) -> dict:
-        last_input = _last_tty_input()
-        return {
-            "name": BOX_NAME,
-            "workspace": str(WORKSPACE),
-            "input_idle_seconds": int(time.time() - last_input) if last_input else None,
-            "gpu_busy": _gpu_busy(),
-            "held": _held(),
-            "ssh_connected": _ssh_connected(),
-        }
+        return {"name": BOX_NAME}
 
     @fal.endpoint("/wake")
     def wake(self) -> dict:
@@ -1060,52 +802,32 @@ class DevBox(fal.App):
         given = request.headers.get(config.HOT_TOKEN_HEADER, "").encode()
         if not token or not hmac.compare_digest(given, token.encode()):
             return Response(
-                b'{"error": "bad or missing hot token"}',
-                403,
-                media_type="application/json",
+                b'{"error": "bad or missing hot token"}', 403, media_type=JSON_TYPE
             )
         _last_hot_request = time.time()
         body = await request.body()
-        local = {"start": _hot_start, "files": _hot_write_files}
-        if action in local:
-            try:
-                result = await asyncio.to_thread(
-                    local[action], json.loads(body or b"{}")
-                )
-            except (
-                ValueError,
-                TypeError,
-                AttributeError,
-                OSError,
-                subprocess.CalledProcessError,
-            ) as exc:
-                return Response(
-                    json.dumps({"error": str(exc)}).encode(),
-                    400,
-                    media_type="application/json",
-                )
-            return Response(json.dumps(result).encode(), media_type="application/json")
-        if action == "stop":
-            kill = ["tmux", "kill-session", "-t", config.HOT_TMUX_SESSION]
-            await asyncio.to_thread(
-                lambda: subprocess.run(kill, capture_output=True, check=False)
+        handler = HOT_ACTIONS.get(action)
+        if handler is None:
+            status, headers, content = await asyncio.to_thread(
+                _hot_forward, action, body
             )
-            return Response(b'{"stopped": true}', media_type="application/json")
-        if action == "log":
+            keep = {k: v for k, v in headers.items() if k.lower().startswith("x-hot-")}
             return Response(
-                json.dumps({"log": _hot_log(200)}).encode(),
-                media_type="application/json",
+                content,
+                status,
+                headers=keep,
+                media_type=headers.get("Content-Type", JSON_TYPE),
             )
-        status, headers, content = await asyncio.to_thread(_hot_forward, action, body)
-        keep = {k: v for k, v in headers.items() if k.lower().startswith("x-hot-")}
-        return Response(
-            content,
-            status,
-            headers=keep,
-            media_type=headers.get("Content-Type", "application/json"),
-        )
-
-    # FastAPI resolves these string annotations from the function's globals, and the
-    # deploy ships only the globals the code uses, so `Request` would read as a query
-    # parameter.
-    hot.__annotations__.update({"request": Request, "return": Response})
+        try:
+            result = await asyncio.to_thread(handler, json.loads(body or b"{}"))
+        except (
+            ValueError,
+            TypeError,
+            AttributeError,
+            OSError,
+            subprocess.CalledProcessError,
+        ) as exc:
+            return Response(
+                json.dumps({"error": str(exc)}).encode(), 400, media_type=JSON_TYPE
+            )
+        return Response(json.dumps(result).encode(), media_type=JSON_TYPE)

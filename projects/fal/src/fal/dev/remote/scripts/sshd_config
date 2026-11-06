@@ -1,0 +1,14 @@
+# For the `sshd -i` sessions of `fal dev ssh-proxy`: keys only.
+# box_app.py fills in the capitalized names.
+HostKey $HOST_KEY
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+AuthorizedKeysFile .ssh/authorized_keys
+# ~/.ssh lives on /data, whose permissions sshd's strict checks do not expect.
+StrictModes no
+AllowTcpForwarding yes
+ClientAliveInterval 30
+ClientAliveCountMax 6
+Subsystem sftp internal-sftp
+SetEnv $ENV

@@ -55,7 +55,8 @@ DASH_DESCRIPTION = (
     "d down, r hot restart, q quit. Watching the box does not keep it awake. "
     "Idle shutdown counts terminal input, a connected SSH client or editor, GPU "
     "use of 10% or more, Claude sessions, /hot requests and holds as activity. "
-    "Cost is an estimate at public list prices."
+    "The cost line comes from the platform's usage API and needs a key with "
+    "billing access; it is hidden otherwise."
 )
 
 
@@ -202,8 +203,8 @@ def _add_box_commands(subparsers, parents) -> None:
         help=(
             "Keep the box on the team-shared /data (shared model weights, other "
             "apps' files) instead of its own volume. By default /data is the box's "
-            "volume, devbox-<name>, and the team /data is not mounted; the first "
-            "start copies the box's workspace over from the team /data. Not "
+            "volume, devbox-<name>, and the team /data is not mounted, so a box "
+            "whose files are on the team /data needs this flag to keep them. Not "
             "remembered: pass it on every deploy."
         ),
     )
@@ -562,12 +563,6 @@ def _add_dash_command(subparsers, parents) -> None:
         "Live dashboard for a running dev box.",
         description=DASH_DESCRIPTION,
         extra_parents=(box,),
-    )
-    p.add_argument("--app", help="App name of the box (default: devbox-<name>).")
-    p.add_argument(
-        "--idle-minutes",
-        type=positive_int,
-        help="Idle shutdown timeout in minutes (default: what the box reports).",
     )
     p.add_argument(
         "--interval",

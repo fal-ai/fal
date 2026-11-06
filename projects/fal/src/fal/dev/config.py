@@ -1,18 +1,16 @@
-"""Settings shared by `fal dev` (your laptop) and the box app (the box).
+"""Names and settings shared by `fal dev` on your laptop and on the box.
 
-Standard library only, so the CLI starts fast.
+Standard library only: the dashboard's probe imports this file on the box.
 """
 
 from __future__ import annotations
 
 import hashlib
 import re
-import shlex
 
 # Box apps are named `devbox-<name>` and keep their workspace in
-# /data/devboxes/<name>, the same as boxes made with the standalone devbox tool.
-# /data is the box's own volume (also `devbox-<name>`), mounted at /data so the
-# paths stay the same; with --team-data it is the team-shared /data instead.
+# /data/devboxes/<name>. /data is the box's own volume (also `devbox-<name>`);
+# with --team-data it is the team-shared /data instead.
 APP_PREFIX = "devbox-"
 DEFAULT_GPU = "GPU-H100"
 DEFAULT_NUM_GPUS = 1
@@ -48,16 +46,13 @@ ENV_VOLUME = "DEVBOX_VOLUME"
 CLAUDE_CONFIG_SUBDIR = ".home/.claude"
 # tmux session running `claude remote-control` on a box deployed with --claude.
 CLAUDE_TMUX_SESSION = "claude"
-# Where its sessions start. The Claude app names the box after this folder.
+# Where its sessions start; the Claude app names the box after this folder.
 CLAUDE_WORKDIR = "/work/fal-devbox"
 
 WORKSPACE_ROOT = "/data/devboxes"
 VOLUME_MOUNT = "/data"
 # The controller's limit on volume names.
 VOLUME_NAME_MAX = 32
-# Written to a workspace on a volume once it holds the copy from the team-shared
-# /data (or there was none), so the copy runs once.
-MIGRATED_MARKER = ".migrated-from-team-data"
 HOLD_FILE = "/tmp/devbox-hold-until"
 # Touched after each restore and save; a file under /work newer than it is a change.
 SAVE_STAMP = "/tmp/devbox-save-stamp"
@@ -65,7 +60,10 @@ SAVE_STAMP = "/tmp/devbox-save-stamp"
 WARNING_FILE = "/tmp/devbox-idle-shutdown-warning"
 # The idle watchdog's state each tick, for `fal dev dash`.
 IDLE_STATE_FILE = "/tmp/fal-dev-idle.json"
+WATCHDOG_INTERVAL_SECONDS = 60
 MAX_HOLD_HOURS = 168
+# Exit status of the hold script when a longer hold is already in place.
+HOLD_KEPT_EXIT = 3
 
 # Fast working directory on the container's local disk. /data is slow for
 # thousands of small files (git repos), so /work is saved to the workspace as a
@@ -94,7 +92,15 @@ HOT_TOKEN_HEADER = "X-Devbox-Hot-Token"
 HOT_TMUX_SESSION = "hot"
 HOT_LOG = "/tmp/devbox-hot.log"
 HOT_COMMAND = "/usr/local/bin/devbox-hot"
+# The hot server's exit status when it must restart, e.g. to reload the weights.
+HOT_RESTART_EXIT_CODE = 3
 HOT_SERVER = "/usr/local/lib/devbox-hot/hot_server.py"
+
+# What `fal dev dash` runs on the box: probe.py, with the files it imports.
+PROBE_DIR = "/usr/local/lib/devbox-probe"
+PROBE_END = "__fal_dev_dash_end__"
+# What the dashboard's probe command prints when probe.py is not installed.
+PROBE_MISSING = "__fal_dev_probe_missing__"
 
 NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 
@@ -111,20 +117,3 @@ def volume_name(name: str) -> str:
     digest = hashlib.sha1(name.encode()).hexdigest()[:6]
     keep = VOLUME_NAME_MAX - len(APP_PREFIX) - len(digest) - 1
     return f"{APP_PREFIX}{name[:keep].rstrip('-')}-{digest}"
-
-
-# What hold_command prints when a longer hold is already in place.
-HOLD_KEPT = "hold-kept"
-
-
-def hold_command(until: int, hold_file: str = HOLD_FILE) -> str:
-    """Shell that holds the box until `until`; prints HOLD_KEPT if a longer one stands.
-
-    Never shortens a longer hold, e.g. one set for an unattended job.
-    """
-    path = shlex.quote(hold_file)
-    return (
-        f"old=$(cat {path} 2>/dev/null || echo 0); "
-        f'if [ "${{old%.*}}" -gt {until} ] 2>/dev/null; then echo {HOLD_KEPT}; '
-        f"else echo {until} > {path}; fi"
-    )

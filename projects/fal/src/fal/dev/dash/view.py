@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from typing import Callable
 
 from rich.box import ROUNDED
+from rich.columns import Columns
 from rich.console import Group, RenderableType
 from rich.layout import Layout
 from rich.padding import Padding
 from rich.panel import Panel
-from rich.segment import Segment
 from rich.table import Table
 from rich.text import Text
 
@@ -23,19 +22,19 @@ from fal.console.icons import (
     get_inline_separator_icon,
     get_state_dot_icon,
 )
+from fal.dev.box import Box
 from fal.dev.dash.model import (
-    _CONTROL,
     HOLD_HOURS,
+    LOG_MINUTES,
+    Cost,
     IdleView,
     Snapshot,
     idle_view,
-    price_per_hour,
 )
 
-# One style per role, after oh-my-pi's theme tokens: frames are all the same
-# muted color, and color goes on titles, badges and values, never on borders.
-# Named ANSI colors, so the terminal's own palette keeps them readable on
-# light and dark backgrounds.
+# One style per role: frames are all the same muted color, and color goes on
+# titles, badges and values, never on borders. Named ANSI colors, so the
+# terminal's own palette keeps them readable on light and dark backgrounds.
 BORDER = "bright_black"
 ACCENT = "cyan"
 SUCCESS = "green"
@@ -44,22 +43,12 @@ ERROR = "red"
 MUTED = "dim"
 TITLE = "bold default"
 
-
-def _separator() -> Text:
-    return Text(f" {get_column_separator_icon()} ", style=BORDER)
-
-
-def _dot() -> str:
-    return get_inline_separator_icon()
-
-
 STATE_STYLES = {
     "running": SUCCESS,
     "starting": WARNING,
     "stopping": WARNING,
     "stopped": ERROR,
     "failed": ERROR,
-    "unknown": MUTED,
 }
 # (key, label, needs a live runner)
 KEY_HINTS = [
@@ -70,18 +59,14 @@ KEY_HINTS = [
     ("q", "quit", False),
 ]
 FOOTER_LINES = 3
-# Narrower than this, the GPU row no longer fits half the width.
-TWO_COLUMN_WIDTH = 100
-PRINT_LOG_LINES = 8
-# The logs panel needs a frame plus at least one line.
-MIN_FILL = 3
+LOGS_SHOWN = 8
 # Lines the platform logs for every runner exec, including the dashboard's own probes.
 NOISE_PREFIXES = ("Skipping authentication for /Isolate/",)
-
-
-def safe(value) -> str:
-    """Box-originated text, flattened to one line without control characters."""
-    return _CONTROL.sub("", " ".join(str(value).split()))
+NOT_RUNNING_HINTS = {
+    "stopped": "The box is stopped. Start it with `fal dev up`.",
+    "starting": "The box is starting; details appear once it is ready.",
+    "failed": "The box failed to start; see its logs.",
+}
 
 
 def duration(seconds: float | None) -> str:
@@ -99,9 +84,7 @@ def duration(seconds: float | None) -> str:
     return f"{hours // 24}d {hours % 24}h"
 
 
-def size(num_bytes: float | None) -> str:
-    if num_bytes is None:
-        return "-"
+def size(num_bytes: float) -> str:
     for unit in ("B", "KB", "MB", "GB"):
         if num_bytes < 1024:
             return (
@@ -117,7 +100,7 @@ def ago(then: float | None, now: float) -> str:
 
 def _bar(pct: float | None, width: int = 8) -> Text:
     if pct is None:
-        return Text("-" * width, style="dim")
+        return Text("-" * width, style=MUTED)
     filled = round(min(max(pct, 0), 100) / 100 * width)
     style = ERROR if pct >= 90 else WARNING if pct >= 60 else SUCCESS
     return Text.styled(get_bar_full_icon() * filled, style=style) + Text(
@@ -127,7 +110,7 @@ def _bar(pct: float | None, width: int = 8) -> Text:
 
 def _kv(rows: list[tuple[str, RenderableType | str]]) -> Table:
     table = Table.grid(padding=(0, 1))
-    table.add_column(style="dim", no_wrap=True)
+    table.add_column(style=MUTED, no_wrap=True)
     table.add_column()
     for key, value in rows:
         # Plain strings become Text so that box text is never parsed as markup.
@@ -150,186 +133,135 @@ def _panel(content: RenderableType, title: str | Text, **kwargs) -> Panel:
     )
 
 
-def _waiting(title: str) -> Panel:
-    return _panel(Text("waiting for the box", style=MUTED), title)
-
-
-class _StatusLine:
-    """Segments joined by thin separators, like a shell status line.
-
-    A narrow terminal wraps between segments, never inside one.
-    """
-
-    def __init__(self, *segments: Text) -> None:
-        self.segments = segments
-
-    def __rich_console__(self, console, options):
-        width = options.max_width
-        lines = [Text()]
-        for segment in self.segments:
-            line = lines[-1]
-            separator = _separator()
-            if line and line.cell_len + separator.cell_len + segment.cell_len > width:
-                lines.append(Text())
-                line = lines[-1]
-            if line:
-                line.append_text(separator)
-            line.append_text(segment)
-        yield Text("\n").join(lines)
-
-
 def _live(snapshot: Snapshot) -> bool:
-    return bool(snapshot.info and snapshot.info.live_runner)
+    return snapshot.runner_id is not None
 
 
 def _box_clock(snapshot: Snapshot, now: float) -> float:
     """The box's current time, from its last probe; avoids comparing two clocks."""
-    probe = snapshot.probe or {}
-    if probe.get("now") and snapshot.probe_at:
+    probe = snapshot.probe
+    if probe and snapshot.probe_at:
         return probe["now"] + (now - snapshot.probe_at)
     return now
 
 
 def _uptime(snapshot: Snapshot, now: float) -> float | None:
-    info = snapshot.info
-    if not info or info.uptime_seconds is None:
+    state = snapshot.state
+    if not (state and state.runner and snapshot.state_at):
         return None
-    return info.uptime_seconds + (now - info.fetched_at)
+    return state.runner.uptime.total_seconds() + (now - snapshot.state_at)
 
 
-def _idle(snapshot: Snapshot, box, now: float) -> IdleView | None:
-    probe = snapshot.probe
-    if not probe or not _live(snapshot):
-        return None
-    box_now = _box_clock(snapshot, now)
-    uptime = _uptime(snapshot, now)
-    started = box_now - uptime if uptime is not None else None
-    claude_counts = bool(
-        box.claude_enabled or (probe.get("claude") or {}).get("running")
+def _cost(cost: Cost, stale: bool) -> Text:
+    if cost.per_hour is None:
+        return Text("rate pending", style=MUTED)
+    text = Text.styled(f"${cost.spent:.2f}", style="bold") + Text(
+        f" at ${cost.per_hour:.2f}/h", style=MUTED
     )
-    return idle_view(probe, box.idle_minutes, started, claude_counts, box_now)
+    return text + Text(" (stale)", style=WARNING) if stale else text
 
 
-def header(snapshot: Snapshot, now: float) -> RenderableType:
-    info = snapshot.info
-    if info is None:
+def header(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
+    state = snapshot.state
+    if state is None:
         return _panel(Text("looking up the box ...", style=MUTED), "fal dev")
-    probe = snapshot.probe or {}
-    num_gpus = len(probe.get("gpus") or []) or 1
-    uptime = _uptime(snapshot, now)
-    rate = price_per_hour(info.machine_type, num_gpus)
-    if uptime is None or (_live(snapshot) and not probe):
-        # Before the first probe the GPU count, and so the rate, is unknown.
-        cost = Text("cost -", style=MUTED)
-    elif rate is None:
-        cost = Text("cost unknown", style=MUTED)
-    else:
-        spent = rate * (uptime or 0) / 3600
-        cost = Text.styled(f"~${spent:.2f}", style="bold") + Text(
-            f" at ${rate:.2f}/h list, est.", style=MUTED
-        )
-    state_style = STATE_STYLES.get(info.state, MUTED)
-    line = _StatusLine(
-        Text(f"{get_state_dot_icon()} {info.state}", style=f"bold {state_style}"),
-        Text(info.app_name),
-        Text(info.team or "personal", style=MUTED),
-        Text(f"{num_gpus}x {info.machine_type or '?'}"),
-        Text(f"up {duration(uptime)}"),
-        cost,
-    )
+    num_gpus = len(snapshot.probe["gpus"]) if snapshot.probe else 0
+    segments = [
+        Text(
+            f"{get_state_dot_icon()} {state.code}",
+            style=f"bold {STATE_STYLES[state.code]}",
+        ),
+        Text(box.app),
+        Text(box.team or "personal", style=MUTED),
+        Text(f"{num_gpus or 1}x {state.machine_type or '?'}"),
+        Text(f"up {duration(_uptime(snapshot, now))}"),
+    ]
+    if _live(snapshot) and snapshot.cost and not snapshot.cost_hidden:
+        segments.append(_cost(snapshot.cost, snapshot.cost_stale))
+    line = Text(f" {get_column_separator_icon()} ", style=BORDER).join(segments)
     title = Text.styled("fal dev", style=f"bold {ACCENT}") + Text(
-        f"  {info.name}", style=TITLE
+        f"  {box.name}", style=TITLE
     )
-    subtitle = Text(f"runner {info.runner_id or '-'}", style=f"default {MUTED}")
+    runner = state.runner.runner_id if state.runner else "-"
+    subtitle = Text(f"runner {runner}", style=f"default {MUTED}")
     return _panel(line, title, subtitle=subtitle, subtitle_align="right")
 
 
-def gpu_panel(snapshot: Snapshot) -> RenderableType:
-    probe = snapshot.probe or {}
-    gpus = probe.get("gpus") or []
+def gpu_panel(probe: dict) -> RenderableType:
+    gpus = probe["gpus"]
     if not gpus:
-        detail = probe.get("gpu_error") or (
-            "waiting for the box" if not probe else "no GPUs reported"
+        return _panel(
+            Text(probe["gpu_error"] or "no GPUs reported", style=MUTED), "GPU"
         )
-        return _panel(Text(safe(detail), style=MUTED), "GPU")
     table = Table.grid(padding=(0, 1))
     for _ in range(5):
         table.add_column(no_wrap=True)
     for gpu in gpus:
-        util = gpu.get("util_pct")
-        used, total = gpu.get("mem_used_mib"), gpu.get("mem_total_mib")
-        power = gpu.get("power_w")
-        watts = round(power) if power is not None else "-"
+        util = gpu["util_pct"]
+        power = gpu["power_w"]
         table.add_row(
-            Text(f"#{gpu.get('index')}", style="dim"),
+            Text(f"#{gpu['index']}", style=MUTED),
             _bar(util),
             Text(f"{util if util is not None else '-':>3}%"),
-            Text(f"{(used or 0) / 1024:.1f}/{(total or 0) / 1024:.0f} GiB"),
             Text(
-                f"{gpu.get('temp_c', '-')}{get_degrees_celsius_icon()} {watts}W",
-                style="dim",
+                f"{(gpu['mem_used_mib'] or 0) / 1024:.1f}"
+                f"/{(gpu['mem_total_mib'] or 0) / 1024:.0f} GiB"
+            ),
+            Text(
+                f"{gpu['temp_c'] if gpu['temp_c'] is not None else '-'}"
+                f"{get_degrees_celsius_icon()} "
+                f"{round(power) if power is not None else '-'}W",
+                style=MUTED,
             ),
         )
     title = Text.styled("GPU", style=TITLE) + Text(
-        f"  {safe(gpus[0].get('name') or '')}", style=f"default {MUTED}"
+        f"  {gpus[0]['name']}", style=f"default {MUTED}"
     )
     return _panel(table, title)
 
 
-def idle_panel(snapshot: Snapshot, view: IdleView | None, now: float) -> RenderableType:
-    probe = snapshot.probe
-    info = snapshot.info
-    if not probe or not info or view is None:
-        return _waiting("Idle shutdown")
+def idle_panel(
+    snapshot: Snapshot, probe: dict, view: IdleView, now: float
+) -> RenderableType:
     box_now = _box_clock(snapshot, now)
-    activity = probe.get("activity") or {}
+    activity = probe["activity"]
     rows: list[tuple[str, RenderableType | str]] = []
-    if info.state == "stopping":
+    if snapshot.state and snapshot.state.code == "stopping":
         rows.append(
             ("auto-stop", Text("stopping now (scaled to 0)", style=f"bold {WARNING}"))
         )
     elif view.watchdog == "off":
         rows.append(("auto-stop", Text("off", style=f"bold {ERROR}")))
     elif view.remaining_seconds is None:
-        rows.append(("auto-stop", Text("unknown (pass --idle-minutes)", style="dim")))
+        rows.append(("auto-stop", Text("waiting for the first check", style=MUTED)))
     else:
         style = f"bold {ERROR}" if view.remaining_seconds < 300 else "bold"
         label = Text.styled(f"in {duration(view.remaining_seconds)}", style=style)
-        # An estimate can be up to a minute short: the watchdog looks once a minute.
-        approx = " (up to 1m early)" if view.source == "estimated" else ""
-        detail = f"{approx} {_dot()} {view.idle_minutes} min timeout"
+        detail = f" {get_inline_separator_icon()} {view.idle_minutes} min timeout"
         rows.append(("auto-stop", label + Text(detail, style=MUTED)))
     if view.active_now:
         rows.append(("active now", Text(", ".join(view.active_now), style=SUCCESS)))
     else:
-        reason = safe("; ".join(str(r) for r in view.reasons) or "-")
+        reason = "; ".join(str(r) for r in view.reasons) or "-"
         rows.append(("last activity", f"{reason}, {ago(view.last_active, box_now)}"))
-    hold_until = activity.get("hold_until")
-    if activity.get("held") and hold_until:
-        rows.append(
-            (
-                "hold",
-                Text(
-                    f"until {_clock(hold_until)} "
-                    f"({duration(hold_until - box_now)} left)",
-                    style=ACCENT,
-                ),
-            )
-        )
+    hold_until = activity["hold_until"]
+    if activity["held"]:
+        left = duration(hold_until - box_now)
+        hold = Text(f"until {_clock(hold_until)} ({left} left)", style=ACCENT)
     else:
-        rows.append(("hold", Text("none", style=MUTED)))
+        hold = Text("none", style=MUTED)
+    rows.append(("hold", hold))
     return _panel(_kv(rows), "Idle shutdown")
 
 
-def watchdog_banner(snapshot: Snapshot, view: IdleView | None) -> RenderableType | None:
+def watchdog_banner(probe: dict, view: IdleView) -> RenderableType | None:
     """A full-width alert bar, without a frame of its own."""
-    if view is None or view.watchdog != "off":
+    if view.watchdog != "off":
         return None
-    probe = snapshot.probe or {}
-    lines = [w for w in probe.get("warnings") or [] if "idle shutdown" in str(w)]
+    lines = [w for w in probe["warnings"] if "idle shutdown" in w]
     text = Text("IDLE SHUTDOWN IS OFF", style="bold")
     text.append("  this box bills until you stop it (press d)\n")
-    text.append(safe(" ".join(lines) or "idle shutdown is off"))
+    text.append(" ".join(lines) or "idle shutdown is off")
     bar = Padding(text, (0, 1), style=f"white on {ERROR}", expand=True)
     return Group(bar, Text(""))
 
@@ -338,19 +270,13 @@ def _clock(epoch: float | None) -> str:
     return datetime.fromtimestamp(epoch).strftime("%H:%M") if epoch else "-"
 
 
-def connections_panel(snapshot: Snapshot, now: float) -> RenderableType:
-    probe = snapshot.probe
-    if not probe:
-        return _waiting("Connections")
-    box_now = _box_clock(snapshot, now)
-    activity = probe.get("activity") or {}
-    ssh = activity.get("ssh_sessions") or 0
-    claude = probe.get("claude") or {}
-    hot = probe.get("hot") or {}
-    if claude.get("running"):
-        last = ago(activity.get("last_claude_activity"), box_now)
+def connections_panel(probe: dict, box_now: float) -> RenderableType:
+    ssh = probe["activity"]["ssh_sessions"]
+    hot = probe["hot"]
+    if probe["claude_running"]:
+        last = ago(probe["activity"]["last_claude_activity"], box_now)
         claude_text = Text.styled("running", style=SUCCESS) + Text(
-            f" {_dot()} last activity {last}", style=MUTED
+            f" {get_inline_separator_icon()} last activity {last}", style=MUTED
         )
     else:
         claude_text = Text("not running", style=MUTED)
@@ -358,45 +284,44 @@ def connections_panel(snapshot: Snapshot, now: float) -> RenderableType:
         ("ssh", Text(f"{ssh} attached", style=SUCCESS if ssh else MUTED)),
         ("claude remote", claude_text),
     ]
-    if not hot.get("running"):
+    if not hot["running"]:
         rows.append(("hot reload", Text("not running", style=MUTED)))
     else:
         if hot.get("restarting"):
-            state = Text.styled(
-                f"restarting ({safe(hot['restarting'])})", style=WARNING
-            )
-        elif not hot.get("reachable", True):
+            state = Text.styled(f"restarting ({hot['restarting']})", style=WARNING)
+        elif not hot["reachable"]:
             state = Text.styled("starting / not answering", style=WARNING)
         elif hot.get("ready"):
             state = Text.styled("ready", style=SUCCESS)
         else:
             state = Text.styled("loading model", style=WARNING)
-        version = Text(f" {_dot()} code v{hot.get('code_version', '-')}", style=MUTED)
+        version = Text(
+            f" {get_inline_separator_icon()} code v{hot.get('code_version', '-')}",
+            style=MUTED,
+        )
         rows.append(("hot reload", state + version))
-        reload = hot.get("last_reload") or {}
-        if reload:
-            files = safe(", ".join(str(f) for f in reload.get("files") or []))
-            ok = "" if reload.get("ok", True) else "  (import failed)"
-            rows.append(("last reload", f"{files} in {reload.get('ms')} ms{ok}"))
-        infer = hot.get("last_infer")
-        if infer:
-            at = infer.get("at")
-            when = ago(at, box_now) if isinstance(at, (int, float)) else "-"
-            rows.append(("last infer", f"{infer.get('ms')} ms, {when}"))
+        if reload := hot.get("last_reload"):
+            ok = "" if reload["ok"] else "  (import failed)"
+            rows.append(
+                (
+                    "last reload",
+                    f"{', '.join(reload['files'])} in {reload['ms']} ms{ok}",
+                )
+            )
+        if infer := hot.get("last_infer"):
+            rows.append(
+                ("last infer", f"{infer['ms']} ms, {ago(infer['at'], box_now)}")
+            )
         if hot.get("error"):
-            rows.append(("last error", Text(safe(hot["error"]), style=ERROR)))
+            rows.append(("last error", Text(hot["error"], style=ERROR)))
     return _panel(_kv(rows), "Connections")
 
 
-def work_panel(snapshot: Snapshot, now: float) -> RenderableType:
-    probe = snapshot.probe
-    if not probe:
-        return _waiting("/work snapshot")
-    box_now = _box_clock(snapshot, now)
-    work = probe.get("work") or {}
-    snap = work.get("snapshot") or {}
-    lease = work.get("lease")
-    dirty = work.get("dirty")
+def work_panel(probe: dict, box_now: float) -> RenderableType:
+    work = probe["work"]
+    snap = work["snapshot"]
+    lease = work["lease"]
+    dirty = work["dirty"]
     if dirty is None:
         unsaved = Text("unknown", style=MUTED)
     else:
@@ -404,22 +329,23 @@ def work_panel(snapshot: Snapshot, now: float) -> RenderableType:
     rows: list[tuple[str, RenderableType | str]] = [
         (
             "snapshot",
-            f"{size(snap.get('size'))}, written {ago(snap.get('mtime'), box_now)}"
+            f"{size(snap['size'])}, written {ago(snap['mtime'], box_now)}"
             if snap
             else "none yet",
         ),
-        ("last save", ago(work.get("last_save"), box_now) + " (or restore)"),
+        ("last save", ago(work["last_save"], box_now) + " (or restore)"),
         ("unsaved changes", unsaved),
     ]
     if lease:
-        holder = "this runner" if lease.get("mine") else safe(lease.get("owner"))
-        heartbeat = ago(lease.get("heartbeat"), box_now)
+        holder = "this runner" if lease["mine"] else lease["owner"]
+        heartbeat = ago(lease["heartbeat"], box_now)
         rows.append(
             (
                 "lease",
-                Text.styled(holder, style=SUCCESS if lease.get("mine") else WARNING)
+                Text.styled(holder, style=SUCCESS if lease["mine"] else WARNING)
                 + Text(
-                    f" {_dot()} {safe(lease.get('state'))}, heartbeat {heartbeat}",
+                    f" {get_inline_separator_icon()} {lease['state']}, "
+                    f"heartbeat {heartbeat}",
                     style=MUTED,
                 ),
             )
@@ -434,23 +360,20 @@ def _log_clock(stamp: str) -> str:
     try:
         parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
     except ValueError:
-        return safe(stamp)[:8]
+        return stamp[:8]
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone().strftime("%H:%M:%S")
 
 
-def logs_panel(
-    snapshot: Snapshot, lines: int, height: int | None = None
-) -> RenderableType:
-    """The log tail; with `height`, the panel fills exactly that many rows."""
-    body = Text()
+def logs_panel(snapshot: Snapshot) -> RenderableType:
     logs = [
         log
         for log in snapshot.logs
         if not str(log.get("message", "")).startswith(NOISE_PREFIXES)
     ]
-    for log in logs[-lines:]:
+    body = Text()
+    for log in logs[-LOGS_SHOWN:]:
         level = str(log.get("level", "")).upper()
         style = (
             ERROR
@@ -461,16 +384,16 @@ def logs_panel(
         )
         body += Text(f"{_log_clock(str(log.get('timestamp', '')))} ", style=MUTED)
         body += Text(
-            safe(log.get("message", "")), style=style, overflow="ellipsis", no_wrap=True
+            str(log.get("message", "")), style=style, overflow="ellipsis", no_wrap=True
         )
         body += "\n"
     body.rstrip()
     if not logs:
         body = Text("no recent logs", style=MUTED)
     title = Text.styled("Logs", style=TITLE) + Text(
-        "  last 30 min", style=f"default {MUTED}"
+        f"  last {LOG_MINUTES} min", style=f"default {MUTED}"
     )
-    return _panel(body, title, height=height)
+    return _panel(body, title)
 
 
 def footer(snapshot: Snapshot, now: float) -> RenderableType:
@@ -489,7 +412,7 @@ def footer(snapshot: Snapshot, now: float) -> RenderableType:
             f"({snapshot.probe_ms:.0f} ms)"
         )
     for source, error in sorted(snapshot.errors.items()):
-        status.append(f"{source} error: {safe(error)}")
+        status.append(f"{source} error: {error}")
     line = Text(
         "  ".join(status),
         style=ERROR if snapshot.errors else MUTED,
@@ -502,121 +425,53 @@ def footer(snapshot: Snapshot, now: float) -> RenderableType:
     # The action message comes before the status line, which may be cut short.
     return Group(
         hints,
-        Text(safe(message), style=f"bold {ACCENT}", overflow="ellipsis", no_wrap=True),
+        Text(message, style=f"bold {ACCENT}", overflow="ellipsis", no_wrap=True),
         line,
     )
 
 
-class _Panels:
-    """Panels two per row on a wide terminal, stacked on a narrow one."""
-
-    def __init__(self, *panels: RenderableType, stacked: tuple[int, ...] = ()) -> None:
-        self.panels = panels
-        # Order when stacked; what matters most goes first, as the bottom may be cut.
-        self.stacked = stacked or tuple(range(len(panels)))
-
-    def __rich_console__(self, console, options):
-        if options.max_width < TWO_COLUMN_WIDTH:
-            yield from (self.panels[i] for i in self.stacked)
-            return
-        grid = Table.grid(expand=True, padding=(0, 1))
-        grid.add_column(ratio=1)
-        grid.add_column(ratio=1)
-        for i in range(0, len(self.panels), 2):
-            grid.add_row(*self.panels[i : i + 2])
-        yield grid
-
-
-class _Fit:
-    """Fills the height it is given.
-
-    `fill(rows)` builds the stretchy last part (the logs) for the rows left
-    over; it is dropped when fewer than MIN_FILL rows are free, and anything
-    that still does not fit is cut with a note saying so.
-    """
-
-    def __init__(
-        self,
-        parts: list[RenderableType],
-        fill: Callable[[int | None], RenderableType] | None = None,
-    ):
-        self.parts = parts
-        self.fill = fill
-
-    def __rich_console__(self, console, options):
-        height = options.height
-        if height is None:
-            yield Group(*self.parts, *([self.fill(None)] if self.fill else []))
-            return
-        unbounded = options.reset_height()
-        lines = console.render_lines(Group(*self.parts), unbounded)
-        free = height - len(lines)
-        note = None
-        if self.fill and free >= MIN_FILL:
-            lines += console.render_lines(self.fill(free), unbounded)
-        elif self.fill:
-            note = "logs hidden; enlarge the terminal to see them"
-        if len(lines) > height:
-            hidden = len(lines) - height + 1
-            lines = lines[: height - 1]
-            note = f"{hidden} more lines hidden; enlarge the terminal"
-        elif note and len(lines) >= height:
-            note = None
-        for line in lines:
-            yield from line
-            yield Segment.line()
-        if note:
-            yield Text(note, style=f"{MUTED} italic")
-
-
-def body(snapshot: Snapshot, box, now: float, log_lines: int) -> RenderableType:
-    parts: list[RenderableType] = [header(snapshot, now)]
-    view = _idle(snapshot, box, now)
-    banner = watchdog_banner(snapshot, view)
-    if banner is not None:
-        parts.append(banner)
-    if snapshot.info and not _live(snapshot):
-        hint = {
-            "stopped": "The box is stopped. Start it with `fal dev up`.",
-            "starting": "The box is starting; details appear once it is ready.",
-            "failed": "The box failed to start; see its logs.",
-        }.get(snapshot.info.state, "")
-        parts.append(_panel(Text(hint, style=MUTED), ""))
-    elif snapshot.info:
-        parts.append(
-            _Panels(
-                gpu_panel(snapshot),
-                idle_panel(snapshot, view, now),
-                connections_panel(snapshot, now),
-                work_panel(snapshot, now),
-                # /work before Connections: it is what `d` acts on.
-                stacked=(0, 1, 3, 2),
-            )
-        )
-
-        def logs(rows: int | None) -> RenderableType:
-            if rows is None:
-                return logs_panel(snapshot, log_lines)
-            return logs_panel(snapshot, rows - 2, height=rows)
-
-        return _Fit(parts, logs)
-    return _Fit(parts)
+def body(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
+    parts: list[RenderableType] = [header(snapshot, box, now)]
+    state = snapshot.state
+    if state is None:
+        return Group(*parts)
+    probe = snapshot.probe
+    if not _live(snapshot):
+        hint = NOT_RUNNING_HINTS.get(state.code, "")
+        return Group(*parts, _panel(Text(hint, style=MUTED), ""))
+    if probe is None:
+        panels = [
+            _panel(Text("waiting for the box", style=MUTED), title)
+            for title in ("GPU", "Idle shutdown", "/work snapshot", "Connections")
+        ]
+    else:
+        view = idle_view(probe, _box_clock(snapshot, now))
+        if banner := watchdog_banner(probe, view):
+            parts.append(banner)
+        panels = [
+            gpu_panel(probe),
+            idle_panel(snapshot, probe, view, now),
+            # /work before Connections: it is what `d` acts on.
+            work_panel(probe, _box_clock(snapshot, now)),
+            connections_panel(probe, _box_clock(snapshot, now)),
+        ]
+    # Two panels per row when the terminal is wide enough, else stacked.
+    parts.append(Columns(panels, equal=True))
+    parts.append(logs_panel(snapshot))
+    return Group(*parts)
 
 
 def render(
-    snapshot: Snapshot, box, now: float | None = None, log_lines: int = PRINT_LOG_LINES
+    snapshot: Snapshot, box: Box, now: float | None = None, *, screen: bool = False
 ) -> RenderableType:
-    """One frame as a plain renderable, for printing."""
+    """One frame; on a full screen the footer stays visible when the body is cut."""
     now = time.time() if now is None else now
-    return Group(body(snapshot, box, now, log_lines), footer(snapshot, now))
-
-
-def render_screen(snapshot: Snapshot, box, now: float | None = None) -> Layout:
-    """One full-screen frame: the footer stays visible when the body is cropped."""
-    now = time.time() if now is None else now
+    frame = body(snapshot, box, now)
+    if not screen:
+        return Group(frame, footer(snapshot, now))
     layout = Layout()
     layout.split_column(
-        Layout(body(snapshot, box, now, log_lines=PRINT_LOG_LINES), name="body"),
+        Layout(frame, name="body"),
         Layout(footer(snapshot, now), name="footer", size=FOOTER_LINES),
     )
     return layout

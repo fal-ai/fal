@@ -17,8 +17,9 @@ from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
-from fal.dev.dash.model import HOLD_HOURS, Box, Poller
-from fal.dev.dash.view import render, render_screen
+from fal.dev.box import Box
+from fal.dev.dash import model
+from fal.dev.dash.view import render
 
 CONFIRM_SECONDS = 5.0
 
@@ -53,7 +54,7 @@ def _read_key(fd: int, timeout: float) -> str | None:
 def print_once(box: Box, console: Console | None = None) -> None:
     """One poll, one frame: for scripts, captures, and terminals without a TTY."""
     console = console or Console()
-    poller = Poller(box)
+    poller = model.Poller(box)
     poller.prime()
     console.print(render(poller.snapshot, box))
 
@@ -67,7 +68,7 @@ def run_dashboard(
     if os.name == "nt" or not (sys.stdin.isatty() and sys.stdout.isatty()):
         print_once(box, console)
         return
-    poller = Poller(box, interval=interval)
+    poller = model.Poller(box, interval=interval)
     poller.start()
     fd = sys.stdin.fileno()
     pending_down = 0.0
@@ -84,7 +85,7 @@ def run_dashboard(
                     poller.say(func(*args))
                 except Exception as exc:
                     poller.say(f"{label} failed: {exc}")
-                poller.refresh_info()
+                poller.refresh_state()
             finally:
                 busy.release()
 
@@ -97,7 +98,7 @@ def run_dashboard(
     try:
         with _cbreak(fd):
             live = Live(
-                render_screen(poller.snapshot, box),
+                render(poller.snapshot, box, screen=True),
                 console=console,
                 screen=True,
                 auto_refresh=False,
@@ -106,8 +107,7 @@ def run_dashboard(
             try:
                 while True:
                     key = _read_key(fd, 1.0)
-                    info = poller.snapshot.info
-                    runner_id = info.live_runner if info else None
+                    runner_id = poller.snapshot.runner_id
                     if key == "q":
                         if not busy.locked() or pending_quit:
                             break
@@ -126,7 +126,7 @@ def run_dashboard(
                     if key == "d":
                         if time.time() - pending_down < CONFIRM_SECONDS:
                             pending_down = 0.0
-                            act("saving /work and stopping the box", box.down)
+                            act("saving /work and stopping the box", model.down, box)
                         else:
                             pending_down = time.time()
                             poller.say(
@@ -146,15 +146,20 @@ def run_dashboard(
                                 )
                             )
                             try:
-                                box.shell(runner_id)
+                                model.open_shell(box, runner_id)
                             except Exception as exc:
                                 poller.say(f"shell failed: {exc}")
                         live.start()
                     elif key == "h" and runner_id:
-                        act("holding", box.hold, runner_id, HOLD_HOURS)
+                        act("holding", model.hold, box)
                     elif key == "r" and runner_id:
-                        act("restarting the hot server", box.hot_restart, runner_id)
-                    live.update(render_screen(poller.snapshot, box), refresh=True)
+                        act(
+                            "restarting the hot server",
+                            model.hot_restart,
+                            box,
+                            runner_id,
+                        )
+                    live.update(render(poller.snapshot, box, screen=True), refresh=True)
             finally:
                 live.stop()
     except KeyboardInterrupt:

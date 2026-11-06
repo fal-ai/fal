@@ -2,21 +2,23 @@ import io
 import json
 import runpy
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
 from fal.dev import box as box_module
-from fal.dev import config, hot, state
+from fal.dev import config, files, hot, state
 from fal.dev.box import (
     BOX_APP,
+    REMOTE,
     Box,
-    DevError,
     _HoldUntilMarker,
     fal_spec,
     newest_live,
     ssh_config,
 )
+from fal.dev.errors import DevError
 from fal.sdk import RunnerState
 
 
@@ -30,7 +32,7 @@ def _runner(runner_id, state=RunnerState.RUNNING, uptime=60, machine="GPU-H100")
 
 
 def _box(runners=(), min_concurrency=1, deployed=True):
-    box = Box("klein")
+    box = Box("klein", team="my-team")
     box.client = MagicMock()
     box.client.apps.runners.return_value = list(runners)
     app = MagicMock(alias="devbox-klein", min_concurrency=min_concurrency)
@@ -98,6 +100,108 @@ def test_newest_live_skips_stopped_runners():
     assert [r.runner_id for r in newest_live(runners)] == ["new", "old"]
 
 
+@pytest.mark.parametrize(
+    "runners, min_concurrency, expected",
+    [
+        ([_runner("r1")], 1, "running"),
+        ([_runner("r1", RunnerState.IDLE)], 0, "stopping"),
+        ([_runner("r1", RunnerState.DRAINING)], 0, "stopping"),
+        ([_runner("r1", RunnerState.DOCKER_PULL)], 1, "starting"),
+        ([_runner("r1", RunnerState.CRASH_BACKOFF)], 1, "failed"),
+        ([_runner("r1", RunnerState.DEAD)], 0, "stopped"),
+        ([], 0, "stopped"),
+    ],
+)
+def test_state_classifies_the_box(runners, min_concurrency, expected):
+    assert _box(runners, min_concurrency).state().code == expected
+
+
+def test_state_picks_the_newest_live_runner_and_its_machine_type():
+    box = _box([_runner("old", uptime=900), _runner("new", uptime=30)])
+
+    state = box.state()
+
+    assert state.runner.runner_id == "new"
+    assert state.machine_type == "GPU-H100"
+    assert _box([]).state().machine_type == "GPU-H100"
+
+
+def test_run_returns_the_exit_code_and_output(monkeypatch):
+    def fake_session(client, runner_id, command, **kwargs):
+        assert (runner_id, command, kwargs["interactive"]) == ("r1", ["ls"], False)
+        assert kwargs["console"] is None
+        kwargs["stdout"].write(b"a\xffb")
+        return 3
+
+    monkeypatch.setattr(box_module, "shell_session", fake_session)
+
+    assert _box().run("r1", ["ls"]) == (3, "a\ufffdb")
+
+
+def test_run_turns_connection_errors_into_a_dev_error(monkeypatch):
+    import grpc
+
+    class Failure(grpc.RpcError):
+        def __init__(self, code):
+            self._code = code
+
+        def code(self):
+            return self._code
+
+        def details(self):
+            return "no route"
+
+    def fail(*args, **kwargs):
+        raise Failure(grpc.StatusCode.UNAVAILABLE)
+
+    monkeypatch.setattr(box_module, "shell_session", fail)
+
+    with pytest.raises(DevError, match="no route"):
+        _box().run("r1", ["ls"])
+
+
+def test_run_reuses_its_connection_and_rebuilds_it_once_after_expiry(monkeypatch):
+    import grpc
+
+    class Expired(grpc.RpcError):
+        def code(self):
+            return grpc.StatusCode.UNAUTHENTICATED
+
+        def details(self):
+            return "expired"
+
+    box = _box()
+    stubs = []
+    box.client._create_host.side_effect = lambda: stubs.append(
+        MagicMock()
+    ) or MagicMock(_connection=MagicMock(stub=stubs[-1]))
+    used = []
+
+    def session(client, runner_id, command, **kwargs):
+        used.append((kwargs["stub"], kwargs["timeout"]))
+        if len(used) == 1:
+            raise Expired()
+        return 0
+
+    monkeypatch.setattr(box_module, "shell_session", session)
+
+    assert box.run("r1", ["ls"]) == (0, "")
+    assert box.run("r1", ["ls"]) == (0, "")
+
+    assert len(stubs) == 2
+    assert [stub for stub, _ in used] == [stubs[0], stubs[1], stubs[1]]
+    assert used[0][1] == box_module.RUN_TIMEOUT_SECONDS
+
+
+def test_box_uses_the_default_team(monkeypatch):
+    monkeypatch.setattr(
+        box_module, "Config", lambda: MagicMock(get_internal=lambda key: "my-team")
+    )
+
+    assert Box("klein").team == "my-team"
+    assert Box("klein", team="other").team == "other"
+
+
 def test_require_runner():
     assert _box([_runner("r1")]).require_runner() == "r1"
     with pytest.raises(DevError, match="not running"):
@@ -113,6 +217,7 @@ def test_require_runner():
         ([_runner("r1")], 0, True, "devbox-klein: shutting down"),
         ([_runner("r1", RunnerState.DRAINING)], 0, True, "devbox-klein: stopping"),
         ([_runner("r1", RunnerState.PENDING)], 1, True, "devbox-klein: starting"),
+        ([_runner("r1", RunnerState.CRASH_BACKOFF)], 1, True, "devbox-klein: failed"),
         ([], 0, True, "devbox-klein: stopped"),
         ([], 0, False, "devbox-klein: not deployed"),
     ],
@@ -162,7 +267,9 @@ def test_save_work_raises_and_keeps_box_up_on_failure():
 
     with pytest.raises(DevError, match="disk full"):
         box.save_work()
-    box.run.assert_called_once_with("r1", [config.SAVE_COMMAND])
+    box.run.assert_called_once_with(
+        "r1", [config.SAVE_COMMAND], timeout=box_module.SAVE_TIMEOUT_SECONDS
+    )
 
 
 def test_hold_rejects_out_of_range_hours():
@@ -172,7 +279,6 @@ def test_hold_rejects_out_of_range_hours():
 
 def test_deploy_stops_a_running_box_first_and_restarts_it(monkeypatch):
     box = _box([_runner("r1")])
-    box.team_workspace_exists = MagicMock(return_value=False)
     box.save_work = MagicMock()
     box.stop = MagicMock(return_value=True)
 
@@ -215,6 +321,13 @@ def test_ssh_config_entry():
     )
 
 
+def test_ssh_config_proxy_reaches_the_boxs_host():
+    entry = ssh_config("klein", "fal", host="api.shark.test")
+
+    assert "dev ssh-proxy --name klein --host api.shark.test" in entry
+    assert "--host" not in ssh_config("klein", "fal")
+
+
 # --- hot ---
 
 
@@ -246,8 +359,67 @@ def test_scan_skips_hidden_venv_and_large_files(tmp_path):
     assert sorted(hot.scan(tmp_path)) == ["infer.py", "pkg/util.py"]
 
 
+def test_scan_never_picks_up_secrets(tmp_path):
+    (tmp_path / "infer.py").write_text("x")
+    (tmp_path / "secrets.py").write_text("x")  # code, not a secret file
+    (tmp_path / "keys").mkdir()
+    for secret in (
+        "server.pem",
+        "credentials.json",
+        "id_rsa",
+        "secrets.yaml",
+        "keys/token.json",
+        ".env",
+        ".env.production",
+        "prod.env",
+        "secrets/api.txt",
+        "vars.tfvars",
+        "state.tfstate",
+        "service_account_prod.json",
+    ):
+        path = tmp_path / secret
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("secret")
+
+    assert sorted(hot.scan(tmp_path)) == ["infer.py", "secrets.py"]
+
+
+def test_walk_leaves_out_skipped_folders_and_secrets(tmp_path):
+    for name in ("a.py", "pkg/b.py", ".hidden/c.py", "node_modules/d.js", ".ssh/id_x"):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x")
+    (tmp_path / ".dotfile").write_text("x")
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    (outside / "private.py").write_text("x")
+    (tmp_path / "linked.py").symlink_to(outside / "private.py")
+    (tmp_path / "linked_dir").symlink_to(outside, target_is_directory=True)
+
+    found = {p.as_posix() for p in files.walk(tmp_path)}
+    assert found == {"a.py", "pkg/b.py", ".hidden/c.py", ".dotfile"}
+    visible = {p.as_posix() for p in files.walk(tmp_path, hidden=False)}
+    assert visible == {"a.py", "pkg/b.py"}
+
+
+@pytest.mark.parametrize(
+    "parts, secret",
+    [
+        ((".env",), True),
+        (("app", ".env.local"), True),
+        (("deploy", "key.PEM"), True),
+        (("home", ".aws", "config"), True),
+        (("secrets.json",), True),
+        (("secrets.py",), False),
+        (("src", "keyboard.py"), False),
+    ],
+)
+def test_secret_like(parts, secret):
+    assert files.secret_like(parts) is secret
+
+
 def test_read_token_uses_cache_for_same_runner(monkeypatch, tmp_path):
-    monkeypatch.setattr(hot, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path)
     box = _box([_runner("r1")])
     token = "a" * 43
     box.run = MagicMock(return_value=(0, f"{token}\n"))
@@ -279,7 +451,8 @@ def test_box_app_loads_like_a_deploy(monkeypatch):
     assert app.image.build_args == {"PYTHON_VERSION": "3.12", "FAL_SPEC": "fal==1.84.0"}
     assert "FROM nvidia/cuda" in app.image.dockerfile_str
     assert "def main()" in module["HOT_SERVER_SOURCE"]
-    assert "devbox-save" in module["_save_script"]()
+    assert "devbox-save" in module["SAVE_SCRIPT"]
+    assert sorted(module["PROBE_FILES"]) == ["config.py", "probe.py", "signals.py"]
 
 
 def test_box_app_hot_dir_stays_under_work():
@@ -290,6 +463,75 @@ def test_box_app_hot_dir_stays_under_work():
         module["_hot_dir"]("/work/../etc")
     with pytest.raises(ValueError):
         module["_hot_dir"]("/tmp")
+
+
+def test_a_resync_of_unchanged_files_never_restarts_the_hot_server(tmp_path):
+    """`hot sync --watch` pushes every file first; load.py must not restart it."""
+    server = runpy.run_path(str(REMOTE / "hot_server.py"))
+    box_app = runpy.run_path(str(BOX_APP))
+    box_app["_hot_dir"].__globals__["LOCAL_WORK"] = tmp_path
+    project = tmp_path / "klein"
+    project.mkdir()
+    sources = {"load.py": "def load(): ...", "infer.py": "def infer(state): ..."}
+    for name, text in sources.items():
+        (project / name).write_text(text)
+    running = server["Project"](project)
+
+    result = box_app["_hot_write_files"]({"dir": str(project), "files": sources})
+
+    assert result == {"written": []}
+    assert running.check() is None
+    sources["load.py"] = "def load(): return 1"
+    box_app["_hot_write_files"]({"dir": str(project), "files": sources})
+    assert running.check() == "load.py changed"
+
+
+@pytest.mark.parametrize("script", ["devbox-save.sh", "devbox-hot.sh", "bashrc.sh"])
+def test_box_scripts_are_valid_bash_once_filled_in(script, tmp_path):
+    import subprocess
+
+    module = runpy.run_path(str(BOX_APP))
+    text = module["_fill"](
+        (REMOTE / "scripts" / script).read_text(),
+        WORK="/work",
+        WORK_PARENT="/",
+        WORK_NAME="work",
+        SNAPSHOT="/data/w.tar.zst",
+        LEASE="/data/w.lease",
+        STAMP="/tmp/stamp",
+        INTERVAL=15,
+        SERVER="/usr/local/lib/devbox-hot/hot_server.py",
+        PORT=7860,
+        RESTART_CODE=3,
+        WORKSPACE="/data/devboxes/klein",
+        CLAUDE_DIR="/data/c",
+        WARNING_FILE="/tmp/w",
+    )
+    path = tmp_path / script
+    path.write_text(text)
+
+    done = subprocess.run(
+        ["bash", "-n", str(path)], capture_output=True, text=True, check=False
+    )
+
+    assert done.returncode == 0, done.stderr
+    # Bash's own variables survive; the placeholders do not.
+    assert ("$stamp" in text) == (script == "devbox-save.sh")
+    assert "$WORK" not in text
+    assert "$PORT" not in text
+
+
+def test_sshd_config_carries_the_hosts_environment(monkeypatch, tmp_path):
+    module = runpy.run_path(str(BOX_APP))
+    monkeypatch.setenv("CUDA_HOME", "/usr/local/cuda")
+    monkeypatch.setenv(config.ADMIN_KEY_SECRET, "secret")
+
+    text = module["_sshd_config"](tmp_path / "host_key")
+
+    assert f"HostKey {tmp_path / 'host_key'}" in text
+    assert '"CUDA_HOME=/usr/local/cuda"' in text
+    assert "secret" not in text
+    assert "$" not in text
 
 
 def test_box_app_write_files_skips_unchanged(tmp_path):
@@ -324,6 +566,103 @@ def test_project_paths_keeps_remembered_dir_for_same_project(tmp_path):
         "/work/model-b",
     )
     assert hot.project_paths(str(b), "/work/x", remembered)[1] == "/work/x"
+
+
+def test_post_json_keeps_payloads_out_of_request_storage(monkeypatch):
+    import httpx
+
+    from fal.dev.transport import post_json
+
+    seen = {}
+
+    def fake_post(url, **kwargs):
+        seen.update(url=url, **kwargs)
+        return httpx.Response(200)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    post_json("https://fal.run/a/b/hot/files", {"x": 1}, {"Authorization": "Bearer t"})
+
+    assert seen["json"] == {"x": 1}
+    assert seen["headers"] == {"Authorization": "Bearer t", "X-Fal-Store-IO": "0"}
+
+
+def test_box_builds_credentials_once_across_many_calls(monkeypatch):
+    calls = []
+    credentials = MagicMock()
+    credentials.to_headers.return_value = {"Authorization": "Bearer t"}
+    monkeypatch.setattr(
+        "fal.sdk.get_credentials", lambda team: calls.append(team) or credentials
+    )
+    box = _box()
+
+    assert [box.auth_headers() for _ in range(20)] == [
+        {"Authorization": "Bearer t"}
+    ] * 20
+    assert calls == ["my-team"]
+
+
+def _hot_box_with_auth(auth):
+    box = hot.HotBox.__new__(hot.HotBox)
+    box.base, box.token = "https://fal.run/me/devbox-klein/hot", "tok"
+    box.box = MagicMock(auth_headers=auth)
+    return box
+
+
+def test_hot_box_posts_with_its_token_and_reports_failures_as_no_response(monkeypatch):
+    import httpx
+
+    calls = []
+
+    def fake_post_json(url, payload, headers, timeout):
+        calls.append((url, headers))
+        if len(calls) == 2:
+            raise httpx.ConnectError("down")
+        return httpx.Response(409, headers={"X-Hot-Code-Version": "3"}, content=b"{}")
+
+    monkeypatch.setattr(hot, "post_json", fake_post_json)
+    box = _hot_box_with_auth(lambda: {"Authorization": "Bearer t"})
+
+    status, headers, body = box.post("status")
+    assert (status, headers["x-hot-code-version"], body) == (409, "3", b"{}")
+    assert calls[0] == (
+        "https://fal.run/me/devbox-klein/hot/status",
+        {"Authorization": "Bearer t", config.HOT_TOKEN_HEADER: "tok"},
+    )
+    status, _, body = box.post("status")
+    assert (status, json.loads(body)) == (0, {"error": "down"})
+
+
+def test_a_credential_failure_is_retried_by_watch_and_wait_ready(monkeypatch, tmp_path):
+    import httpx
+
+    monkeypatch.setattr(hot.time, "sleep", lambda s: None)
+    attempts = []
+
+    def auth():
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("login expired")
+        return {}
+
+    monkeypatch.setattr(
+        hot,
+        "post_json",
+        lambda url, payload, headers, timeout: httpx.Response(
+            200, json={"ready": True, "load_seconds": 1, "written": ["infer.py"]}
+        ),
+    )
+    box = _hot_box_with_auth(auth)
+
+    assert box.wait_ready(timeout=60)["load_seconds"] == 1
+    assert len(attempts) == 2
+
+    # A push that failed is sent again with the next save.
+    (tmp_path / "infer.py").write_text("x")
+    attempts.clear()
+    with pytest.raises(DevError, match="sync failed"):
+        box.push(tmp_path, "/work/x", ["infer.py"])
+    assert box.push(tmp_path, "/work/x", ["infer.py"]) == ["infer.py"]
 
 
 def _hot_box(responses):
@@ -460,79 +799,45 @@ def test_push_reports_a_restarted_box(tmp_path):
         box.push(tmp_path, "/work/x", ["infer.py"])
 
 
-def test_dash_probe_defaults_match_the_box_layout():
-    """dash_probe.py runs on the box as a standalone script, so it repeats these."""
-    from fal.dev.remote.probe import DEFAULTS
-
-    assert DEFAULTS["local_work"] == config.LOCAL_WORK
-    assert DEFAULTS["snapshot"] == config.SNAPSHOT_FILE
-    assert DEFAULTS["lease"] == config.LEASE_FILE
-    assert DEFAULTS["hold_file"] == config.HOLD_FILE
-    assert DEFAULTS["admin_key_env"] == config.ADMIN_KEY_SECRET
-    assert DEFAULTS["claude_config_dir"] == config.CLAUDE_CONFIG_SUBDIR
-    assert DEFAULTS["claude_tmux"] == config.CLAUDE_TMUX_SESSION
-    assert DEFAULTS["hot_tmux"] == config.HOT_TMUX_SESSION
-    assert DEFAULTS["hot_port"] == config.HOT_PORT
-    assert DEFAULTS["hot_log"] == config.HOT_LOG
-    assert DEFAULTS["gpu_busy_pct"] == config.GPU_BUSY_PCT
-    assert DEFAULTS["idle_state_file"] == config.IDLE_STATE_FILE
-    assert DEFAULTS["save_stamp"] == config.SAVE_STAMP
-    assert DEFAULTS["warning_file"] == config.WARNING_FILE
-    # A new key must be pinned here too (workspace is per box; check_dirty a flag).
-    assert len(DEFAULTS) == 16
-
-
-def test_dash_box_shares_the_box_client():
-    from fal.dev.dash.model import FalBox
-
-    box = _box([])
-    dash_box = FalBox.from_box(box, idle_minutes=30)
-
-    assert dash_box.app_name == "devbox-klein"
-    assert dash_box._client is box.client
-    assert dash_box.idle_minutes == 30
-    assert dash_box.save_command == config.SAVE_COMMAND
-    assert dash_box.probe_config["workspace"] == "/data/devboxes/klein"
-
-
-def test_hold_command_never_shortens_a_longer_hold(tmp_path):
+def test_hold_script_never_shortens_a_longer_hold(tmp_path):
     import subprocess
 
-    hold = tmp_path / "hold"
-    run = lambda until: subprocess.run(  # noqa: E731
-        ["sh", "-c", config.hold_command(until, str(hold))],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout
-    assert run(100) == ""
+    script = (REMOTE / "scripts" / "hold.sh").read_text()
+    hold = tmp_path / "a hold file"
+
+    def run(until):
+        return subprocess.run(
+            [
+                "sh",
+                "-c",
+                script,
+                "sh",
+                str(hold),
+                str(until),
+                str(config.HOLD_KEPT_EXIT),
+            ],
+            capture_output=True,
+            check=False,
+        ).returncode
+
+    assert run(100) == 0
     assert hold.read_text().strip() == "100"
-    assert run(50).strip() == config.HOLD_KEPT
+    assert run(50) == config.HOLD_KEPT_EXIT
     assert hold.read_text().strip() == "100"
-    assert run(200) == ""
+    assert run(200) == 0
     assert hold.read_text().strip() == "200"
 
 
-def test_published_idle_state_is_what_the_dash_reads(monkeypatch, tmp_path):
-    from fal.dev.dash.model import idle_view
+def test_hold_reports_a_kept_longer_hold():
+    box = _box([_runner("r1")])
+    box.run = MagicMock(return_value=(config.HOLD_KEPT_EXIT, ""))
 
-    module = runpy.run_path(str(BOX_APP))
-    path = tmp_path / "idle.json"
-    monkeypatch.setattr(config, "IDLE_STATE_FILE", str(path))
-    module["_publish_idle_state"](1000.0, ["hot request"])
-
-    view = idle_view(
-        {"idle_state": json.loads(path.read_text())},
-        idle_minutes=None,
-        runner_started=None,
-        claude_counts=False,
-        now=1060.0,
-    )
-    assert view.source == "watchdog"
-    assert view.reasons == ["hot request"]
-    # On/off comes from the box's warnings, never from this file.
-    assert "watchdog" not in json.loads(path.read_text())
-    assert view.remaining_seconds == 60 * 60 - 60
+    assert box.hold(1) is False
+    box.run.return_value = (0, "")
+    assert box.hold(1) is True
+    box.run.return_value = (2, "sh: boom")
+    with pytest.raises(DevError, match="boom"):
+        box.hold(1)
 
 
 # --- storage ---
@@ -554,7 +859,6 @@ def test_volume_name_fits_the_controller_limit():
 def test_deploy_mounts_the_box_volume(monkeypatch):
     box = _box(min_concurrency=0)
     box.stop = MagicMock(return_value=True)
-    box.team_workspace_exists = MagicMock(return_value=False)
     seen = {}
     box.client.deploy.side_effect = lambda *a, **k: seen.update(
         volume=box_module.os.environ[config.ENV_VOLUME]
@@ -587,10 +891,8 @@ def test_ensure_volume_reuses_an_existing_volume():
 
     box = _box()
     box.client.volumes.create.side_effect = VolumeAlreadyExistsError("exists")
-    box.team_workspace_exists = MagicMock()
 
     assert box.ensure_volume() == "devbox-klein"
-    box.team_workspace_exists.assert_not_called()
 
 
 def test_ensure_volume_points_ineligible_teams_at_team_data():
@@ -603,15 +905,6 @@ def test_ensure_volume_points_ineligible_teams_at_team_data():
         box.ensure_volume()
 
 
-def test_ensure_volume_warns_when_the_copy_needs_the_admin_key(capsys):
-    box = _box()
-    box.team_workspace_exists = MagicMock(return_value=True)
-    box.client.secrets.list.return_value = []
-
-    assert box.ensure_volume() == "devbox-klein"
-    assert config.ADMIN_KEY_SECRET in capsys.readouterr().err
-
-
 def test_box_app_mounts_its_volume_at_data(monkeypatch):
     monkeypatch.setenv(config.ENV_VOLUME, "devbox-klein")
     app = runpy.run_path(str(BOX_APP))["DevBox"]
@@ -622,204 +915,8 @@ def test_box_app_mounts_its_volume_at_data(monkeypatch):
     assert "volumes" not in app.host_kwargs
 
 
-def _migration(monkeypatch, tmp_path, team_files, admin=True):
-    """box_app's migration against a fake files API serving `team_files`."""
-    import httpx
-
-    module = runpy.run_path(str(BOX_APP))
-    migrate = module["_migrate_from_team_data"]
-    workspace = tmp_path / "data" / "devboxes" / "klein"
-    g = migrate.__globals__
-    g.update(
-        VOLUME="devbox-klein",
-        APP_NAME="devbox-klein",
-        WORKSPACE=workspace,
-        SNAPSHOT=workspace / config.SNAPSHOT_FILE,
-        WARNING_FILE=tmp_path / "warning",
-    )
-    workspace.mkdir(parents=True)  # setup creates it before the copy
-    root = str(workspace)
-    files = {f"{root}/{rel}": body for rel, body in team_files.items()}
-    downloads = []
-
-    def handler(request):
-        path = request.url.path
-        if path.startswith("/files/list/"):
-            folder = path[len("/files/list/") :].rstrip("/")
-            entries = {}
-            for name, body in files.items():
-                if not name.startswith(folder + "/"):
-                    continue
-                child = name[len(folder) + 1 :].split("/")[0]
-                full = f"{folder}/{child}"
-                entries[full] = {
-                    "path": full,
-                    "is_file": full == name,
-                    "size": len(body),
-                }
-            if not entries:
-                return httpx.Response(404)
-            return httpx.Response(200, json=list(entries.values()))
-        name = path[len("/files/file/") :]
-        downloads.append(name)
-        if name not in files:
-            return httpx.Response(404)
-        start = int(request.headers.get("Range", "bytes=0-")[len("bytes=") : -1])
-        size = len(files[name])
-        if start >= size and start:
-            return httpx.Response(416)
-        if start:
-            return httpx.Response(
-                206,
-                content=files[name][start:],
-                headers={"Content-Range": f"bytes {start}-{size - 1}/{size}"},
-            )
-        return httpx.Response(200, content=files[name])
-
-    real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx,
-        "Client",
-        lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw),
-    )
-    client = MagicMock()
-    client._rest_url = "https://api.test"
-    client._credentials.to_headers.return_value = {}
-    client.apps.list.return_value = [MagicMock(alias="devbox-klein")]
-    g["_admin_client"] = lambda: client if admin else None
-    return migrate, workspace, downloads
-
-
-def test_migration_copies_the_team_workspace_once(monkeypatch, tmp_path):
-    team = {
-        config.SNAPSHOT_FILE: b"snapshot",
-        ".home/.ssh/id_ed25519": b"key",
-        ".bash_history": b"ls",
-        config.LEASE_FILE: b"runner active 1",
-        f"{config.SNAPSHOT_FILE}.host.tmp": b"partial",
-    }
-    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
-    (workspace / ".home").mkdir()
-    (workspace / ".bash_history").write_bytes(b"newer")
-
-    migrate()
-
-    assert (workspace / config.SNAPSHOT_FILE).read_bytes() == b"snapshot"
-    assert (workspace / ".home/.ssh/id_ed25519").stat().st_mode & 0o077 == 0
-    # Never overwrites the volume, skips the lease and partial saves.
-    assert (workspace / ".bash_history").read_bytes() == b"newer"
-    assert not (workspace / config.LEASE_FILE).exists()
-    assert downloads[-1].endswith(config.SNAPSHOT_FILE)
-    assert len(downloads) == 2
-    assert (workspace / config.MIGRATED_MARKER).exists()
-
-    migrate()
-    assert len(downloads) == 2
-
-
-def test_migration_waits_for_the_admin_key(monkeypatch, tmp_path):
-    team = {config.SNAPSHOT_FILE: b"snapshot"}
-    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team, admin=False)
-
-    migrate()
-
-    assert not downloads
-    assert not (workspace / config.MIGRATED_MARKER).exists()
-    assert config.ADMIN_KEY_SECRET in (tmp_path / "warning").read_text()
-
-
-def test_migration_with_no_team_copy_marks_the_volume(monkeypatch, tmp_path):
-    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, {})
-
-    migrate()
-
-    assert not downloads
-    assert (workspace / config.MIGRATED_MARKER).read_text() == "0 files copied\n"
-
-
-def test_migration_keeps_both_snapshots_after_an_early_save(monkeypatch, tmp_path):
-    """A box that saved /work before it had the key still gets the team copy."""
-    team = {config.SNAPSHOT_FILE: b"team", ".home/#odd?name": b"x"}
-    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
-    (workspace / config.SNAPSHOT_FILE).write_bytes(b"volume")
-
-    migrate()
-
-    assert (workspace / config.SNAPSHOT_FILE).read_bytes() == b"volume"
-    side = workspace / f"{config.SNAPSHOT_FILE}.from-team-data"
-    assert side.read_bytes() == b"team"
-    assert (workspace / ".home/#odd?name").read_bytes() == b"x"
-    assert (workspace / config.MIGRATED_MARKER).exists()
-
-
-def test_migration_refuses_paths_outside_the_workspace(monkeypatch, tmp_path):
-    team = {"../other/secret": b"x"}
-    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
-
-    migrate()
-
-    assert not downloads
-    assert not (workspace / config.MIGRATED_MARKER).exists()
-    assert "outside the workspace" in (tmp_path / "warning").read_text()
-
-
-def test_migration_restarts_a_finished_leftover_download(monkeypatch, tmp_path):
-    team = {config.SNAPSHOT_FILE: b"0123"}
-    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
-    (workspace / f"{config.SNAPSHOT_FILE}.migrating.tmp").write_bytes(b"0123")
-
-    migrate()
-
-    assert (workspace / config.SNAPSHOT_FILE).read_bytes() == b"0123"
-    assert (workspace / config.MIGRATED_MARKER).exists()
-
-
-def test_migration_copies_the_rest_when_one_file_fails(monkeypatch, tmp_path):
-    team = {"a.txt": b"a", config.SNAPSHOT_FILE: b"snap"}
-    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
-    (workspace / "a.txt.migrating.tmp").mkdir()  # makes the a.txt write fail
-
-    migrate()
-
-    assert (workspace / config.SNAPSHOT_FILE).read_bytes() == b"snap"
-    assert not (workspace / config.MIGRATED_MARKER).exists()
-    assert "1 files failed" in (tmp_path / "warning").read_text()
-
-    # The retry finishes without a second copy of the snapshot.
-    (workspace / "a.txt.migrating.tmp").rmdir()
-    migrate()
-    assert (workspace / "a.txt").read_bytes() == b"a"
-    assert not (workspace / f"{config.SNAPSHOT_FILE}.from-team-data").exists()
-    assert (workspace / config.MIGRATED_MARKER).exists()
-
-
-def test_migration_resumes_an_interrupted_download(monkeypatch, tmp_path):
-    team = {config.SNAPSHOT_FILE: b"0123456789"}
-    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
-    partial = workspace / f"{config.SNAPSHOT_FILE}.migrating.tmp"
-    partial.write_bytes(b"01234")
-
-    migrate()
-
-    assert (workspace / config.SNAPSHOT_FILE).read_bytes() == b"0123456789"
-    assert not partial.exists()
-
-
-def test_migration_drops_a_download_of_the_wrong_size(monkeypatch, tmp_path):
-    """A leftover from an older version of the file must not be spliced in."""
-    team = {config.SNAPSHOT_FILE: b"0123456789"}
-    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
-    stale = workspace / f"{config.SNAPSHOT_FILE}.migrating.tmp"
-    stale.write_bytes(b"x" * 12)
-
-    migrate()
-
-    assert (workspace / config.SNAPSHOT_FILE).read_bytes() == b"0123456789"
-
-
 def test_deploy_waits_for_a_runner_still_saving(monkeypatch):
     box = _box([_runner("r1", state=RunnerState.DRAINING)], min_concurrency=0)
-    box.team_workspace_exists = MagicMock(return_value=False)
     monkeypatch.setattr(box_module, "POLL_SECONDS", 0)
     monkeypatch.setattr(config, "LEASE_WAIT_SECONDS", 0)
 
@@ -828,3 +925,154 @@ def test_deploy_waits_for_a_runner_still_saving(monkeypatch):
 
     box.client.deploy.assert_not_called()
     box.client.runners.stop.assert_not_called()
+
+
+def test_a_failed_gpu_query_never_lets_a_busy_box_look_idle():
+    from fal.dev.remote import signals
+
+    module = runpy.run_path(str(BOX_APP))
+    gpu_activity = module["_gpu_activity"]
+    busy = {"util_pct": 90}
+    idle = {"util_pct": 0}
+    patches = {
+        "busy": ([busy], None),
+        "idle": ([idle], None),
+        "failed": ([], "nvidia-smi timed out"),
+    }
+    original = signals.gpus
+    try:
+        results = {}
+        for name, answer in patches.items():
+            signals.gpus = lambda answer=answer: answer
+            results[name] = gpu_activity()
+    finally:
+        signals.gpus = original
+
+    assert results == {
+        "busy": "GPU busy",
+        "idle": None,
+        "failed": "GPU status unknown",
+    }
+
+
+def test_ssh_proxy_retries_the_runner_and_arming_lookups_together(monkeypatch):
+    monkeypatch.setattr(box_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(
+        box_module,
+        "shell_session",
+        lambda *a, **k: k["stdout"].write(box_module.SSH_READY_MARKER) or 0,
+    )
+    monkeypatch.setattr(box_module.sys, "stdout", MagicMock())
+    box = _box([_runner("r1")])
+    box.client.apps.list.side_effect = [
+        RuntimeError("blip"),
+        box.client.apps.list.return_value,
+    ]
+
+    assert box.ssh_proxy(timeout=1) == 0
+
+
+def test_a_gpu_that_cannot_be_read_is_warned_about_once_then_cleared(tmp_path):
+    from fal.dev.remote import signals
+
+    module = runpy.run_path(str(BOX_APP))
+    warning = tmp_path / "warning"
+    module["_warn"].__globals__["WARNING_FILE"] = warning
+    original = signals.gpus
+    try:
+        signals.gpus = lambda: ([], "timed out")
+        for _ in range(5):
+            assert module["_gpu_activity"]() == "GPU status unknown"
+        assert warning.read_text().count("GPU status is unknown") == 1
+        signals.gpus = lambda: ([{"util_pct": 0}], None)
+        assert module["_gpu_activity"]() is None
+    finally:
+        signals.gpus = original
+
+    assert warning.read_text() == ""
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "terraform.tfstate.backup",
+        "prod.tfvars.json",
+        "my-adminsdk-x1.json",
+        "deploy-key.json",
+        "deploy_key.json",
+        "credentials.yaml",
+        "credentials",
+        "client_secret_123.apps.json",
+        "serviceAccount.json",
+        "ServiceAccountKey.JSON",
+    ],
+)
+def test_more_secret_file_names(name):
+    assert files.secret_like(("cfg", name))
+
+
+def test_save_work_failure_says_the_save_may_still_run():
+    box = _box([_runner("r1")])
+    box.run = MagicMock(side_effect=DevError("timed out"))
+
+    with pytest.raises(DevError, match="may still be in progress.*--no-save"):
+        box.save_work()
+
+
+def test_probe_survives_a_whitespace_only_hot_error(monkeypatch):
+    import importlib
+
+    monkeypatch.syspath_prepend(str(REMOTE))
+    monkeypatch.syspath_prepend(str(Path(config.__file__).parent))
+    probe = importlib.import_module("probe")
+    monkeypatch.setattr(probe.signals, "tmux_session", lambda name: True)
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return b'{"error": "  \\n "}'
+
+    monkeypatch.setattr(probe.urllib.request, "urlopen", lambda *a, **k: Response())
+
+    assert probe._hot()["error"] == ""
+
+
+def test_run_starts_each_attempt_with_an_empty_buffer(monkeypatch):
+    import grpc
+
+    class Expired(grpc.RpcError):
+        def code(self):
+            return grpc.StatusCode.UNAUTHENTICATED
+
+    box = _box()
+    calls = []
+
+    def session(client, runner_id, command, **kwargs):
+        calls.append(1)
+        kwargs["stdout"].write(b"partial")
+        if len(calls) == 1:
+            raise Expired()
+        return 0
+
+    monkeypatch.setattr(box_module, "shell_session", session)
+
+    assert box.run("r1", ["ls"]) == (0, "partial")
+
+
+def test_push_leaves_out_a_file_that_became_a_symlink(tmp_path):
+    (tmp_path / "infer.py").write_text("x")
+    (tmp_path / "other.py").write_text("y")
+    outside = tmp_path.parent / f"{tmp_path.name}-secret.py"
+    outside.write_text("secret")
+    (tmp_path / "other.py").unlink()
+    (tmp_path / "other.py").symlink_to(outside)
+    box = _hot_box([(200, {}, b'{"written": ["infer.py"]}')])
+
+    box.push(tmp_path, "/work/x", ["infer.py", "other.py"])
+
+    assert list(box.post.call_args.args[1]["files"]) == ["infer.py"]

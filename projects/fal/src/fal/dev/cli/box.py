@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import signal
 import sys
 from datetime import datetime, timedelta, timezone
@@ -10,10 +9,10 @@ from pathlib import Path
 
 from rich.markup import escape
 
-from fal.cli.main import parse_args
-from fal.cli.runners import _shell_session
-from fal.dev.box import FINAL_STATES, DevError, newest_first, ssh_config
+from fal.cli.runners import print_logs, shell_session
+from fal.dev.box import FINAL_STATES, newest_first, ssh_config
 from fal.dev.cli.common import get_box, resolve_name
+from fal.dev.errors import DevError
 
 
 def _interrupt(signum, frame):
@@ -27,16 +26,10 @@ def _cleanup_on_hangup() -> None:
         signal.signal(signal.SIGHUP, _interrupt)
 
 
-def _session_args(args, box) -> argparse.Namespace:
-    return argparse.Namespace(
-        host=box.host, team=box.team, id=box.require_runner(), console=args.console
-    )
-
-
 def cmd_deploy(args):
     box = get_box(args)
     message = box.deploy(
-        gpu=args.machine_type,
+        machine_type=args.machine_type,
         num_gpus=args.num_gpus,
         idle_minutes=args.idle_minutes,
         claude=args.claude,
@@ -44,7 +37,7 @@ def cmd_deploy(args):
         dockerfile=args.dockerfile,
         team_data=args.team_data,
     )
-    print(message)
+    args.console.print(escape(message))
 
 
 def cmd_up(args):
@@ -71,13 +64,19 @@ def cmd_down(args):
 
 def cmd_status(args):
     for line in get_box(args).status():
-        print(line)
+        args.console.print(escape(line))
 
 
 def cmd_shell(args):
     box = get_box(args)
-    session = _session_args(args, box)
-    return _shell_session(session, command=None, interactive=True, remote_tty=True)
+    return shell_session(
+        box.client,
+        box.require_runner(),
+        None,
+        interactive=True,
+        remote_tty=True,
+        console=args.console,
+    )
 
 
 def cmd_exec(args):
@@ -85,29 +84,31 @@ def cmd_exec(args):
     if not command:
         args.parser.error("usage: fal dev exec -- <command>")
     box = get_box(args)
-    session = _session_args(args, box)
-    return _shell_session(session, command=command, interactive=False, remote_tty=False)
+    return shell_session(
+        box.client,
+        box.require_runner(),
+        command,
+        interactive=False,
+        remote_tty=False,
+        console=args.console,
+    )
 
 
 def cmd_logs(args):
     box = get_box(args)
-    extra = ["--host", box.host] if box.host else []
-    extra += ["--team", box.team] if box.team else []
     if not args.all:
-        runner_args = ["runners", "logs", box.require_runner(), "--follow", *extra]
-    else:
-        # The API only accepts a start time within the last 24 hours.
-        since = datetime.now(timezone.utc) - timedelta(hours=23)
-        runners = box.runners(since=since)
-        if not runners:
-            raise DevError(f"{box.app} has no runners in the last 23 hours")
-        # Prefer a runner that is still around (e.g. failing to start), else the
-        # shortest-lived one.
-        active = [r for r in runners if r.state not in FINAL_STATES]
-        runner_id = newest_first(active or runners)[0].runner_id
-        runner_args = ["runners", "logs", runner_id, *extra]
-    logs_args = parse_args(runner_args)
-    return logs_args.func(logs_args)
+        print_logs(box.client, box.require_runner(), args.console, follow=True)
+        return
+    # The API only accepts a start time within the last 24 hours.
+    since = datetime.now(timezone.utc) - timedelta(hours=23)
+    runners = box.runners(since=since)
+    if not runners:
+        raise DevError(f"{box.app} has no runners in the last 23 hours")
+    # Prefer a runner that is still around (e.g. failing to start), else the
+    # shortest-lived one.
+    active = [r for r in runners if r.state not in FINAL_STATES]
+    runner_id = newest_first(active or runners)[0].runner_id
+    print_logs(box.client, runner_id, args.console, follow=False, since=since)
 
 
 def cmd_hold(args):
@@ -126,7 +127,7 @@ def _fal_command() -> str:
 
 
 def cmd_ssh_config(args):
-    print(ssh_config(resolve_name(args), _fal_command(), team=args.team))
+    print(ssh_config(resolve_name(args), _fal_command(), args.host, args.team))
 
 
 def cmd_ssh_proxy(args):
