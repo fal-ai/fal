@@ -900,6 +900,18 @@ def test_class_deadline_applies_without_header(served):
     assert r.status_code == 504
 
 
+@pytest.mark.parametrize("served", [{"request_deadline_s": 0.5}], indirect=True)
+def test_longer_deadline_header_is_clamped_to_class_default(served):
+    _, url, _, _ = served
+    r = httpx.post(
+        f"{url}/v1/chat/completions",
+        json={"delay_ticks": 300},
+        headers={"X-Fal-Request-Deadline": "60"},
+        timeout=30,
+    )
+    assert r.status_code == 504
+
+
 def test_invalid_deadline_header_is_400(served):
     _, url, _, _ = served
     for bad in ("abc", "0", "-1", "nan"):
@@ -916,8 +928,11 @@ def test_deadline_budget_precedence():
     h = {}
     assert _deadline_budget(h, None, 1.0) is None
     assert _deadline_budget(h, 30.0, 1.0) == 30.0
-    # Override replaces the class default, even when larger.
-    assert _deadline_budget({"x-fal-request-deadline": "60"}, 30.0, 1.0) == 60.0
+    # Override shortens the class default but is clamped to it, not rejected.
+    assert _deadline_budget({"x-fal-request-deadline": "10"}, 30.0, 1.0) == 10.0
+    assert _deadline_budget({"x-fal-request-deadline": "60"}, 30.0, 1.0) == 30.0
+    # Without a class default the override stands alone.
+    assert _deadline_budget({"x-fal-request-deadline": "60"}, None, 1.0) == 60.0
     gw = {"x-fal-request-timeout-remaining": "297.350"}
     assert _deadline_budget(gw, None, 1.0) == pytest.approx(296.35)
     # The smaller of override/default and gateway wins.

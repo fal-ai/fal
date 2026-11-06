@@ -180,8 +180,9 @@ def _deadline_budget(
 ) -> Optional[float]:
     """Seconds a request may take from arrival, or None for no deadline.
 
-    The override header replaces the class default; the gateway's remaining
-    time (minus a margin) caps either. Raises ValueError on a bad override.
+    The override header can shorten the class default, never extend it; the
+    gateway's remaining time (minus a margin) caps both. Raises ValueError on
+    a bad override.
     """
     candidates: List[float] = []
     raw = headers.get(_DEADLINE_HEADER)
@@ -190,7 +191,7 @@ def _deadline_budget(
         if override is None or override <= 0:
             raise ValueError(f"invalid {_DEADLINE_HEADER} header: {raw!r}")
         candidates.append(override)
-    elif default is not None:
+    if default is not None:
         candidates.append(default)
     remaining = _parse_seconds(headers.get(_GATEWAY_REMAINING_HEADER))
     if remaining is not None:
@@ -345,9 +346,9 @@ class LLMApp(App):
     prefix_hint_chars: ClassVar[int] = 256
     # Self-enforced per-request deadline in seconds (None: none). Streams end
     # with finish_reason "deadline", unary calls get a 504; either way the
-    # engine request is aborted. This is a default, not a cap: a per-request
-    # X-Fal-Request-Deadline replaces it (longer or shorter), and the
-    # gateway's remaining time (less the margin) caps either.
+    # engine request is aborted. It is also a cap: a per-request
+    # X-Fal-Request-Deadline can only shorten it, and the gateway's remaining
+    # time (less the margin) caps both.
     request_deadline_s: ClassVar[Optional[float]] = None
     deadline_margin_s: ClassVar[float] = 1.0
 
