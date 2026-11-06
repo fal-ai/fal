@@ -34,6 +34,8 @@ async def metrics():
         'vllm:num_requests_running{engine="0"} 2.0\n'
         'vllm:num_requests_waiting{engine="0"} 1.0\n'
         'vllm:kv_cache_usage_perc{engine="0"} 0.25\n'
+        'vllm:prompt_tokens_total{engine="0"} 70.0\n'
+        'vllm:generation_tokens_total{engine="0"} 50.0\n'
         'vllm:spec_decode_num_draft_tokens_total{engine="0"} 40.0\n'
         'vllm:spec_decode_num_accepted_tokens_total{engine="0"} 30.0\n'
         'vllm:spec_decode_num_accepted_tokens_per_pos_total{position="0"} 9.0\n'
@@ -58,7 +60,9 @@ async def _complete(request: Request):
         "prompt_tokens_details": {"cached_tokens": 3},
     }
     if body.get("fail"):
-        return JSONResponse({"error": "boom"}, status_code=400)
+        return JSONResponse(
+            {"error": "boom"}, status_code=int(body.get("fail_status", 400))
+        )
     if body.get("stream"):
         # Hold response headers back, like an engine still queueing the request.
         for _ in range(int(body.get("header_delay_ticks", 0))):

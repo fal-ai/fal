@@ -29,6 +29,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from fal.app import DEFAULT_PLATFORM_STARTUP_TIMEOUT, App, endpoint
+from fal.sdk import HealthCheck
 from fal.toolkit.compilation import get_gpu_type
 from fal.toolkit.llm._cache import (
     advance_snapshot_marker,
@@ -61,6 +62,27 @@ from fal.toolkit.llm._upstream import open_stream
 # vLLM speculative decoding counters (cumulative since engine start).
 _SPEC_ACCEPTED = "vllm:spec_decode_num_accepted_tokens_total"
 _SPEC_DRAFTED = "vllm:spec_decode_num_draft_tokens_total"
+# Cumulative token counters that move while the engine makes progress, and the
+# gauges of requests it holds (engine stall check in health). vLLM only: SGLang
+# counts tokens when a request finishes, so one long stream looks stalled.
+_PROGRESS_COUNTERS = (
+    "vllm:prompt_tokens_total",
+    "vllm:generation_tokens_total",
+)
+_PENDING_GAUGES = (
+    "vllm:num_requests_running",
+    "vllm:num_requests_waiting",
+)
+# Tells the gateway to probe the runner's health endpoint before deciding
+# what an error response means for the runner, instead of terminating it on a
+# 503 or counting a 5xx toward termination.
+_HEALTH_CHECK_HEADERS = {"X-Fal-Runner-Health-Check": "true"}
+# Inner waits of one health probe; together under the probe's own timeout.
+_ENGINE_HEALTH_TIMEOUT_S = 5.0
+_ENGINE_METRICS_TIMEOUT_S = 3.0
+# Consecutive inference 5xx replies further apart than this do not add up.
+_ENGINE_ERROR_WINDOW_S = 60.0
+_HEALTH_CHECK_TIMEOUT_S = 10
 _METRIC_PREFIXES = (
     "vllm:num_requests_running",
     "vllm:num_requests_waiting",
@@ -75,6 +97,7 @@ _METRIC_PREFIXES = (
     "sglang:num_queue_reqs",
     "sglang:token_usage",
     "sglang:cache_hit_rate",
+    *_PROGRESS_COUNTERS,
 )
 _METRIC_RE = re.compile(r"^([^\s{]+)(?:\{[^}]*\})?\s+([0-9.eE+-]+|nan|NaN)$")
 _STREAM_TAIL_BYTES = 8192
@@ -656,6 +679,19 @@ class LLMApp(App):
     # includes engine queueing and prefill, so this also caps time to first
     # token. None disables.
     stream_idle_timeout_s: ClassVar[Optional[float]] = 300.0
+    # The health check fails when the engine has queued or running requests
+    # but its prompt and generation token counters have not moved for this
+    # long: an engine that answers /health but makes no progress. It is judged
+    # across health probes, so it needs two probes at least this far apart.
+    # vLLM only (SGLang updates its counters when a request finishes). None
+    # disables.
+    engine_stall_timeout_s: ClassVar[Optional[float]] = 180.0
+    # Opt-in: the health check also fails after this many inference 5xx
+    # replies in a row (no inference reply below 500 in between, and none of
+    # them more than a minute after the previous one): an engine that answers
+    # /health but fails every request. A caller retrying an input the engine
+    # always fails on can reach it too. None (default) disables.
+    engine_error_threshold: ClassVar[Optional[int]] = None
 
     # After SIGTERM, in-flight requests get this long to finish before they are
     # aborted (streams end with finish_reason "shutdown", unary calls get a
@@ -687,6 +723,12 @@ class LLMApp(App):
     _skip_checkpoint: Optional[str] = None
     _abort_fired = False
     _serving_loop: Optional[asyncio.AbstractEventLoop] = None
+    # (token counter total, when it last moved); None until a sample with
+    # pending requests, so idle time never counts toward a stall.
+    _progress: Optional[Tuple[float, float]] = None
+    # Inference 5xx replies in a row, and when the last one came.
+    _engine_errors = 0
+    _engine_error_at = 0.0
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         # Check only the class that sets these, so subclasses do not repeat it.
@@ -1399,8 +1441,8 @@ class LLMApp(App):
                 except subprocess.TimeoutExpired:
                     print(f"[llm-app] {self.engine} still running after kill")
 
-    async def _engine_stats(self) -> Dict[str, float]:
-        text = (await self._client.get("/metrics", timeout=5.0)).text
+    async def _engine_stats(self, timeout: float = 5.0) -> Dict[str, float]:
+        text = (await self._client.get("/metrics", timeout=timeout)).text
         stats: Dict[str, float] = {}
         for line in text.splitlines():
             if line.startswith(_METRIC_PREFIXES):
@@ -1414,30 +1456,109 @@ class LLMApp(App):
         return stats
 
     async def health(self) -> Dict[str, Any]:  # type: ignore[override]
+        """Engine liveness, never request outcomes: the engine process is up,
+        its own /health answers 200 and, when it holds requests, its token
+        counters keep moving (see ``engine_stall_timeout_s``)."""
         self._serving_loop = asyncio.get_running_loop()
         if self._draining:
             raise HTTPException(503, "runner is shutting down")
         if self._proc.poll() is not None:
             raise HTTPException(503, f"{self.engine} exited ({self._proc.returncode})")
         try:
-            resp = await self._client.get("/health", timeout=10.0)
+            resp = await self._client.get("/health", timeout=_ENGINE_HEALTH_TIMEOUT_S)
         except Exception as exc:
             raise HTTPException(503, f"{self.engine} unreachable: {exc}") from exc
         if resp.status_code != 200:
             raise HTTPException(503, f"{self.engine} unhealthy ({resp.status_code})")
         try:
-            stats = await self._engine_stats()
+            stats = await self._engine_stats(timeout=_ENGINE_METRICS_TIMEOUT_S)
         except Exception:
+            # /health answered, so a slow /metrics alone is not a failure.
             stats = {}
+        errors = self._recent_engine_errors(time.monotonic())
+        if self.engine_error_threshold is not None and (
+            errors >= self.engine_error_threshold
+        ):
+            raise HTTPException(503, f"{self.engine} failed {errors} requests in a row")
+        stalled = self._stalled_for(stats, time.monotonic())
+        if stalled is not None:
+            raise HTTPException(
+                503, f"{self.engine} made no progress for {stalled:.0f}s"
+            )
         return {"status": "ok", "version": self.version, "engine": stats}
+
+    def _stalled_for(self, stats: Dict[str, float], now: float) -> Optional[float]:
+        """Seconds the engine has held requests without its token counters
+        moving, once that exceeds ``engine_stall_timeout_s``; else None."""
+        tokens = [stats[k] for k in _PROGRESS_COUNTERS if k in stats]
+        pending = [stats[k] for k in _PENDING_GAUGES if k in stats]
+        if self.engine_stall_timeout_s is None:
+            self._progress = None
+            return None
+        if not tokens or not pending:
+            # A failed /metrics read, or an engine without these metrics: no
+            # judgment, and the last sample stands.
+            return None
+        if sum(pending) <= 0:
+            self._progress = None
+            return None
+        total = sum(tokens)
+        last = self._progress
+        if last is None or total != last[0]:
+            self._progress = (total, now)
+            return None
+        idle = now - last[1]
+        return idle if idle > self.engine_stall_timeout_s else None
+
+    @endpoint(
+        "/engine-health",
+        health_check=HealthCheck(timeout_seconds=_HEALTH_CHECK_TIMEOUT_S),
+    )
+    async def engine_health(self) -> Dict[str, Any]:
+        """The platform health check (on-demand after an error response, and
+        periodic). Override ``health`` to change what it checks: an app has
+        one health check, so a subclass must not declare another."""
+        return await self.health()
+
+    def _probe_header(self) -> Dict[str, str]:
+        # A draining runner fails the probe, which would end its grace early.
+        return {} if self._draining else _HEALTH_CHECK_HEADERS
+
+    def _recent_engine_errors(self, now: float) -> int:
+        if now - self._engine_error_at > _ENGINE_ERROR_WINDOW_S:
+            return 0
+        return self._engine_errors
+
+    def _count_engine_reply(self, status: int) -> None:
+        if status < 500:
+            self._engine_errors = 0
+            return
+        now = time.monotonic()
+        self._engine_errors = self._recent_engine_errors(now) + 1
+        self._engine_error_at = now
+
+    def _engine_reply(
+        self, content: bytes, status: int, inference: bool = True
+    ) -> Response:
+        """An engine reply passed through as is. On a 5xx the gateway probes
+        the health check before acting on the runner: one failed request does
+        not mean the engine is down, and replacing the runner drops every
+        stream on it. Only inference replies count toward
+        ``engine_error_threshold``."""
+        if inference:
+            self._count_engine_reply(status)
+        return Response(
+            content=content,
+            status_code=status,
+            media_type="application/json",
+            headers=self._probe_header() if status >= 500 else None,
+        )
 
     @endpoint("/v1/models")
     async def models(self) -> Response:
         upstream = await self._client.get("/v1/models")
-        return Response(
-            content=upstream.content,
-            status_code=upstream.status_code,
-            media_type="application/json",
+        return self._engine_reply(
+            upstream.content, upstream.status_code, inference=False
         )
 
     async def engine_stats(self) -> JSONResponse:
@@ -1619,12 +1740,9 @@ class LLMApp(App):
                     body = b'{"detail": "engine error body timed out"}'
                 finally:
                     await upstream.aclose()
-                return Response(
-                    content=body,
-                    status_code=upstream.status_code,
-                    media_type="application/json",
-                )
+                return self._engine_reply(body, upstream.status_code)
             relaying = True
+            self._engine_errors = 0
             stream = _Stream(self, upstream, path, abort)
             return _RelayResponse(
                 self._relay(stream, path, payload.get("n") in (None, 1), deadline),
@@ -1818,7 +1936,7 @@ class LLMApp(App):
             return JSONResponse(
                 {"error": {"message": message, "type": "deadline_exceeded"}},
                 status_code=504,
-                headers={"X-Fal-Needs-Retry": "false"},
+                headers={"X-Fal-Needs-Retry": "false", **self._probe_header()},
             )
         upstream = task.result()
         if upstream.status_code == 200:
@@ -1828,8 +1946,4 @@ class LLMApp(App):
                 usage = None
             if isinstance(usage, dict):
                 self.record_usage(path, usage)
-        return Response(
-            content=upstream.content,
-            status_code=upstream.status_code,
-            media_type="application/json",
-        )
+        return self._engine_reply(upstream.content, upstream.status_code)
