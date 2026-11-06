@@ -1974,36 +1974,184 @@ def test_config_key_ignores_kv_connector_size(monkeypatch):
     assert A()._config_key("/m") == small
 
 
+GIB = 1 << 30
+
+
+def _cgroup_tree(tmp_path, proc_cgroup, files):
+    root = tmp_path / "cgroup"
+    for rel, value in files.items():
+        f = root / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(value)
+    root.mkdir(exist_ok=True)
+    proc = tmp_path / "proc_cgroup"
+    proc.write_text(proc_cgroup)
+    return str(root), str(proc)
+
+
 @pytest.mark.parametrize(
-    "meminfo, cgroup, expected",
+    "proc_cgroup, files, expected",
     [
-        ("MemTotal: 1000 kB\n", "max", 1000 * 1024),
-        ("MemTotal: 1000 kB\n", "9223372036854771712", 1000 * 1024),
-        ("MemTotal: 1048576 kB\n", str(100 << 20), 100 << 20),
+        # cgroup v2, own cgroup resolved from /proc/self/cgroup.
+        ("0::/pods/p1/ctr\n", {"pods/p1/ctr/memory.max": str(60 * GIB)}, 60 * GIB),
+        # A parent's tighter limit binds, and memory.high counts.
+        (
+            "0::/pods/p1/ctr\n",
+            {"pods/p1/ctr/memory.max": "max", "pods/p1/memory.max": str(50 * GIB)},
+            50 * GIB,
+        ),
+        (
+            "0::/pods/p1/ctr\n",
+            {
+                "pods/p1/ctr/memory.max": str(60 * GIB),
+                "pods/p1/ctr/memory.high": str(40 * GIB),
+            },
+            40 * GIB,
+        ),
+        # A cgroup namespace shows the container's own cgroup as the root.
+        ("0::/\n", {"memory.max": str(30 * GIB)}, 30 * GIB),
+        # cgroup v1 memory controller.
+        (
+            "5:memory:/docker/abc\n0::/\n",
+            {"memory/docker/abc/memory.limit_in_bytes": str(40 * GIB)},
+            40 * GIB,
+        ),
+        # The fal runner case: files present but empty, or unlimited.
+        ("0::/\n", {"memory.max": "", "memory.high": ""}, 0),
+        (
+            "5:memory:/\n",
+            {
+                "memory/memory.limit_in_bytes": "9223372036854771712",
+                "memory.max": "max",
+            },
+            0,
+        ),
+        # Nothing readable at all.
+        ("", {}, 0),
+        # A malformed line does not hide the memory controller after it.
+        (
+            "garbage\n\n5:memory:/docker/abc\n",
+            {"memory/docker/abc/memory.limit_in_bytes": str(40 * GIB)},
+            40 * GIB,
+        ),
+        # Hybrid: v2 and v1 limits both count.
+        (
+            "0::/pods/p1\n5:memory:/docker/abc\n",
+            {
+                "pods/p1/memory.max": str(50 * GIB),
+                "memory/docker/abc/memory.limit_in_bytes": str(45 * GIB),
+            },
+            45 * GIB,
+        ),
+        # No cgroup namespace: /proc shows a host path, but the mount is the
+        # container's own cgroup, so its limit sits at the mount root.
+        ("0::/docker/abc\n", {"memory.max": str(60 * GIB)}, 60 * GIB),
     ],
 )
-def test_container_ram_takes_the_smaller_of_meminfo_and_cgroup(
-    monkeypatch, tmp_path, meminfo, cgroup, expected
+def test_container_ram_reads_the_tightest_cgroup_limit_never_meminfo(
+    tmp_path, proc_cgroup, files, expected
 ):
-    import builtins
+    root, proc = _cgroup_tree(tmp_path, proc_cgroup, files)
+    assert _app._container_ram_bytes(root, proc) == expected
 
-    real_open = builtins.open
-    real_read = _app.Path.read_text
 
-    def fake_open(path, *a, **k):
-        if path == "/proc/meminfo":
-            f = tmp_path / "meminfo"
-            f.write_text(meminfo)
-            return real_open(f, *a, **k)
-        return real_open(path, *a, **k)
+@pytest.mark.parametrize(
+    "gpu, num_gpus, per_gpu_gib",
+    [
+        (("NVIDIA RTX PRO 6000 Blackwell Server Edition", 97887), 1, 60),
+        (("NVIDIA RTX PRO 6000 Blackwell Server Edition", 97887), 2, 60),
+        (("NVIDIA H200", 143771), 1, 112),
+        (("NVIDIA H200 NVL", 143771), 1, 112),
+        (("NVIDIA B200", 183359), 1, 210),
+        (("NVIDIA H100 80GB HBM3", 81559), 1, 60),
+        (("NVIDIA H100 80GB HBM3 MIG 3g.40gb", 40192), 1, 16),
+        (("NVIDIA A30", 24576), 1, 16),
+        (None, 1, 16),
+    ],
+)
+def test_kv_cpu_offload_without_cgroup_limit_uses_fal_ram_per_gpu(
+    monkeypatch, capsys, gpu, num_gpus, per_gpu_gib
+):
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 0)
 
-    def fake_read(self, *a, **k):
-        if str(self) == "/sys/fs/cgroup/memory/memory.limit_in_bytes":
-            return cgroup
-        if str(self).startswith("/sys/fs/cgroup"):
-            raise OSError
-        return real_read(self, *a, **k)
+    class A(LLMApp):
+        model = "m"
+        engine_presets = False
+        kv_cpu_offload = 0.5
 
-    monkeypatch.setattr(builtins, "open", fake_open)
-    monkeypatch.setattr(_app.Path, "read_text", fake_read)
-    assert _app._container_ram_bytes() == expected
+    A.num_gpus = num_gpus
+    monkeypatch.setattr(A, "_gpu_name", staticmethod(lambda: gpu))
+    monkeypatch.setattr(A, "_gpu_type", staticmethod(lambda: "RTX"))
+    app = A()
+    cmd = app.engine_command("/m")
+    app.engine_command("/m")
+    cfg = json.loads(cmd[cmd.index("--kv-transfer-config") + 1])
+    expected = int(per_gpu_gib * GIB * num_gpus * 0.5)
+    assert cfg["kv_connector_extra_config"]["cpu_bytes_to_use"] == expected
+    out = capsys.readouterr().out
+    assert out.count("no container memory limit is readable") == 1
+
+
+def test_kv_cpu_offload_gib_overrides_size_and_turns_tier_on(monkeypatch):
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 100 * GIB)
+
+    class Sized(LLMApp):
+        model = "m"
+        engine_presets = False
+        kv_cpu_offload_gib = 24
+
+    cmd = Sized().engine_command("/m")
+    cfg = json.loads(cmd[cmd.index("--kv-transfer-config") + 1])
+    assert cfg["kv_connector_extra_config"]["cpu_bytes_to_use"] == 24 * GIB
+
+    class Off(Sized):
+        kv_cpu_offload = 0
+
+    assert "--kv-transfer-config" not in Off().engine_command("/m")
+
+    for bad in (0, -1, float("inf"), float("nan")):
+        with pytest.raises(ValueError, match="kv_cpu_offload_gib"):
+
+            class Bad(LLMApp):
+                model = "m"
+                engine_presets = False
+                kv_cpu_offload_gib = bad
+
+
+def test_kv_cpu_offload_gib_is_capped_by_a_readable_limit(monkeypatch, capsys):
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 60 * GIB)
+
+    class Big(LLMApp):
+        model = "m"
+        engine_presets = False
+        kv_cpu_offload_gib = 100
+
+    cmd = Big().engine_command("/m")
+    cfg = json.loads(cmd[cmd.index("--kv-transfer-config") + 1])
+    assert cfg["kv_connector_extra_config"]["cpu_bytes_to_use"] == int(60 * GIB * 0.8)
+    assert "exceeds" in capsys.readouterr().out
+
+
+def test_unused_kv_tier_is_not_sized(monkeypatch, capsys):
+    # No warning or GPU probe when the tier would be dropped anyway.
+    monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 0)
+
+    def no_probe():
+        raise AssertionError("GPU probed for an unused tier")
+
+    class Sg(LLMApp):
+        model = "m"
+        engine = "sglang"
+        engine_presets = False
+        kv_cpu_offload = 0.5
+
+    class User(LLMApp):
+        model = "m"
+        engine_presets = False
+        kv_cpu_offload = 0.5
+        engine_args = ["--kv-transfer-config", "{}"]
+
+    for cls in (Sg, User):
+        monkeypatch.setattr(cls, "_gpu_name", staticmethod(no_probe))
+        cls().engine_command("/m")
+    assert "WARNING" not in capsys.readouterr().out

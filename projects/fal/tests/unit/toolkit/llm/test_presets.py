@@ -1496,7 +1496,12 @@ def test_agent_profile_skips_qwen3_fp8_eagle_recipe():
     assert "--speculative-config" not in args
 
 
-def test_agent_offload_skipped_when_ram_unreadable_and_implicit(monkeypatch, capsys):
+def test_agent_offload_without_cgroup_limit_sizes_from_fal_ram_not_host(
+    monkeypatch, capsys
+):
+    # Inside a fal RTX PRO 6000 runner the cgroup files read empty and
+    # /proc/meminfo shows the 1.5 TiB host; the tier must follow the 60 GiB
+    # container allotment instead.
     monkeypatch.setattr(_app, "_container_ram_bytes", lambda: 0)
 
     class Agent(LLMApp):
@@ -1504,6 +1509,14 @@ def test_agent_offload_skipped_when_ram_unreadable_and_implicit(monkeypatch, cap
         engine_profile = "agent"
 
     monkeypatch.setattr(Agent, "_gpu_type", staticmethod(lambda: PRO6000))
-    monkeypatch.setattr(Agent, "_gpu_name", staticmethod(lambda: None))
-    assert "--kv-transfer-config" not in Agent().engine_command("/m")
-    assert "container RAM unreadable" in capsys.readouterr().out
+    monkeypatch.setattr(
+        Agent,
+        "_gpu_name",
+        staticmethod(lambda: ("NVIDIA RTX PRO 6000 Blackwell Server Edition", 97887)),
+    )
+    cmd = Agent().engine_command("/m")
+    cfg = json.loads(cmd[cmd.index("--kv-transfer-config") + 1])
+    assert cfg["kv_connector_extra_config"]["cpu_bytes_to_use"] == int(
+        60 * (1 << 30) * 0.7
+    )
+    assert "no container memory limit is readable" in capsys.readouterr().out

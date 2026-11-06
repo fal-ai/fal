@@ -43,7 +43,9 @@ from fal.toolkit.llm._preread import DEFAULT_WORKERS, preread_weights
 from fal.toolkit.llm._presets import (
     AGENT_KV_CPU_OFFLOAD,
     AGENT_PROFILE,
+    H100,
     PROFILES,
+    RTX_PRO_6000,
     Machine,
     checkpoint_for,
     detect_gpu,
@@ -363,42 +365,85 @@ async def _wait_for_disconnect(request: Request) -> None:
 _KV_OFFLOAD_MAX_FRACTION = 0.8
 
 
-def _container_ram_bytes() -> int:
-    """Smaller of MemTotal and the cgroup limit: the RAM the container can use."""
-    total = 0
+def _read_limit(path: Path) -> Optional[int]:
     try:
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if line.startswith("MemTotal:"):
-                    total = int(line.split()[1]) * 1024
-    except OSError:
-        pass
-    for path in (
-        "/sys/fs/cgroup/memory.max",
-        "/sys/fs/cgroup/memory/memory.limit_in_bytes",
-    ):
-        try:
-            raw = Path(path).read_text().strip()
-        except OSError:
+        value = int(path.read_text().strip())
+    except (OSError, ValueError):
+        # Missing, unreadable, empty or "max": no limit here.
+        return None
+    # v1 reports "unlimited" as a value near 2^63.
+    return value if 0 < value < 1 << 50 else None
+
+
+def _container_ram_bytes(
+    cgroup_root: str = "/sys/fs/cgroup", proc_cgroup: str = "/proc/self/cgroup"
+) -> int:
+    """The tightest cgroup memory limit on this process or an ancestor, else 0.
+
+    memory.high counts too: past it the kernel throttles and reclaims, and the
+    CPU KV tier is pinned memory that cannot be reclaimed. Never /proc/meminfo:
+    inside a fal runner it shows the whole host (1.5 TiB on an RTX PRO 6000
+    node) while the cgroup files can read empty.
+    """
+    root = Path(cgroup_root)
+    v2_path, v1_path = "/", "/"
+    try:
+        lines = Path(proc_cgroup).read_text().splitlines()
+    except (OSError, ValueError):
+        lines = []
+    for line in lines:
+        fields = line.split(":", 2)
+        if len(fields) != 3:
             continue
-        if raw.isdigit() and int(raw) < 1 << 50:
-            total = min(total, int(raw)) if total else int(raw)
-    return total
+        hierarchy, controllers, path = fields
+        if hierarchy == "0" and not controllers:
+            v2_path = path
+        elif "memory" in controllers.split(","):
+            v1_path = path
+    limits = []
+    for base, path, names in (
+        (root, v2_path, ("memory.max", "memory.high")),
+        (root / "memory", v1_path, ("memory.limit_in_bytes",)),
+    ):
+        parts = [p for p in path.split("/") if p]
+        # Own cgroup and every ancestor: a parent's limit binds as well.
+        for depth in range(len(parts), -1, -1):
+            directory = base.joinpath(*parts[:depth])
+            limits += [_read_limit(directory / name) for name in names]
+    return min((x for x in limits if x), default=0)
 
 
-def _kv_offload_config(fraction: float) -> Dict[str, Any]:
-    if not 0 < fraction <= _KV_OFFLOAD_MAX_FRACTION:
-        raise ValueError(
-            f"kv_cpu_offload must be a fraction in (0, {_KV_OFFLOAD_MAX_FRACTION}], "
-            f"got {fraction}"
-        )
-    ram = _container_ram_bytes()
-    if not ram:
-        raise RuntimeError("kv_cpu_offload: cannot read the container's RAM")
+# RAM fal gives a container per GPU (isolate_controller resources.py:
+# GPU-RTXPRO6000 60Gi, GPU-H100-S 60Gi, GPU-H100 112Gi, GPU-H200 112Gi,
+# GPU-B200 210Gi), scaled by GPU count. Only used when no cgroup limit is
+# readable, so it takes the smallest variant of each GPU. A custom_memory_gb
+# or a mixed machine_type list can still give less; kv_cpu_offload_gib covers
+# that. Matched by GPU key prefix; MIG slices (16 to 56Gi containers) and
+# other GPUs (some at 40 to 48Gi) get the 16 GiB floor.
+_FAL_RAM_GIB_PER_GPU = (
+    (RTX_PRO_6000, 60),
+    (H100, 60),
+    ("NVIDIA_H200", 112),
+    ("NVIDIA_B200", 210),
+)
+_MIN_RAM_GIB_PER_GPU = 16
+
+
+def _fal_ram_gib_per_gpu(machine: Machine) -> int:
+    key = machine.gpu_key or ""
+    if "MIG" in (machine.gpu_name or "").upper():
+        return _MIN_RAM_GIB_PER_GPU
+    return next(
+        (gib for prefix, gib in _FAL_RAM_GIB_PER_GPU if key.startswith(prefix)),
+        _MIN_RAM_GIB_PER_GPU,
+    )
+
+
+def _kv_offload_config(cpu_bytes: int) -> Dict[str, Any]:
     return {
         "kv_connector": "OffloadingConnector",
         "kv_role": "kv_both",
-        "kv_connector_extra_config": {"cpu_bytes_to_use": int(ram * fraction)},
+        "kv_connector_extra_config": {"cpu_bytes_to_use": cpu_bytes},
     }
 
 
@@ -502,8 +547,12 @@ class LLMApp(App):
     # The size is the total across all workers (vLLM's cpu_bytes_to_use), capped
     # at 0.8. None: off. Ignored when engine_args already set --kv-transfer-config.
     # With engine_profile = "agent" (and engine_presets), None means 0.7; 0 turns
-    # the tier off.
+    # the tier off. The container's RAM is its cgroup limit; when none is
+    # readable (fal runners can show empty cgroup files and the host's
+    # /proc/meminfo), it is fal's per-GPU allotment times num_gpus, with a
+    # warning. kv_cpu_offload_gib sets the tier size outright and turns it on.
     kv_cpu_offload: ClassVar[Optional[float]] = None
+    kv_cpu_offload_gib: ClassVar[Optional[float]] = None
     engine_port: ClassVar[int] = 8000
     engine_startup_timeout_s: ClassVar[float] = 3300.0
 
@@ -592,6 +641,13 @@ class LLMApp(App):
                 f"{cls.__name__}: kv_cpu_offload must be a fraction in "
                 f"[0, {_KV_OFFLOAD_MAX_FRACTION}], got {cls.kv_cpu_offload!r}"
             )
+        if cls.kv_cpu_offload_gib is not None and not (
+            0 < cls.kv_cpu_offload_gib < math.inf
+        ):
+            raise ValueError(
+                f"{cls.__name__}: kv_cpu_offload_gib must be positive, "
+                f"got {cls.kv_cpu_offload_gib!r}"
+            )
         if not sets_config:
             return
         # warnings (not print): this runs on the deploying machine and callers
@@ -616,16 +672,7 @@ class LLMApp(App):
         else:
             raise ValueError(f"unknown engine {self.engine!r}; override engine_command")
         engine_args = list(self.engine_args)
-        offload = self._kv_offload_fraction()
-        if offload and self.kv_cpu_offload is None:
-            # The implicit agent default must not stop a boot.
-            if not _container_ram_bytes():
-                print(
-                    "[llm-app] agent profile: container RAM unreadable, no CPU KV tier"
-                )
-                offload = None
-            elif "--no-enable-prefix-caching" in engine_args:
-                offload = None
+        user_args = list(engine_args)
         if self.engine_presets:
             model = model_facts(
                 self.model, load_model_config(model_path), self.active_params_b
@@ -643,14 +690,16 @@ class LLMApp(App):
                 ),
                 engine_args,
             )
-        if (
-            offload
-            and self.engine == "vllm"
+        offload = (
+            self._kv_offload_bytes(user_args)
+            if self.engine == "vllm"
             and not any(
                 a.replace("_", "-").split("=")[0] == "--kv-transfer-config"
                 for a in engine_args
             )
-        ):
+            else None
+        )
+        if offload:
             engine_args += [
                 "--kv-transfer-config",
                 json.dumps(_kv_offload_config(offload)),
@@ -684,6 +733,47 @@ class LLMApp(App):
             agent = self.engine_profile == AGENT_PROFILE and self.engine_presets
             return AGENT_KV_CPU_OFFLOAD if agent else None
         return self.kv_cpu_offload or None
+
+    def _kv_offload_bytes(self, engine_args: List[str]) -> Optional[int]:
+        """Size of the CPU KV tier in bytes, or None for no tier."""
+        if self.kv_cpu_offload == 0:
+            return None
+        if self.kv_cpu_offload_gib is not None:
+            size = int(self.kv_cpu_offload_gib * (1 << 30))
+            limit = int(_container_ram_bytes() * _KV_OFFLOAD_MAX_FRACTION)
+            if limit and size > limit:
+                self._warn_once(
+                    f"kv_cpu_offload_gib={self.kv_cpu_offload_gib:g} exceeds "
+                    f"{_KV_OFFLOAD_MAX_FRACTION} of the container's memory "
+                    f"limit; capped at {limit / (1 << 30):.1f} GiB."
+                )
+                return limit
+            return size
+        fraction = self._kv_offload_fraction()
+        if not fraction:
+            return None
+        if self.kv_cpu_offload is None and "--no-enable-prefix-caching" in engine_args:
+            # The implicit agent default needs prefix caching to be useful.
+            return None
+        ram = _container_ram_bytes()
+        if not ram:
+            machine = self._machine()
+            per_gpu = _fal_ram_gib_per_gpu(machine)
+            ram = (per_gpu << 30) * machine.num_gpus
+            self._warn_once(
+                f"no container memory limit is readable; sizing the CPU KV tier "
+                f"from an assumed {per_gpu} GiB per GPU x {machine.num_gpus} "
+                "(fal's allotment for this GPU). Set kv_cpu_offload_gib to size "
+                "it explicitly."
+            )
+        return int(ram * fraction)
+
+    def _warn_once(self, message: str) -> None:
+        # engine_command runs more than once per boot (config key, start).
+        warned = self.__dict__.setdefault("_offload_warnings", set())
+        if message not in warned:
+            warned.add(message)
+            print(f"[llm-app] WARNING: {message}")
 
     def _prefix_hints_on(self) -> bool:
         if self.prefix_hints is None:
