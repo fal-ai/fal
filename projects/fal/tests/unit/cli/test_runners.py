@@ -12,8 +12,10 @@ from fal.cli.main import parse_args
 from fal.cli.parser import FalParserExit
 from fal.cli.runners import (
     FINISHED_LOG_GRACE,
+    FOLLOW_STREAM_OVERLAP,
     RestRunnerInfo,
     _exec,
+    _follow_start,
     _get_logs,
     _get_runner_info,
     _get_tty_size,
@@ -441,10 +443,129 @@ def test_follow_replays_latest_lines_then_streams_after_them(
     printed = [json.loads(c[0][0]) for c in args.console.print.call_args_list]
     assert len(printed) == 100
     assert printed[0]["message"] == "50" and printed[-1]["message"] == "149"
-    # No clamp to started_at on the history replay, stream resumes after it.
+    # No clamp to started_at on the history replay; the stream overlaps it.
     assert mock_iter.call_args[0][2] is None
     stream_since = mock_stream.call_args[0][2]
-    assert stream_since > _T0 + timedelta(seconds=149)
+    assert stream_since == _T0 + timedelta(seconds=149) - FOLLOW_STREAM_OVERLAP
+
+
+@patch("fal.cli.runners._stream_logs")
+@patch("fal.cli.runners._iter_logs")
+@patch("fal.cli.runners._get_runner_info")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_follow_stream_skips_lines_already_replayed(
+    _client, mock_info, mock_iter, mock_stream
+):
+    mock_info.return_value = RestRunnerInfo(started_at=_T0, ended_at=None)
+    history = _history_lines(5)
+    mock_iter.side_effect = lambda *a, **k: iter(history)
+    late = {"timestamp": (_T0 + timedelta(seconds=2.5)).isoformat(), "message": "late"}
+    # The overlap window re-sends lines 3 and 4 plus one that arrived late.
+    mock_stream.return_value = iter([history[1], late, history[0]])
+
+    args = parse_args(["runners", "logs", "rid", "--follow", "--json"])
+    args.console = MagicMock()
+    args.func(args)
+
+    printed = [
+        json.loads(c[0][0])["message"] for c in args.console.print.call_args_list
+    ]
+    assert printed == ["0", "1", "2", "3", "4", "late"]
+
+
+@patch("fal.cli.runners._stream_logs")
+@patch("fal.cli.runners._iter_logs")
+@patch("fal.cli.runners._get_runner_info")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_follow_with_zero_lines_replays_nothing(
+    _client, mock_info, mock_iter, mock_stream
+):
+    mock_info.return_value = RestRunnerInfo(started_at=_T0, ended_at=None)
+    mock_iter.side_effect = lambda *a, **k: iter(_history_lines(10))
+    mock_stream.return_value = iter([])
+
+    args = parse_args(["runners", "logs", "rid", "--follow", "-n", "0"])
+    args.console = MagicMock()
+    args.func(args)
+
+    args.console.print.assert_not_called()
+    # Only new lines: the stream starts now, with no overlap into history.
+    stream_since = mock_stream.call_args[0][2]
+    assert stream_since > datetime.now(timezone.utc) - timedelta(seconds=5)
+
+
+@patch("fal.cli.runners._stream_logs")
+@patch("fal.cli.runners._iter_logs")
+@patch("fal.cli.runners._get_runner_info")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_follow_overlap_never_reaches_before_the_replay(
+    _client, mock_info, mock_iter, mock_stream
+):
+    # 100 replayed lines span 10s, well inside the 30s overlap.
+    mock_info.return_value = RestRunnerInfo(started_at=_T0, ended_at=None)
+    dense = [
+        {
+            "timestamp": (_T0 + timedelta(milliseconds=100 * i)).isoformat(),
+            "message": str(i),
+        }
+        for i in reversed(range(300))
+    ]
+    mock_iter.side_effect = lambda *a, **k: iter(dense)
+    mock_stream.return_value = iter([])
+
+    args = parse_args(["runners", "logs", "rid", "--follow", "--json"])
+    args.console = MagicMock()
+    args.func(args)
+
+    assert mock_stream.call_args[0][2] == _T0 + timedelta(seconds=20)
+
+
+@patch("fal.cli.runners._stream_logs")
+@patch("fal.cli.runners._iter_logs")
+@patch("fal.cli.runners._get_runner_info")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_follow_dedupe_matches_reformatted_timestamps_and_keeps_repeats(
+    _client, mock_info, mock_iter, mock_stream
+):
+    mock_info.return_value = RestRunnerInfo(started_at=_T0, ended_at=None)
+    ts = _T0 + timedelta(seconds=1)
+    mock_iter.side_effect = lambda *a, **k: iter(
+        [{"timestamp": ts.isoformat(), "message": "dot"}]
+    )
+    # Same line in another timestamp format, then a genuine repeat.
+    zulu = ts.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    mock_stream.return_value = iter(
+        [
+            {"timestamp": zulu, "message": "dot"},
+            {"timestamp": zulu, "message": "dot"},
+        ]
+    )
+
+    args = parse_args(["runners", "logs", "rid", "--follow", "--json"])
+    args.console = MagicMock()
+    args.func(args)
+
+    assert len(args.console.print.call_args_list) == 2
+
+
+def test_follow_start_survives_unparseable_timestamps():
+    replay = [{"timestamp": "not-a-time", "message": "x"}]
+    start = _follow_start(replay, 100)
+    assert start <= datetime.now(timezone.utc) - FOLLOW_STREAM_OVERLAP
+
+
+def test_follow_rejects_oldest_lines():
+    args = parse_args(["runners", "logs", "rid", "--follow", "-n", "+5"])
+    args.console = MagicMock()
+    args.parser = MagicMock()
+    args.parser.error.side_effect = SystemExit(2)
+    with patch("fal.cli.runners.SyncServerlessClient"), patch(
+        "fal.cli.runners._get_runner_info",
+        return_value=RestRunnerInfo(started_at=_T0, ended_at=None),
+    ):
+        with pytest.raises(SystemExit):
+            args.func(args)
+    assert "--follow" in args.parser.error.call_args[0][0]
 
 
 @patch("fal.cli.runners._stream_logs")
@@ -484,6 +605,9 @@ def test_follow_finished_runner_reads_history(
     args.func(args)
 
     mock_stream.assert_not_called()
-    logs = json.loads(args.console.print.call_args[0][0])["logs"]
+    # One JSON object per line, oldest first, like a live --follow.
+    logs = [json.loads(c[0][0]) for c in args.console.print.call_args_list]
     assert len(logs) == (150 if expect_since else 100)
+    assert logs[-1]["message"] == "149"
+    assert logs[0]["message"] == ("0" if expect_since else "50")
     assert (mock_iter.call_args[0][2] is not None) == expect_since

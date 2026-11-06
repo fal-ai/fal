@@ -5,7 +5,7 @@ import json
 import os
 import signal
 import sys
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
@@ -716,6 +716,33 @@ class LogPrinter:
 DEFAULT_FOLLOW_REPLAY_LINES = 100
 # Logs emitted while the runner shuts down can land slightly after finished_at.
 FINISHED_LOG_GRACE = timedelta(minutes=1)
+# Lines can become visible in history after their timestamp, so the stream
+# starts up to this far before the replay ends and skips lines already printed.
+FOLLOW_STREAM_OVERLAP = timedelta(seconds=30)
+
+
+def _log_key(log: dict) -> tuple:
+    # History and stream may format the same timestamp differently (offset
+    # style or sub-second precision), so compare parsed times at ms precision.
+    ts = log.get("timestamp")
+    try:
+        parsed = _to_aware_utc(_parse_ts(ts))
+        ts = parsed.replace(microsecond=parsed.microsecond // 1000 * 1000)
+    except Exception:
+        pass
+    return (ts, log.get("message"))
+
+
+def _follow_start(replay: list[dict], replay_count: int) -> datetime:
+    """Where the stream starts after the replay: a short overlap, never
+    before the oldest replayed line, and no overlap when -n 0 asked for none."""
+    now = datetime.now(timezone.utc)
+    if replay_count == 0:
+        return now
+    stamps = [key[0] for key in map(_log_key, replay) if isinstance(key[0], datetime)]
+    if not stamps:
+        return now - FOLLOW_STREAM_OVERLAP
+    return max(max(stamps) - FOLLOW_STREAM_OVERLAP, min(stamps))
 
 
 def _resolve_log_window(
@@ -743,6 +770,8 @@ def _replay_recent_logs(
 ) -> list[dict]:
     """Newest `count` lines in chronological order (history is newest first)."""
     newest: list[dict] = []
+    if count <= 0:
+        return newest
     for log in _iter_logs(rest_client, params, since, until):
         newest.append(log)
         if len(newest) >= count:
@@ -774,7 +803,11 @@ def _logs(args):
         try:
             lines_count = int(lines_str)
         except ValueError:
+            lines_count = -1
+        if lines_count < 0:
             args.parser.error("Invalid -n|--lines value. Use an integer or +integer.")
+    if follow and lines_oldest:
+        args.parser.error("-n +N (oldest lines) cannot be used with --follow.")
 
     printer = LogPrinter(args.console)
 
@@ -784,33 +817,40 @@ def _logs(args):
         else:
             printer.print(log)
 
+    replay_count = DEFAULT_FOLLOW_REPLAY_LINES if lines_count is None else lines_count
+
     if follow and runner_info.ended_at is not None and args.until is None:
         # Finished runner: nothing to stream, so --follow is a plain read
-        # (latest lines unless a --since window or -n was given).
-        follow = False
-        if args.since is None and lines_count is None:
-            lines_count = DEFAULT_FOLLOW_REPLAY_LINES
+        # (latest lines unless a --since window was given), printed one line
+        # at a time in order, as a live --follow would.
+        history = _get_logs(
+            rest_client,
+            params,
+            since,
+            until,
+            replay_count if args.since is None else lines_count,
+        )
+        for log in reversed(list(history)):
+            emit(log)
+        return
 
     if follow:
         stream_since = since
+        seen: Counter[tuple] = Counter()
         if args.since is None:
             # Replay the latest lines first so quiet runners show their recent
-            # output, then stream from just after the last replayed line.
-            replay = _replay_recent_logs(
-                rest_client,
-                params,
-                None,
-                until,
-                lines_count or DEFAULT_FOLLOW_REPLAY_LINES,
-            )
+            # output, then stream with a short overlap, skipping repeats.
+            replay = _replay_recent_logs(rest_client, params, None, until, replay_count)
             for log in replay:
                 emit(log)
-            if replay:
-                stream_since = _to_aware_utc(_parse_ts(replay[-1]["timestamp"]))
-                stream_since += timedelta(microseconds=1)
-            else:
-                stream_since = datetime.now(timezone.utc)
+            seen = Counter(_log_key(log) for log in replay)
+            stream_since = _follow_start(replay, replay_count)
         for log in _stream_logs(rest_client, params, stream_since, until):
+            if seen:
+                key = _log_key(log)
+                if seen[key] > 0:
+                    seen[key] -= 1
+                    continue
             emit(log)
         return
 
@@ -889,7 +929,8 @@ def _add_logs_parser(subparsers, parents):
         help=(
             "Only show latest N log lines. "
             "If '+' prefix is used, show oldest N log lines. "
-            "With --follow, sets how many lines are replayed first."
+            "With --follow, sets how many of the latest lines are replayed "
+            "first (0 replays none); '+' cannot be used with --follow."
         ),
     )
     parser.set_defaults(func=_logs)
