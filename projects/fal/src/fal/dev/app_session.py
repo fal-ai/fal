@@ -49,6 +49,8 @@ class Session:
     machine_type: str | None = None
     created_at: float = dataclasses.field(default_factory=time.time)
     manifest: dict[str, str] = dataclasses.field(default_factory=dict)
+    # Dependency overlay layers, oldest first, replayed on a new runner.
+    overlay: list[dict[str, Any]] = dataclasses.field(default_factory=list)
 
     @property
     def path(self) -> Path:

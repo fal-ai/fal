@@ -41,7 +41,7 @@ from fastapi import Body
 
 import fal
 from fal.app import App
-from fal.dev import app_profile
+from fal.dev import app_deps, app_profile
 
 CHILD_PORT = 8181
 STATE_ROOT = Path("/tmp/fal-dev-app")
@@ -152,6 +152,10 @@ class _ChildProcess:
         self.src = session_dir / "src"
         self.sdk = session_dir / "sdk"
         self.deps = session_dir / "sdk-deps"
+        self.overlay = app_deps.Overlay(session_dir / "overlay", [self.deps])
+        self.deps_lock = threading.Lock()
+        # Overlay version the running app process started with.
+        self.launched_overlay: int | None = None
         self.lock = threading.RLock()
         self.control = threading.Lock()
         self.install_lock = threading.Lock()
@@ -194,7 +198,9 @@ class _ChildProcess:
     def _pythonpath(self) -> str:
         # The shipped SDK goes first so `fal` matches the CLI that deployed the
         # holder; its dependencies go last so the app's own versions win.
-        paths = [str(self.sdk), *[p for p in sys.path if p]]
+        # Overlay layers come before the app's own environment.
+        paths = [str(self.sdk), *self.overlay.paths()]
+        paths += [p for p in sys.path if p]
         if self.deps.exists():
             paths.append(str(self.deps))
         return os.pathsep.join(paths)
@@ -204,6 +210,7 @@ class _ChildProcess:
         env["PYTHONPATH"] = self._pythonpath()
         env["PYTHONUNBUFFERED"] = "1"
         env["FAL_DEV_APP"] = "1"
+        env["FAL_DEV_OVERLAY"] = os.pathsep.join(self.overlay.paths())
         return env
 
     def _fal_importable(self) -> tuple[bool, str]:
@@ -325,6 +332,7 @@ class _ChildProcess:
             self.phase, self.detail = "setup", "running setup()"
             self.started_at = time.time()
             self.ready_at = None
+            self.launched_overlay = self.overlay.version
             self.exit_code = None
             proc = subprocess.Popen(
                 command,
@@ -427,6 +435,14 @@ class _ChildProcess:
             self.start(generation=generation)
         return result
 
+    def restart_needed(self) -> bool:
+        """The overlay changed since the running app process started."""
+        return (
+            self.proc is not None
+            and self.launched_overlay is not None
+            and self.launched_overlay != self.overlay.version
+        )
+
     def status(self) -> dict[str, Any]:
         with self.lock:
             result: dict[str, Any] = {
@@ -439,6 +455,8 @@ class _ChildProcess:
                 "ready_at": self.ready_at,
                 "exit_code": self.exit_code,
                 "restarts": self.restarts,
+                "overlay_layers": len(self.overlay.layers()),
+                "overlay_restart_needed": self.restart_needed(),
             }
         if result["phase"] == "ready":
             try:
@@ -637,6 +655,62 @@ def _artifact(payload: dict, root: Path) -> dict:
     }
 
 
+def _deps(child: _ChildProcess, payload: dict) -> dict[str, Any]:
+    """Change or show the dependency overlay; restart the app to apply it."""
+    overlay = child.overlay
+    action = payload.get("action")
+    result: dict[str, Any] = {}
+    changed = False
+    if action != "status":
+        # Status reads state.json, which is replaced atomically: no lock.
+        with child.deps_lock:
+            before = overlay.version
+            if action == "install":
+                index_url = payload.get("index_url")
+                result = overlay.install(
+                    [str(spec) for spec in payload.get("packages") or []],
+                    no_deps=bool(payload.get("no_deps")),
+                    pre=bool(payload.get("pre")),
+                    index_url=str(index_url) if index_url else None,
+                    extra_index_urls=[
+                        str(url) for url in payload.get("extra_index_urls") or []
+                    ],
+                    force=bool(payload.get("force")),
+                )
+            elif action == "uninstall":
+                names = [str(name) for name in payload.get("packages") or []]
+                result["removed"] = overlay.uninstall(names)
+            elif action == "reset":
+                result["removed"] = overlay.reset()
+            else:
+                raise ValueError(f"unknown deps action {action!r}")
+            changed = overlay.version != before
+    result["layers"] = overlay.status()
+    result["replay"] = overlay.replay()
+    # A stopped app stays stopped; it picks the overlay up when it starts.
+    result["restarted"] = bool(
+        changed
+        and payload.get("restart")
+        and child.phase not in STOPPED_PHASES
+        and child.start()
+    )
+    result["restart_needed"] = child.restart_needed()
+    names = sorted(
+        {
+            package["name"]
+            for layer in result["layers"]
+            for package in layer["installed"]
+        }
+        | {str(name) for name in payload.get("names") or []}
+    )
+    if action == "status" and child.phase == "ready" and names:
+        try:
+            _, result["app_versions"] = _child_call("versions", {"names": names}, 30)
+        except CHILD_ERRORS as exc:
+            result["app_versions"] = {"error": str(exc)}
+    return result
+
+
 def _int(payload: dict, key: str, default: int | None) -> int | None:
     value = payload.get(key, default)
     if value is None:
@@ -810,6 +884,15 @@ class DevAppHolder:
             return await asyncio.to_thread(_artifact, payload, root)
         except CHILD_ERRORS as exc:
             raise fastapi.HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @fal.endpoint(f"{ROUTE_PREFIX}deps")
+    async def dev_deps(self, payload: Any = Body(...)) -> dict[str, Any]:
+        payload = self._check(payload)
+        try:
+            return await asyncio.to_thread(_deps, self._child, payload)
+        except (*REQUEST_ERRORS, app_deps.DepsError) as exc:
+            detail = app_deps.redact(str(exc))
+            raise fastapi.HTTPException(status_code=409, detail=detail) from exc
 
     @fal.endpoint(f"{ROUTE_PREFIX}logs")
     async def dev_logs(self, payload: Any = Body(...)) -> dict[str, Any]:

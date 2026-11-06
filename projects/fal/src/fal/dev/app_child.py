@@ -15,9 +15,11 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.metadata
 import json
 import linecache
 import os
+import site
 import sys
 import time
 import traceback
@@ -58,6 +60,26 @@ async def _send_json(send, status: int, payload: dict[str, Any]) -> None:
         }
     )
     await send({"type": "http.response.body", "body": body})
+
+
+def _versions(names: list[str]) -> dict[str, Any]:
+    """The version of each package this process imports, and where from."""
+    found: dict[str, Any] = {}
+    for name in names:
+        try:
+            dist = importlib.metadata.distribution(name)
+        except importlib.metadata.PackageNotFoundError:
+            found[name] = None
+            continue
+        found[name] = {"version": dist.version, "path": str(dist.locate_file(""))}
+    return found
+
+
+def _activate_overlay() -> None:
+    """Process .pth files in the dependency overlay (already on PYTHONPATH)."""
+    for path in reversed(os.environ.get("FAL_DEV_OVERLAY", "").split(os.pathsep)):
+        if path:
+            site.addsitedir(path)
 
 
 class DevAppServer:
@@ -232,6 +254,9 @@ class DevAppServer:
                 await _send_json(send, 200, self.reload(payload.get("files", [])))
             elif action == "status":
                 await _send_json(send, 200, self.status())
+            elif action == "versions":
+                found = _versions(payload.get("names") or [])
+                await _send_json(send, 200, found)
             elif action == "endpoints":
                 routes = self.instance.collect_routes()
                 found = {"endpoints": app_profile.endpoints(routes)}
@@ -270,6 +295,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # A same-size edit within the same second would otherwise reuse a stale .pyc.
     sys.dont_write_bytecode = True
+    _activate_overlay()
     sys.path.insert(0, str(args.root.resolve()))
     os.chdir(args.root)
     server = DevAppServer(args.root, args.module, args.cls)

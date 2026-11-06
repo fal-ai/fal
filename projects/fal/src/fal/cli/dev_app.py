@@ -166,6 +166,7 @@ def _boot(session) -> dict:
     from fal.dev.app_session import call
 
     _sync(session, full=True, reload=False)
+    _replay_overlay(session)
     sdk = app_sync.sdk_files()
     after = call(session, "logs", {"lines": 0}, timeout=600)["total"]
     call(
@@ -181,6 +182,48 @@ def _boot(session) -> dict:
     )
     _console().print(f"Running {session.class_name}.setup() on the box ...")
     return _wait_ready(session, after=after)
+
+
+def _replay_overlay(session) -> None:
+    """Install the session's dependency overlay on a fresh runner, as pinned.
+
+    A layer that no longer installs is dropped with a warning, so the box
+    still starts and `deps` commands keep working.
+    """
+    from rich.markup import escape
+
+    from fal.dev.app_deps import redact
+    from fal.dev.app_session import DevAppError
+
+    if not session.overlay:
+        return
+    wanted = [layer["packages"] for layer in session.overlay]
+    status = _deps_call(session, {"action": "status"}, remember=False)
+    if [layer["packages"] for layer in status["replay"]] == wanted:
+        session.overlay = status["replay"]
+        session.save()
+        return
+    console = _console()
+    console.print(f"Installing {len(wanted)} dependency overlay layer(s) ...")
+    layers = session.overlay
+    # Start from a clean overlay: this runner may hold a partial earlier replay.
+    _deps_call(session, {"action": "reset"}, remember=False)
+    for layer in layers:
+        payload = {
+            **{key: value for key, value in layer.items() if key != "id"},
+            "action": "install",
+            "no_deps": True,
+            "force": True,
+        }
+        try:
+            _deps_call(session, payload, remember=False)
+        except DevAppError as exc:
+            pins = redact(", ".join(layer["packages"]))
+            console.print(
+                f"[red]Dropped an overlay layer[/] ({escape(pins or '')}): "
+                f"{escape(redact(str(exc)) or '')}"
+            )
+    _deps_call(session, {"action": "status"})
 
 
 def _ensure_booted(session) -> bool:
@@ -627,6 +670,128 @@ def _profile(args):
         raise SystemExit(1)
 
 
+def _remember_overlay(session, result: dict[str, Any]) -> None:
+    # The box's overlay is the truth; keep the session in step for replays.
+    session.overlay = result["replay"]
+    session.save()
+
+
+def _print_layers(layers: list[dict[str, Any]]) -> None:
+    console = _console()
+    if not layers:
+        console.print("No dependency overlay: the app runs on its own environment.")
+        return
+    console.print(f"{len(layers)} overlay layer(s), newest first:")
+    for layer in layers:
+        console.print(f"  [bold]{layer['id']}[/] ({', '.join(layer['requested'])})")
+        for package in layer["installed"]:
+            base = package.get("base_version")
+            shadows = f" (app has {base})" if base else " (new)"
+            console.print(f"    {package['name']}=={package['version']}{shadows}")
+
+
+def _deps_call(
+    session, payload: dict[str, Any], *, remember: bool = True
+) -> dict[str, Any]:
+    from fal.dev.app_session import call
+
+    result = call(session, "deps", payload, timeout=3600)
+    if remember:
+        _remember_overlay(session, result)
+    return result
+
+
+def _after_change(session, result: dict[str, Any], restart: bool) -> None:
+    console = _console()
+    if result.get("restarted"):
+        console.print("Restarting the app so the overlay takes effect ...")
+        _wait_ready(session)
+        status = _deps_call(session, {"action": "status"})
+        _print_app_versions(status)
+    elif result.get("restart_needed") and not restart:
+        console.print("Run `fal dev app restart` to use it.")
+
+
+def _print_app_versions(status: dict[str, Any]) -> None:
+    versions = status.get("app_versions") or {}
+    if "error" in versions:
+        _console().print(f"[yellow]Could not ask the app[/]: {versions['error']}")
+        return
+    for name, found in sorted(versions.items()):
+        if found:
+            print(f"  app imports {name}=={found['version']} from {found['path']}")
+
+
+def _deps_install(args):
+    session = _session(args)
+    _ensure_booted(session)
+    payload = {
+        "action": "install",
+        "packages": args.packages,
+        "no_deps": args.no_deps,
+        "pre": args.pre,
+        "index_url": args.index_url,
+        "extra_index_urls": args.extra_index_url or [],
+        "force": args.force,
+        "restart": args.restart,
+    }
+    _console().print(f"Installing {' '.join(args.packages)} into an overlay ...")
+    result = _deps_call(session, payload)
+    layer = result.get("layer")
+    if layer is None:
+        _console().print(
+            f"Nothing to install: {result.get('reason', 'already satisfied')}."
+        )
+        return
+    pins = ", ".join(
+        f"{p['name']}=={p['version']}"
+        + (f" (app has {p['base_version']})" if p.get("base_version") else "")
+        for top in result["layers"][:1]
+        for p in top["installed"]
+    )
+    _console().print(f"[green]Installed[/] layer {layer['id']}: {pins}")
+    _after_change(session, result, args.restart)
+
+
+def _deps_uninstall(args):
+    session = _session(args)
+    _ensure_booted(session)
+    result = _deps_call(
+        session,
+        {"action": "uninstall", "packages": args.packages, "restart": args.restart},
+    )
+    for layer in result["removed"]:
+        names = ", ".join(p["name"] for p in layer["installed"])
+        _console().print(f"Removed layer {layer['id']} ({names})")
+    _after_change(session, result, args.restart)
+
+
+def _deps_reset(args):
+    session = _session(args)
+    _ensure_booted(session)
+    result = _deps_call(session, {"action": "reset", "restart": args.restart})
+    _console().print(f"Removed {result['removed']} overlay layer(s).")
+    _after_change(session, result, args.restart)
+
+
+def _deps_status(args):
+    session = _session(args)
+    _ensure_booted(session)
+    status = _deps_call(session, {"action": "status", "names": args.packages})
+    if args.json:
+        # replay has index URLs as given, credentials included.
+        status.pop("replay", None)
+        print(json.dumps(status, indent=2))
+        return
+    _print_layers(status["layers"])
+    if status.get("restart_needed"):
+        _console().print(
+            "[yellow]The running app predates the last change[/]: "
+            "run `fal dev app restart`."
+        )
+    _print_app_versions(status)
+
+
 def _restart(args):
     from fal.dev.app_session import call
 
@@ -856,6 +1021,77 @@ def add_parser(main_subparsers, parents=None):
         help="Skip downloading compressed traces over this size (default 200).",
     )
     profile.set_defaults(func=_profile)
+
+    deps = subparsers.add_parser(
+        "deps",
+        help="Try other package versions without rebuilding the box.",
+        description="Install packages into an overlay that the app imports ahead "
+        "of its own environment (which is never modified), then restart the app. "
+        "Only what the app's environment does not already satisfy is installed. "
+        "The overlay is kept with the session and installed again on a new runner.",
+        parents=parents,
+    )
+    deps_commands = deps.add_subparsers(
+        title="Commands",
+        metavar="command",
+        dest="deps_cmd",
+        required=True,
+        parser_class=FalClientParser,
+    )
+    no_restart = argparse.ArgumentParser(add_help=False)
+    no_restart.add_argument(
+        "--no-restart",
+        dest="restart",
+        action="store_false",
+        help="Change the overlay without restarting the app.",
+    )
+    install = deps_commands.add_parser(
+        "install",
+        help="Install packages into a new overlay layer.",
+        parents=[*parents, session_parser, no_restart],
+    )
+    install.add_argument("packages", nargs="+", help="Requirement specs.")
+    install.add_argument(
+        "--no-deps", action="store_true", help="Install exactly these packages."
+    )
+    install.add_argument("--pre", action="store_true", help="Allow pre-releases.")
+    install.add_argument("--index-url", help="Package index to use.")
+    install.add_argument(
+        "--extra-index-url",
+        action="append",
+        help="Another index (repeatable). The highest version across indexes "
+        "wins, so a public package can shadow a private one of the same name.",
+    )
+    install.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow changing packages the box's app server runs on "
+        "(fastapi, pydantic, uvicorn, ...).",
+    )
+    install.set_defaults(func=_deps_install)
+    uninstall = deps_commands.add_parser(
+        "uninstall",
+        help="Remove the overlay layers that installed these packages.",
+        parents=[*parents, session_parser, no_restart],
+    )
+    uninstall.add_argument("packages", nargs="+")
+    uninstall.set_defaults(func=_deps_uninstall)
+    reset = deps_commands.add_parser(
+        "reset",
+        help="Remove every overlay layer.",
+        parents=[*parents, session_parser, no_restart],
+    )
+    reset.set_defaults(func=_deps_reset)
+    deps_status = deps_commands.add_parser(
+        "status",
+        help="Show overlay layers and the versions the app imports.",
+        parents=[*parents, session_parser],
+    )
+    deps_status.add_argument(
+        "packages", nargs="*", help="Also show which version the app imports."
+    )
+    deps_status.add_argument("--json", action="store_true")
+    deps_status.set_defaults(func=_deps_status)
 
     restart = subparsers.add_parser(
         "restart",

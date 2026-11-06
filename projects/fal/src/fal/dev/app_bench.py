@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from fal.dev.app_deps import redact
+
 BENCHMARKS_DIR = Path("~/.fal/dev/benchmarks").expanduser()
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
 # Fields that must match for a comparison to mean anything.
@@ -84,6 +86,9 @@ def record(
         "path": path,
         "payload_sha256": payload_sha256(body),
         "source": source_digest(session.manifest),
+        "overlay": [
+            redact(pin) for layer in session.overlay for pin in layer["packages"]
+        ],
         "warmups": warmups,
         "repeat": len(runs),
         "runs": runs,
@@ -194,4 +199,9 @@ def compare(baseline: dict[str, Any], candidate: dict[str, Any]) -> list[str]:
         f"{'source':<8}{baseline.get('source', '?'):<{width}}"
         f"{candidate.get('source', '?'):<{width}}"
     )
+    if (baseline.get("overlay") or []) != (candidate.get("overlay") or []):
+        lines.append(
+            f"{'deps':<8}{', '.join(baseline.get('overlay') or ['-']):<{width}}"
+            f"{', '.join(candidate.get('overlay') or ['-'])}"
+        )
     return lines
