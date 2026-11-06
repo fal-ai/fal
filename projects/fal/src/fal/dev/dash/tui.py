@@ -12,10 +12,12 @@ import select
 import sys
 import threading
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
-from rich.console import Console
+from rich.console import Console, RenderableType
 from rich.live import Live
 from rich.text import Text
 
@@ -25,6 +27,43 @@ from fal.dev.dash import model
 from fal.dev.dash.view import render
 
 CONFIRM_SECONDS = 5.0
+
+
+@dataclass
+class Controls:
+    """What one kind of box draws and which keys act on it.
+
+    ``s`` (shell), ``d d`` (down) and ``q`` (quit) are common to every box;
+    ``actions`` maps the other keys to (what is running, func(runner_id)).
+    ``outputs`` adds ``o``: show the newest image `fal dev hot run` saved.
+    """
+
+    poller: Callable[..., model.Poller]
+    render: Callable[..., RenderableType]
+    actions: dict[str, tuple[str, Callable[[str], str]]]
+    down: Callable[[], str]
+    down_prompt: str
+    down_label: str
+    outputs: bool = False
+
+
+def box_controls(box: Box) -> Controls:
+    """The keys and panels of a `fal dev up` box."""
+    return Controls(
+        poller=model.Poller,
+        render=render,
+        actions={
+            "h": ("holding", lambda runner_id: model.hold(box)),
+            "r": (
+                "restarting the hot server",
+                lambda runner_id: model.hot_restart(box, runner_id),
+            ),
+        },
+        down=lambda: model.down(box),
+        down_prompt="press d again to save /work and stop the box",
+        down_label="saving /work and stopping the box",
+        outputs=True,
+    )
 
 
 @contextmanager
@@ -66,24 +105,32 @@ def _show_output(path: Path, console: Console) -> bool:
     return True
 
 
-def print_once(box: Box, console: Console | None = None) -> None:
+def print_once(
+    box: Box, console: Console | None = None, controls: Controls | None = None
+) -> None:
     """One poll, one frame: for scripts, captures, and terminals without a TTY."""
     console = console or Console()
-    poller = model.Poller(box)
+    controls = controls or box_controls(box)
+    poller = controls.poller(box)
     poller.prime()
-    console.print(render(poller.snapshot, box))
+    console.print(controls.render(poller.snapshot, box))
 
 
 def run_dashboard(
-    box: Box, interval: float = 3.0, console: Console | None = None
+    box: Box,
+    interval: float = 3.0,
+    console: Console | None = None,
+    controls: Controls | None = None,
 ) -> None:
     """Show the dashboard until q or Ctrl-C."""
     console = console or Console()
+    controls = controls or box_controls(box)
+    render = controls.render
     # No termios on Windows; no screen to draw on without a terminal.
     if os.name == "nt" or not (sys.stdin.isatty() and sys.stdout.isatty()):
-        print_once(box, console)
+        print_once(box, console, controls)
         return
-    poller = model.Poller(box, interval=interval)
+    poller = controls.poller(box, interval=interval)
     poller.start()
     fd = sys.stdin.fileno()
     pending_down = 0.0
@@ -149,14 +196,11 @@ def run_dashboard(
                     if key == "d":
                         if time.time() - pending_down < CONFIRM_SECONDS:
                             pending_down = 0.0
-                            act("saving /work and stopping the box", model.down, box)
+                            act(controls.down_label, controls.down)
                         else:
                             pending_down = time.time()
-                            poller.say(
-                                "press d again to save /work and stop the box",
-                                seconds=CONFIRM_SECONDS,
-                            )
-                    elif key in ("s", "h", "r") and not runner_id:
+                            poller.say(controls.down_prompt, seconds=CONFIRM_SECONDS)
+                    elif (key == "s" or key in controls.actions) and not runner_id:
                         poller.say("the box is not running")
                     elif key == "s" and runner_id:
                         live.stop()
@@ -173,7 +217,7 @@ def run_dashboard(
                             except Exception as exc:
                                 poller.say(f"shell failed: {exc}")
                         live.start()
-                    elif key == "o":
+                    elif key == "o" and controls.outputs:
                         image = model.latest_output(box)
                         if not image:
                             poller.say(
@@ -192,15 +236,9 @@ def run_dashboard(
                                 except Exception as exc:
                                     poller.say(f"open failed: {exc}")
                             live.start()
-                    elif key == "h" and runner_id:
-                        act("holding", model.hold, box)
-                    elif key == "r" and runner_id:
-                        act(
-                            "restarting the hot server",
-                            model.hot_restart,
-                            box,
-                            runner_id,
-                        )
+                    elif key in controls.actions and runner_id:
+                        label, func = controls.actions[key]
+                        act(label, func, runner_id)
                     frame = render(poller.snapshot, box, screen=True, animate=animate)
                     live.update(frame, refresh=True)
             finally:

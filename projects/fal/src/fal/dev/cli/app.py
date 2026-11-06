@@ -543,6 +543,48 @@ def cmd_status(args):
     print(json.dumps(info, indent=2, default=str))
 
 
+def cmd_dash(args):
+    from fal.dev.dash import app as app_dash
+    from fal.dev.dash.tui import print_once, run_dashboard
+
+    box = app_dash.AppBox(_session(args))
+    controls = app_dash.controls(box)
+    if args.once:
+        print_once(box, console, controls)
+    else:
+        run_dashboard(box, interval=args.interval, console=console, controls=controls)
+
+
+def cmd_proxy(args):
+    from fal.dev.app import proxy
+
+    session = _booted(args)
+
+    def reboot() -> None:
+        with client.explain_index_refusal(session.account):
+            client.ensure_booted(session)
+
+    try:
+        server = proxy.serve(session, args.bind, args.port, report=log, reboot=reboot)
+    except (OSError, OverflowError) as exc:
+        raise DevError(f"Cannot serve on {args.bind}:{args.port}: {exc}") from exc
+    if not proxy.is_loopback(args.bind):
+        console.print(
+            f"[bold yellow]Warning:[/] {args.bind} is not a loopback address: "
+            "anyone who can reach it can call the box as you."
+        )
+    console.print(
+        f"Serving [bold]{session.name}[/] at "
+        f"[bold]{proxy.server_url(args.bind, args.port)}[/] (Ctrl-C to stop)"
+    )
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
 def cmd_stop(args):
     session = _session(args)
     killed, existed = deploy.stop_box(session)

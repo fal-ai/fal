@@ -8,9 +8,11 @@ import base64
 import contextlib
 import http.client
 import json
+import socket
 import time
 import urllib.parse
 import uuid
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +25,7 @@ from fal.dev.remote.protocol import (
     MAX_REPEAT,
     MAX_WARMUPS,
     REQUEST_TIMEOUT_SECONDS,
+    STREAM_HEADERS,
     number,
 )
 
@@ -33,6 +36,7 @@ ARTIFACTS = (app_profile.TRACE_NAME, app_profile.OPS_NAME)
 # A batch of runs ends within this, inside the box's request timeout.
 RUNS_BUDGET_SECONDS = 3300
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
+STREAM_CHUNK_BYTES = 64 * 1024
 
 
 def _timeout(payload: dict) -> float:
@@ -45,8 +49,8 @@ def _remaining(deadline: float, timeout: float) -> float | None:
     return min(timeout, left) if left > 0 else None
 
 
-def forward(request: dict, timeout: float) -> dict:
-    """Send one request to the app process and wrap its response."""
+def _target(request: dict) -> tuple[str, str]:
+    """The checked method and path of a request for the app process."""
     method = str(request.get("method", "POST")).upper()
     if method not in HTTP_METHODS:
         raise ValueError(f"unsupported method {method!r}")
@@ -54,6 +58,58 @@ def forward(request: dict, timeout: float) -> dict:
     # The app process decodes the path, so check the decoded form.
     if not path.startswith("/") or urllib.parse.unquote(path).startswith(CHILD_PREFIX):
         raise ValueError(f"invalid path {path!r}")
+    return method, path
+
+
+def stream(request: dict) -> tuple[int, str, Iterator[bytes], Callable[[], None]]:
+    """Open one request to the app process and stream its response back.
+
+    The body arrives base64-encoded, so any client request (an OpenAI SDK's
+    streamed chat completion, say) fits in the box's JSON envelope. Returns
+    the status, the content type, the body chunks as the app sends them, and
+    a close function for when the caller goes away mid-stream.
+    """
+    method, path = _target(request)
+    body = base64.b64decode(str(request.get("body_base64") or ""), validate=True)
+    headers = {
+        str(key): str(value)
+        for key, value in (request.get("headers") or {}).items()
+        if str(key).lower() in STREAM_HEADERS
+    }
+    connection = http.client.HTTPConnection(
+        "127.0.0.1", CHILD_PORT, timeout=_timeout(request)
+    )
+    try:
+        connection.request(method, path, body=body or None, headers=headers)
+        # The response takes the socket over; keep it to stop a read with.
+        sock = connection.sock
+        response = connection.getresponse()
+    except BaseException:
+        connection.close()
+        raise
+
+    def close() -> None:
+        # close() alone leaves a read blocked in another thread until the app
+        # sends more; shutting the socket down ends that read at once.
+        with contextlib.suppress(OSError):
+            if sock is not None:
+                sock.shutdown(socket.SHUT_RDWR)
+        connection.close()
+
+    def chunks() -> Iterator[bytes]:
+        try:
+            while chunk := response.read1(STREAM_CHUNK_BYTES):
+                yield chunk
+        finally:
+            close()
+
+    content_type = response.headers.get("content-type", "application/octet-stream")
+    return response.status, content_type, chunks(), close
+
+
+def forward(request: dict, timeout: float) -> dict:
+    """Send one request to the app process and wrap its response."""
+    method, path = _target(request)
     body = request.get("body")
     data = json.dumps(body).encode() if body is not None else None
     started = time.perf_counter()

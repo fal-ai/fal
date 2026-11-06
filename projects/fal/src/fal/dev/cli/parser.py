@@ -20,6 +20,7 @@ from fal.dev.remote.protocol import MAX_PROFILE_WARMUPS, MAX_REPEAT, MAX_WARMUPS
 EXPERIMENTAL = "(experimental) "
 
 DEFAULT_KEEP_ALIVE = 1800
+PROXY_PORT = 8899
 
 TEAM_HELP = (
     "The team the box runs as. Changes the team remembered for the box; without "
@@ -509,6 +510,39 @@ def _add_app_commands(subparsers, parents) -> None:
         "--save",
         metavar="NAME",
         help="Save the timings as a named benchmark, for `benchmark compare`.",
+    )
+
+    p = add_app(
+        "dash",
+        "Live dashboard for the box: GPU, keep-alive, app and engine.",
+        description="Live dashboard for a fal dev app box: the GPU, when the "
+        "box scales to zero, the app process and its last sync, the inference "
+        "engine of an LLM app, and the runner's logs. Watching it is not a "
+        "request, so it never keeps the box up.",
+    )
+    p.add_argument(
+        "--interval",
+        type=interval,
+        default=3.0,
+        help="Seconds between refreshes (default: %(default)s).",
+    )
+    p.add_argument("--once", action="store_true", help="Print one frame and exit.")
+
+    p = add_app(
+        "proxy",
+        "Serve the box's app on a local port, for any HTTP client.",
+        description="Serve the app on the box at http://BIND:PORT, so a local "
+        "client (an OpenAI SDK, a coding agent, curl) can call it like a local "
+        "server: every request and streamed response goes through the box, "
+        "signed with your fal login. The client needs no fal key. Every "
+        "request counts as activity, so the box stays up while it is used.",
+    )
+    p.add_argument("--port", type=int, default=PROXY_PORT, help="Local port.")
+    p.add_argument(
+        "--bind",
+        default="127.0.0.1",
+        help="Local address to listen on (default 127.0.0.1; anyone who can "
+        "reach it can call the box as you).",
     )
 
     benchmark = _group(

@@ -13,6 +13,16 @@ ROUTE_PREFIX = "/__fal_dev/"
 CHILD_PREFIX = "/__fal_dev_child/"
 # Requests carry the box token in this body field.
 TOKEN_FIELD = "token"
+# Where the box keeps each session's files, on the runner.
+BOX_STATE_ROOT = "/tmp/fal-dev-app"
+# The holder's record of box requests, read by `fal dev app dash`.
+ACTIVITY_FILE = "activity.json"
+# The app process listens here, on 127.0.0.1 only.
+CHILD_PORT = 8181
+# Request headers `proxy` passes to the app; fal auth ends at the box.
+STREAM_HEADERS = ("content-type", "accept")
+# On a `proxy` request the app process cannot take, the phase it is in.
+APP_PHASE_HEADER = "X-Fal-Dev-App-Phase"
 # Phases in which the app process is being brought up; edits made then are
 # applied by a reload once it is ready.
 STARTING_PHASES = ("starting", "installing", "setup")

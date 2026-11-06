@@ -19,15 +19,20 @@ Errors are 4xx, never 5xx: fal replaces a runner whose app answers 503.
 import asyncio
 import hmac
 import http.client
+import json
+import os
 import tarfile
 import threading
+import time
 import traceback
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, ClassVar
 
 import fastapi
 from fastapi import Body
+from fastapi.responses import StreamingResponse
 
 import fal
 from fal.app import App
@@ -36,6 +41,9 @@ from fal.dev.remote import proxy
 from fal.dev.remote.objects import Store
 from fal.dev.remote.process import CHILD_ERRORS, ChildProcess, LogBuffer, child_call
 from fal.dev.remote.protocol import (
+    ACTIVITY_FILE,
+    APP_PHASE_HEADER,
+    BOX_STATE_ROOT,
     NOT_RELOADED,
     REQUEST_TIMEOUT_SECONDS,
     ROUTE_PREFIX,
@@ -46,7 +54,12 @@ from fal.dev.remote.protocol import (
 )
 from fal.dev.remote.tree import SourceTree
 
-STATE_ROOT = Path("/tmp/fal-dev-app")
+STATE_ROOT = Path(BOX_STATE_ROOT)
+# A streamed request whose app answered 5xx is passed on as 424 with the
+# app's status here: fal replaces a runner whose app answers 503.
+UPSTREAM_STATUS_HEADER = "X-Fal-Dev-App-Status"
+# A dev box is one developer's; this many parallel streams is plenty.
+MAX_BOX_MULTIPLEXING = 32
 # Everything a route handler may raise for a request it cannot carry out.
 REQUEST_ERRORS = (
     ValueError,
@@ -59,11 +72,88 @@ REQUEST_ERRORS = (
 )
 
 
+class _StreamThreads:
+    # Made on first use, on the box: the holder is shipped by value.
+    executor: ThreadPoolExecutor | None = None
+
+
+def _stream_threads() -> ThreadPoolExecutor:
+    """Threads for proxied streams, apart from the control routes' threads.
+
+    A stream holds one while it waits for the app, so slow streams never
+    starve `status` or `logs`.
+    """
+    if _StreamThreads.executor is None:
+        _StreamThreads.executor = ThreadPoolExecutor(
+            MAX_BOX_MULTIPLEXING, thread_name_prefix="fal-dev-stream"
+        )
+    return _StreamThreads.executor
+
+
+def _close_opened(opening: Future) -> None:
+    """Close a stream whose request was over before it opened."""
+    if not opening.cancelled() and opening.exception() is None:
+        opening.result()[3]()
+
+
+class _EndingResponse(StreamingResponse):
+    """A streaming response that always runs ``end`` once it is over.
+
+    The body's own finally does not run when the response fails before its
+    first chunk (the client left at once), and Starlette then skips
+    background tasks.
+    """
+
+    def __init__(self, end: Callable[[], None], *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._end = end
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._end()
+
+
+class Activity:
+    """Box requests in flight and when the last one started or ended.
+
+    Published to a file for `fal dev app dash`: the platform scales the box to
+    zero `keep_alive` seconds after its last request, and the dashboard reads
+    the file over a runner exec, which is not a request.
+    """
+
+    def __init__(self, path: Path, keep_alive: int) -> None:
+        self.path = path
+        self.keep_alive = keep_alive
+        self.inflight = 0
+        self._lock = threading.Lock()
+        self.change(0)
+
+    def change(self, delta: int) -> None:
+        """Count a request starting (+1) or ending (-1), and publish it."""
+        with self._lock:
+            self.inflight = max(0, self.inflight + delta)
+            state = {
+                "last_request": time.time(),
+                "inflight": self.inflight,
+                "keep_alive": self.keep_alive,
+            }
+            tmp = self.path.with_suffix(".tmp")
+            try:
+                tmp.write_text(json.dumps(state))
+                os.replace(tmp, self.path)
+            except OSError:
+                pass
+
+
 class DevAppHolder:
     """Mixed in ahead of the user's app class by ``make_holder``."""
 
     _fal_dev_token: ClassVar[str] = ""
     _fal_dev_session: ClassVar[str] = "default"
+    # Set by setup(); None in a holder that never ran it.
+    _activity: Activity | None = None
 
     def setup(self) -> None:
         self._log_buffer = LogBuffer()
@@ -75,6 +165,9 @@ class DevAppHolder:
         self._placed_lock = threading.Lock()
         # One profile at a time: arming replaces any armed profile.
         self._profile_lock = threading.Lock()
+        # A class attribute of the box class (box_host_options).
+        keep_alive = getattr(type(self), "keep_alive", 0)
+        self._activity = Activity(self._child.session_dir / ACTIVITY_FILE, keep_alive)
         print(f"[fal dev] box ready, session {self._fal_dev_session}", flush=True)
 
     def teardown(self) -> None:
@@ -92,6 +185,13 @@ class DevAppHolder:
     def get_health_check_config(cls):
         return None
 
+    def health(self):
+        return App.health(self)
+
+    def _add_extra_routes(self, app: Any) -> None:
+        # The target's extra routes (an LLMApp's /v1/models) need its setup().
+        App._add_extra_routes(self, app)  # type: ignore[arg-type]
+
     def collect_routes(self) -> dict[Any, Any]:
         return {
             signature: endpoint
@@ -99,26 +199,100 @@ class DevAppHolder:
             if signature.path.startswith(ROUTE_PREFIX)
         }
 
-    async def _run(
-        self, payload: Any, handler: Callable[[dict[str, Any]], dict[str, Any]]
-    ) -> dict[str, Any]:
-        """Check the box token, then run ``handler(payload)`` in a thread.
+    def _touch(self, change: int) -> None:
+        if self._activity is not None:
+            self._activity.change(change)
 
-        Any failure is a 400 with its message; unexpected ones are also logged.
-        """
+    def _check_token(self, payload: Any) -> None:
         if not isinstance(payload, dict):
             raise fastapi.HTTPException(422, "expected a JSON object")
         token = str(payload.get(TOKEN_FIELD, "")).encode()
         expected = self._fal_dev_token.encode()
         if not expected or not hmac.compare_digest(token, expected):
             raise fastapi.HTTPException(403, "bad or missing dev token")
+
+    def _bad_request(self, exc: Exception) -> fastapi.HTTPException:
+        """A 400 with the error's message; unexpected errors are also logged."""
+        # Never a 5xx: fal replaces a runner whose app answers 503.
+        if not isinstance(exc, REQUEST_ERRORS):
+            self._log_buffer.emit(f"[fal dev] {redact(traceback.format_exc())}")
+        return fastapi.HTTPException(400, redact(str(exc)))
+
+    async def _run(
+        self, payload: Any, handler: Callable[[dict[str, Any]], dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Check the box token, then run ``handler(payload)`` in a thread."""
+        self._check_token(payload)
+        self._touch(1)
         try:
             return await asyncio.to_thread(handler, payload)
         except Exception as exc:
-            # Never a 5xx: fal replaces a runner whose app answers 503.
-            if not isinstance(exc, REQUEST_ERRORS):
-                self._log_buffer.emit(f"[fal dev] {redact(traceback.format_exc())}")
-            raise fastapi.HTTPException(400, redact(str(exc))) from exc
+            raise self._bad_request(exc) from exc
+        finally:
+            self._touch(-1)
+
+    async def _stream(self, payload: Any) -> StreamingResponse:
+        """Pass one request through to the app and stream its response back."""
+        self._check_token(payload)
+        phase = self._child.phase
+        if phase != "ready":
+            # The header tells `fal dev app proxy` it can boot the app again
+            # (a box scaled to zero comes back idle) and retry.
+            raise fastapi.HTTPException(
+                400,
+                f"the app is not ready (phase: {phase})",
+                headers={APP_PHASE_HEADER: phase},
+            )
+        self._touch(1)
+        opening = None
+        try:
+            opening = _stream_threads().submit(proxy.stream, payload)
+            status, content_type, chunks, close = await asyncio.wrap_future(opening)
+        except BaseException as exc:
+            # Cancellation too: the request is over either way, and a stream
+            # that opens after it is closed again.
+            self._touch(-1)
+            if opening is not None:
+                opening.add_done_callback(_close_opened)
+            if isinstance(exc, Exception):
+                raise self._bad_request(exc) from exc
+            raise
+        once = threading.Lock()
+
+        def end() -> None:
+            # Called when the stream ends and when the response is done; only
+            # the first call counts. close() also stops a read in progress.
+            if once.acquire(blocking=False):
+                close()
+                self._touch(-1)
+
+        async def relay():
+            # Async, so a client that goes away (or a cancelled request) runs
+            # the finally at once instead of when the generator is collected.
+            loop = asyncio.get_running_loop()
+            try:
+                while chunk := await loop.run_in_executor(
+                    _stream_threads(), next, chunks, b""
+                ):
+                    yield chunk
+            finally:
+                end()
+
+        headers = {}
+        if status >= 500:
+            headers[UPSTREAM_STATUS_HEADER] = str(status)
+            status = 424
+        try:
+            return _EndingResponse(
+                end,
+                relay(),
+                status_code=status,
+                media_type=content_type,
+                headers=headers,
+            )
+        except BaseException:
+            end()
+            raise
 
     def _require_ready(self) -> None:
         phase = self._child.phase
@@ -267,6 +441,10 @@ class DevAppHolder:
     async def dev_request(self, payload: Any = Body(...)) -> dict[str, Any]:
         return await self._run(payload, self._request)
 
+    @fal.endpoint(f"{ROUTE_PREFIX}proxy")
+    async def dev_proxy(self, payload: Any = Body(...)) -> StreamingResponse:
+        return await self._stream(payload)
+
     @fal.endpoint(f"{ROUTE_PREFIX}profile")
     async def dev_profile(self, payload: Any = Body(...)) -> dict[str, Any]:
         return await self._run(payload, self._profile)
@@ -284,15 +462,23 @@ class DevAppHolder:
         return await self._run(payload, self._logs)
 
 
-def box_host_options(keep_alive: int, machine_type: str | None = None) -> dict:
-    """Host options every box gets, whatever the app or pyproject.toml set."""
+def box_host_options(
+    keep_alive: int, machine_type: str | None = None, max_multiplexing: int = 1
+) -> dict:
+    """Host options every box gets, whatever the app or pyproject.toml set.
+
+    An app that takes many requests at once (an LLM server) keeps that on the
+    box, so `proxy` can carry a client's parallel requests, up to
+    ``MAX_BOX_MULTIPLEXING``: each open stream holds one of the holder's
+    stream threads while it waits for the app.
+    """
     options: dict[str, Any] = {
         "keep_alive": keep_alive,
         "min_concurrency": 0,
         "max_concurrency": 1,
         "concurrency_buffer": 0,
         "concurrency_buffer_perc": 0,
-        "max_multiplexing": 8,
+        "max_multiplexing": min(MAX_BOX_MULTIPLEXING, max(8, max_multiplexing)),
         "request_timeout": REQUEST_TIMEOUT_SECONDS,
         # The box serves only its own routes, not the app's health check.
         "health_check_config": None,
@@ -324,7 +510,7 @@ def make_holder(
         "app_files_context_dir": None,
     }
     # Class attributes win over the target's scaling, header kwargs included.
-    options = box_host_options(keep_alive, machine_type)
+    options = box_host_options(keep_alive, machine_type, target.max_multiplexing or 1)
     options.pop("health_check_config")
     namespace.update(options)
     return type(

@@ -205,7 +205,13 @@ def deploy_box(
     function = loaded.function
     # pyproject.toml may set scaling, timeouts or a health check; the box keeps
     # its own. Its app_files are synced, not uploaded.
-    function.options.host.update(box_host_options(keep_alive, machine_type))
+    function.options.host.update(
+        box_host_options(
+            keep_alive,
+            machine_type,
+            loaded.function.options.host.get("max_multiplexing") or 1,
+        )
+    )
     for key in ("app_files", "app_files_ignore", "app_files_context_dir"):
         function.options.host.pop(key, None)
 

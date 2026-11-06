@@ -402,23 +402,9 @@ class Poller:
                 # A stopped box has no live state; drop the last runner's.
                 self.update(probe=None, probe_at=None, logs=[], history={})
             return
-        # Walking /work for unsaved changes is the probe's only costly part;
-        # do it every tenth refresh.
-        check_dirty = self._polls % 10 == 0
-        self._polls += 1
         start = time.time()
         try:
-            _, output = self.box.run(
-                runner_id,
-                probe_command(self.box, check_dirty),
-                timeout=30,
-                until=config.PROBE_END.encode(),
-            )
-            probe = parse_probe(output)
-            last = self.snapshot.probe
-            if probe["work"]["dirty"] is None and last:
-                # Keep the last answer between dirty checks.
-                probe["work"]["dirty"] = last["work"]["dirty"]
+            probe = self.probe(runner_id)
             self.update(
                 probe=probe,
                 probe_at=time.time(),
@@ -440,6 +426,25 @@ class Poller:
             self._next_cost = now + COST_INTERVAL
             # In its own thread: a slow answer must not hold up the probe.
             threading.Thread(target=self.refresh_cost, daemon=True).start()
+
+    def probe(self, runner_id: str) -> dict:
+        """One run of the box's probe, parsed."""
+        # Walking /work for unsaved changes is the probe's only costly part;
+        # do it every tenth refresh.
+        check_dirty = self._polls % 10 == 0
+        self._polls += 1
+        _, output = self.box.run(
+            runner_id,
+            probe_command(self.box, check_dirty),
+            timeout=30,
+            until=config.PROBE_END.encode(),
+        )
+        probe = parse_probe(output)
+        last = self.snapshot.probe
+        if probe["work"]["dirty"] is None and last:
+            # Keep the last answer between dirty checks.
+            probe["work"]["dirty"] = last["work"]["dirty"]
+        return probe
 
     def refresh_cost(self) -> None:
         """Update the run's cost; a failure keeps the last cost, marked stale."""

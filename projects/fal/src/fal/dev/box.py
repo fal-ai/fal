@@ -210,8 +210,7 @@ class Box:
         runners = self.runners()
         live = newest_live(runners)
         if live:
-            armed = bool(app and app.min_concurrency)
-            return BoxState("running" if armed else "stopping", app, live[0])
+            return BoxState(self._live_code(app), app, live[0])
         pending = newest_first([r for r in runners if r.state not in FINAL_STATES])
         if not pending:
             return BoxState("stopped", app, None)
@@ -221,6 +220,10 @@ class Box:
         if states <= STOPPING_STATES:
             return BoxState("stopping", app, pending[0])
         return BoxState("starting", app, pending[0])
+
+    def _live_code(self, app: AliasInfo | None) -> str:
+        """A box with a live runner is stopping once it is no longer armed."""
+        return "running" if app and app.min_concurrency else "stopping"
 
     def require_runner(self) -> str:
         live = newest_live(self.runners())

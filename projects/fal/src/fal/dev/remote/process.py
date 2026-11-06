@@ -21,6 +21,7 @@ from typing import Any
 
 from fal.dev.remote.deps import Overlay
 from fal.dev.remote.protocol import (
+    CHILD_PORT,
     CHILD_PREFIX,
     SESSION_ENV,
     STARTING_PHASES,
@@ -29,7 +30,6 @@ from fal.dev.remote.protocol import (
 )
 from fal.dev.remote.tree import extract, relative
 
-CHILD_PORT = 8181
 LOG_LINES = 2000
 CHILD_ERRORS = (OSError, ValueError, http.client.HTTPException)
 

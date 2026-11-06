@@ -578,10 +578,12 @@ def logs_panel(snapshot: Snapshot) -> RenderableType:
     return _panel(body, title)
 
 
-def footer(snapshot: Snapshot, now: float) -> RenderableType:
+def footer(
+    snapshot: Snapshot, now: float, key_hints: list = KEY_HINTS
+) -> RenderableType:
     live = _live(snapshot)
     hints = Text(" ", no_wrap=True, overflow="ellipsis")
-    for i, (key, label, needs_runner) in enumerate(KEY_HINTS):
+    for i, (key, label, needs_runner) in enumerate(key_hints):
         usable = live or not needs_runner
         if i:
             hints += Text("   ")
@@ -659,18 +661,23 @@ def render(
     *,
     screen: bool = False,
     animate: bool = False,
+    body_of=body,
+    key_hints: list = KEY_HINTS,
 ) -> RenderableType:
     """One frame; on a full screen the footer stays visible when the body is cut.
 
     `animate` draws dust and spinners in loading states (loading's switches).
+    `body_of` and `key_hints` let another kind of box (`fal dev app dash`)
+    draw its own panels and keys in the same frame.
     """
     now = time.time() if now is None else now
-    frame = body(snapshot, box, now, animate)
+    frame = body_of(snapshot, box, now, animate)
+    bottom = footer(snapshot, now, key_hints)
     if not screen:
-        return Group(frame, footer(snapshot, now))
+        return Group(frame, bottom)
     layout = Layout()
     layout.split_column(
         Layout(frame, name="body"),
-        Layout(footer(snapshot, now), name="footer", size=FOOTER_LINES),
+        Layout(bottom, name="footer", size=FOOTER_LINES),
     )
     return layout

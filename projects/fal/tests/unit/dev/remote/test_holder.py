@@ -1,4 +1,5 @@
 import asyncio
+import json
 import threading
 from types import SimpleNamespace
 
@@ -195,3 +196,118 @@ def test_deps_route_restarts_the_app_only_when_asked_and_changed(tmp_path, monke
     assert deps(action="reset")["removed"] == 1
     with pytest.raises(Exception, match="unknown deps action"):
         deps(action="explode")
+
+
+def test_stream_maps_app_5xx_to_424_and_counts_the_request(tmp_path, monkeypatch):
+    from fal.dev.remote import holder as holder_module
+    from fal.dev.remote.holder import UPSTREAM_STATUS_HEADER, Activity
+
+    closed = []
+    monkeypatch.setattr(
+        holder_module.proxy,
+        "stream",
+        lambda payload: (
+            503,
+            "application/json",
+            iter([b"{}"]),
+            lambda: closed.append(1),
+        ),
+    )
+    child = SimpleNamespace(phase="ready")
+    activity = Activity(tmp_path / "activity.json", 900)
+    holder = bare_holder(child=child, activity=activity)
+
+    response = asyncio.run(holder._stream({"token": "t", "path": "/"}))
+    assert response.status_code == 424
+    assert response.headers[UPSTREAM_STATUS_HEADER] == "503"
+    assert activity.inflight == 1
+
+    async def drain():
+        return [chunk async for chunk in response.body_iterator]
+
+    assert asyncio.run(drain()) == [b"{}"]
+    assert (activity.inflight, closed) == (0, [1])
+    published = json.loads((tmp_path / "activity.json").read_text())
+    assert published["inflight"] == 0 and published["keep_alive"] == 900
+
+
+def test_a_stream_the_client_leaves_ends_at_once(tmp_path, monkeypatch):
+    from fal.dev.remote import holder as holder_module
+    from fal.dev.remote.holder import Activity
+
+    closed = []
+
+    def chunks():
+        yield b"data: 1"
+        yield b"data: 2"
+
+    monkeypatch.setattr(
+        holder_module.proxy,
+        "stream",
+        lambda payload: (200, "text/event-stream", chunks(), lambda: closed.append(1)),
+    )
+    activity = Activity(tmp_path / "activity.json", 900)
+    holder = bare_holder(child=SimpleNamespace(phase="ready"), activity=activity)
+
+    async def leave_after_one():
+        response = await holder._stream({"token": "t", "path": "/"})
+        stream = response.body_iterator
+        first = await stream.__anext__()
+        await stream.aclose()
+        return first
+
+    assert asyncio.run(leave_after_one()) == b"data: 1"
+    # No background task ran: the generator's own exit ended the request.
+    assert (activity.inflight, closed) == (0, [1])
+
+
+def test_a_response_that_fails_to_start_still_ends_the_request(tmp_path, monkeypatch):
+    from fal.dev.remote import holder as holder_module
+    from fal.dev.remote.holder import Activity
+
+    closed = []
+    monkeypatch.setattr(
+        holder_module.proxy,
+        "stream",
+        lambda payload: (200, "text/plain", iter([b"x"]), lambda: closed.append(1)),
+    )
+    activity = Activity(tmp_path / "activity.json", 900)
+    holder = bare_holder(child=SimpleNamespace(phase="ready"), activity=activity)
+
+    async def gone(message):
+        raise OSError("client went away")
+
+    async def serve():
+        response = await holder._stream({"token": "t", "path": "/"})
+        scope = {"type": "http", "asgi": {"spec_version": "2.3"}}
+        await response(scope, asyncio.Event().wait, gone)
+
+    with pytest.raises(OSError):
+        asyncio.run(serve())
+    assert (activity.inflight, closed) == (0, [1])
+
+
+def test_a_cancelled_stream_start_is_not_counted(tmp_path, monkeypatch):
+    from fal.dev.remote import holder as holder_module
+    from fal.dev.remote.holder import Activity
+
+    def cancelled(payload):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(holder_module.proxy, "stream", cancelled)
+    activity = Activity(tmp_path / "activity.json", 900)
+    holder = bare_holder(child=SimpleNamespace(phase="ready"), activity=activity)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(holder._stream({"token": "t", "path": "/"}))
+    assert activity.inflight == 0
+
+
+def test_stream_refuses_a_bad_token_and_an_app_not_ready(tmp_path):
+    holder = bare_holder(child=SimpleNamespace(phase="setup"))
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(holder._stream({"token": "wrong"}))
+    assert exc.value.status_code == 403
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(holder._stream({"token": "t", "path": "/"}))
+    assert exc.value.status_code == 400
+    assert exc.value.headers == {"X-Fal-Dev-App-Phase": "setup"}

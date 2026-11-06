@@ -8,9 +8,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fal.cli.runners import LogPrinter
+from fal.cli.runners import LogPrinter, print_logs, shell_session
 from fal.cli.runners import _get_runner_info as get_runner_info
-from fal.cli.runners import print_logs, shell_session
 from fal.dev import execute
 from fal.dev.box import FINAL_STATES, newest_first, ssh_config
 from fal.dev.cli.common import get_box, note_new_box, remember_name, resolve_name
