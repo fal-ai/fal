@@ -1,0 +1,5 @@
+# Installed into this folder's .venv on top of the image's packages (torch, accelerate, ...).
+# Changing this file restarts the hot server.
+diffusers==0.42.1
+# diffusers 0.42 needs huggingface-hub>=1.32, which the image's transformers 4.56 rejects.
+transformers==5.22.1
