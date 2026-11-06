@@ -33,6 +33,8 @@ STUCK_MARKERS = (
 )
 RETRY_MARKERS = ("[hot] loading the model", "[hot] restarting", "[hot] FULL RESTART")
 READY_MARKER = "[hot] serving"
+# tqdm progress bars (weights, pipeline parts, denoising steps) in the box log.
+PROGRESS = re.compile(r"\d+%\|.*\||\d+(?:\.\d+)?(?:it/s|s/it)\]")
 
 
 class HotTokenRejected(DevError):
@@ -95,6 +97,11 @@ def _last(lines: list[str], markers: tuple[str, ...]) -> int:
         (i for i, line in enumerate(lines) if any(m in line for m in markers)),
         default=-1,
     )
+
+
+def attempt_lines(lines: list[str]) -> list[str]:
+    """The log from the newest load attempt on: earlier runs were shown already."""
+    return lines[max(0, _last(lines, RETRY_MARKERS)) :]
 
 
 def waiting_for_fix(lines: list[str]) -> bool:
@@ -246,7 +253,7 @@ class HotBox:
 
     def _wait_ready(self, timeout: int, wait) -> dict:
         deadline = time.time() + timeout
-        printed: list[str] = []
+        printed: list[str] | None = None
         network_errors = 0
         while time.time() < deadline:
             status, info = self.json("status")
@@ -266,10 +273,16 @@ class HotBox:
                 continue
             network_errors = 0
             lines = info.get("log") or []
+            stuck = status == 409 and waiting_for_fix(lines)
+            if printed is None:
+                # Earlier requests and attempts were shown by earlier commands.
+                printed = lines[: len(lines) - len(attempt_lines(lines))]
+            # Progress bars only when the load failed.
             for line in new_log_lines(printed, lines):
-                wait.say(f"  {line}")
+                if stuck or not PROGRESS.search(line):
+                    wait.say(f"  {line}")
             printed = lines
-            if status == 409 and waiting_for_fix(lines):
+            if stuck:
                 raise DevError(
                     "the hot server stopped on an error; its log is above",
                     title="the hot server stopped",

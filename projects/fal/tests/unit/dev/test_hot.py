@@ -270,3 +270,79 @@ def test_push_leaves_out_a_file_that_became_a_symlink(tmp_path):
     box.push(tmp_path, "/work/x", ["infer.py", "other.py"])
 
     assert list(box.post.call_args.args[1]["files"]) == ["infer.py"]
+
+
+def test_wait_shows_only_the_current_attempt_without_progress_bars():
+    log = [
+        "10:14:36 [hot] infer() raised:",
+        "NameError: name 'sepia' is not defined",
+        "10:15:45 [hot] FULL RESTART: restart requested; the weights reload",
+        "Loading weights: 100%|##########| 398/398 [00:00<00:00, 8386.33it/s]",
+        "10:15:54 [hot] model loaded in 8.2s",
+    ]
+    assert hot.attempt_lines(log) == log[2:]
+    shown = [line for line in hot.attempt_lines(log) if not hot.PROGRESS.search(line)]
+    assert shown == [log[2], log[4]]
+    assert hot.attempt_lines(["a", "b"]) == ["a", "b"]
+
+
+def _waiting_box(monkeypatch, answers):
+    box = hot.HotBox.__new__(hot.HotBox)
+    calls = iter(answers)
+    monkeypatch.setattr(box, "json", lambda action, payload=None: next(calls))
+    monkeypatch.setattr(hot.time, "sleep", lambda s: None)
+    return box
+
+
+class _Said:
+    def __init__(self):
+        self.lines = []
+
+    def say(self, line):
+        self.lines.append(line.strip())
+
+
+OLD = ["10:14 [hot] infer 728 ms", "10:15 [hot] FULL RESTART: restart requested"]
+
+
+def test_wait_ready_shows_this_attempt_without_progress_bars(monkeypatch):
+    bar = "Loading weights: 100%|##| 398/398 [00:00<00:00, 8386.33it/s]"
+    box = _waiting_box(
+        monkeypatch,
+        [
+            (409, {"log": OLD + [bar]}),
+            (200, {"ready": True, "log": OLD + [bar, "10:16 [hot] model loaded"]}),
+        ],
+    )
+    said = _Said()
+    assert box._wait_ready(60, said)["ready"]
+    assert said.lines == [OLD[1], "10:16 [hot] model loaded"]
+
+
+def test_wait_ready_prints_the_whole_failed_attempt_then_raises(monkeypatch):
+    bar = "  50%|#   | 2/4 [00:00<00:00, 11.8it/s]"
+    failed = OLD + [bar, "Traceback ...", "[hot] load.load() failed"]
+    box = _waiting_box(monkeypatch, [(409, {"log": failed})])
+    said = _Said()
+    with pytest.raises(DevError, match="stopped on an error"):
+        box._wait_ready(60, said)
+    assert said.lines == [line.strip() for line in failed[1:]]
+
+
+def test_wait_ready_keeps_lines_of_an_attempt_that_ended_between_polls(monkeypatch):
+    first = OLD + ["w1"]
+    second = first + ["w2", "[hot] load.load() failed", "[hot] restarting", "n1"]
+    box = _waiting_box(
+        monkeypatch,
+        [(409, {"log": first}), (409, {"log": second}), (200, {"ready": True})],
+    )
+    said = _Said()
+    box._wait_ready(60, said)
+    assert said.lines == [
+        OLD[1],
+        "w1",
+        "w2",
+        "[hot] load.load() failed",
+        "[hot] restarting",
+        "n1",
+    ]

@@ -172,8 +172,10 @@ class Box:
         return bool(info and info.min_concurrency)
 
     def state(self) -> BoxState:
-        runners = self.runners()
         app = self.app_info()
+        if app is None:
+            return BoxState("stopped", None, None)  # never deployed: no runners
+        runners = self.runners()
         live = newest_live(runners)
         if live:
             armed = bool(app and app.min_concurrency)

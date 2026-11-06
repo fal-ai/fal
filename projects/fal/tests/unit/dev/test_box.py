@@ -493,3 +493,10 @@ def test_a_second_ctrl_c_during_the_cancel_is_not_reported_as_stopped():
     with pytest.raises(KeyboardInterrupt):
         box.start(timeout=1)
     assert box.start_cancelled is False
+
+
+def test_state_of_a_box_never_deployed_does_not_list_runners():
+    box = make_box([], deployed=False)
+    box.client.apps.runners.side_effect = AssertionError("listed runners")
+    state = box.state()
+    assert state.code == "stopped" and state.app is None
