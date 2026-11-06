@@ -169,6 +169,9 @@ class _ChildProcess:
         self.module = ""
         self.class_name = ""
         self.requirements: list[str] = []
+        # sys.path entries and working directory, relative to src.
+        self.paths: list[str] = ["."]
+        self.workdir = "."
         self.started_at: float | None = None
         self.ready_at: float | None = None
         self.exit_code: int | None = None
@@ -326,6 +329,9 @@ class _ChildProcess:
             self.class_name,
             "--port",
             str(CHILD_PORT),
+            # One argument each, so a path starting with "-" is not an option.
+            f"--cwd={self.workdir}",
+            *(f"--path={path}" for path in self.paths),
         ]
         with self.lock:
             if generation != self.generation:
@@ -388,12 +394,17 @@ class _ChildProcess:
         class_name: str | None = None,
         requirements: list[str] | None = None,
         generation: int | None = None,
+        layout: dict[str, Any] | None = None,
     ) -> bool:
         """(Re)start the app process; False when no app was ever started here.
 
         With ``generation``, only restart if nothing started or stopped the app
         since that generation was read.
         """
+        if layout is not None:
+            # Checked before any state changes.
+            paths = [str(_rel(p)) for p in layout.get("paths") or ["."]]
+            workdir = str(_rel(layout.get("workdir") or "."))
         with self.control:
             if not (module or self.module):
                 return False
@@ -408,6 +419,8 @@ class _ChildProcess:
                 self.class_name = class_name or self.class_name
                 if requirements is not None:
                     self.requirements = requirements
+                if layout is not None:
+                    self.paths, self.workdir = paths, workdir
                 self.pending_reload = False
                 self.phase, self.detail = "starting", ""
                 generation = self.generation
@@ -790,6 +803,7 @@ class DevAppHolder:
                 payload.get("module"),
                 payload.get("class_name"),
                 payload.get("sdk_requirements"),
+                layout=payload.get("layout"),
             )
             if not started:
                 raise ValueError("no app has been started on this box")
@@ -903,6 +917,24 @@ class DevAppHolder:
         )
 
 
+def box_host_options(keep_alive: int, machine_type: str | None = None) -> dict:
+    """Host options every box gets, whatever the app or pyproject.toml set."""
+    options: dict[str, Any] = {
+        "keep_alive": keep_alive,
+        "min_concurrency": 0,
+        "max_concurrency": 1,
+        "concurrency_buffer": 0,
+        "concurrency_buffer_perc": 0,
+        "max_multiplexing": 8,
+        "request_timeout": 3600,
+        # The box serves only its own routes, not the app's health check.
+        "health_check_config": None,
+    }
+    if machine_type:
+        options["machine_type"] = machine_type
+    return options
+
+
 def make_holder(
     target: type[App],
     *,
@@ -921,17 +953,14 @@ def make_holder(
         # App.__init_subclass__ would otherwise keep the target's name.
         "app_name": None,
         "app_auth": "private",
-        # Class attributes win over the target's scaling, header kwargs included.
-        "keep_alive": keep_alive,
-        "min_concurrency": 0,
-        "max_concurrency": 1,
-        "concurrency_buffer": 0,
-        "concurrency_buffer_perc": 0,
-        "max_multiplexing": 8,
-        "request_timeout": 3600,
+        # The dev sync sends the app's files; the box uploads none.
+        "app_files": [],
+        "app_files_context_dir": None,
     }
-    if machine_type:
-        namespace["machine_type"] = machine_type
+    # Class attributes win over the target's scaling, header kwargs included.
+    options = box_host_options(keep_alive, machine_type)
+    options.pop("health_check_config")
+    namespace.update(options)
     return type(
         f"FalDev{target.__name__}",
         (DevAppHolder, target),

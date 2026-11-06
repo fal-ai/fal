@@ -5,8 +5,9 @@ minus ignored); elsewhere it is a directory walk that skips the usual virtualenv
 and cache folders. `.env` files or folders and files over 10 MiB are never
 sent. Only files that changed since the last sync are sent.
 
-The box runs the app from this synced tree. The app's own ``app_files`` and
-``app_files_ignore`` settings apply to deploys, not to this sync.
+The box runs the app from this synced tree. The app's ``app_files_ignore``
+patterns apply here too, matched like `fal deploy` matches them: against the
+path relative to the app files context folder.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import base64
 import hashlib
 import io
 import os
+import re
 import subprocess
 import tarfile
 from importlib import metadata
@@ -75,12 +77,31 @@ def _skipped(parts: tuple[str, ...]) -> bool:
     )
 
 
-def collect(root: Path, skipped: list[str] | None = None) -> dict[str, Path]:
+def _ignored(name: str, patterns: list[re.Pattern[str]], base: str) -> bool:
+    if not patterns:
+        return False
+    if base not in ("", "."):
+        prefix = base.rstrip("/") + "/"
+        if not name.startswith(prefix):
+            return False
+        name = name[len(prefix) :]
+    return any(pattern.search(name) for pattern in patterns)
+
+
+def collect(
+    root: Path,
+    skipped: list[str] | None = None,
+    *,
+    ignore: list[str] | None = None,
+    ignore_base: str = ".",
+) -> dict[str, Path]:
     """Files to sync, by POSIX path relative to root.
 
-    Files left out for their size are appended to ``skipped``.
+    Files left out for their size are appended to ``skipped``. ``ignore`` holds
+    regex patterns matched against the path relative to ``ignore_base``.
     """
     root = root.resolve()
+    patterns = [re.compile(pattern) for pattern in ignore or []]
     names = _git_files(root)
     if names is None:
         names = _walk_files(root)
@@ -88,7 +109,9 @@ def collect(root: Path, skipped: list[str] | None = None) -> dict[str, Path]:
     for name in names:
         path = root / name
         parts = Path(name).parts
-        if name.endswith(SKIP_SUFFIXES):
+        if name.endswith(SKIP_SUFFIXES) or _ignored(
+            Path(name).as_posix(), patterns, ignore_base
+        ):
             continue
         try:
             if _skipped(parts) or not path.is_file():

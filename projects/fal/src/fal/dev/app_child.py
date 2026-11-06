@@ -291,13 +291,21 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--module", required=True)
     parser.add_argument("--cls", required=True)
     parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--path", action="append", default=[])
+    parser.add_argument("--cwd", default=".")
     args = parser.parse_args(argv)
 
     # A same-size edit within the same second would otherwise reuse a stale .pyc.
     sys.dont_write_bytecode = True
     _activate_overlay()
-    sys.path.insert(0, str(args.root.resolve()))
-    os.chdir(args.root)
+    # The same sys.path and working directory the app gets on a deployed
+    # runner (see fal.app_files), mapped onto the synced tree.
+    root = args.root.resolve()
+    for path in reversed(args.path or ["."]):
+        sys.path.insert(0, str((root / path).resolve()))
+    workdir = root / args.cwd
+    workdir.mkdir(parents=True, exist_ok=True)
+    os.chdir(workdir)
     server = DevAppServer(args.root, args.module, args.cls)
     _log(f"running setup() for {args.module}.{args.cls}")
     uvicorn.run(

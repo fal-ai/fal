@@ -8,6 +8,7 @@ on fal.run.
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import getpass
 import json
@@ -17,11 +18,14 @@ import secrets
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from fal.dev.app_sync import SKIP_DIRS
+
+if TYPE_CHECKING:
+    from fal.app import App
 
 SESSIONS_DIR = Path("~/.fal/dev/apps").expanduser()
 # Every box is named with this prefix, so `start` and `stop` can only ever
@@ -48,6 +52,14 @@ class Session:
     environment: str | None = None
     machine_type: str | None = None
     created_at: float = dataclasses.field(default_factory=time.time)
+    # Where the app runs inside the synced tree, as on a deployed runner:
+    # sys.path entries and the working directory, relative to ``root``.
+    paths: list[str] = dataclasses.field(default_factory=lambda: ["."])
+    workdir: str = "."
+    # The app's ``app_files_ignore`` patterns, matched against paths relative
+    # to ``ignore_base`` (its app files context folder) like `fal deploy` does.
+    ignore: list[str] = dataclasses.field(default_factory=list)
+    ignore_base: str = "."
     manifest: dict[str, str] = dataclasses.field(default_factory=dict)
     # Dependency overlay layers, oldest first, replayed on a new runner.
     overlay: list[dict[str, Any]] = dataclasses.field(default_factory=list)
@@ -152,11 +164,147 @@ def call(
     return response.json()
 
 
+@dataclasses.dataclass
+class AppFiles:
+    """The app's ``app_files`` settings after pyproject.toml is applied."""
+
+    files: list[str]
+    ignore: list[str]
+    # Folder app_files paths are relative to; on a runner this is /app.
+    context_dir: Path
+    # The app file's folder; on a runner this is the working directory.
+    script_dir: Path
+
+
+@dataclasses.dataclass
+class Layout:
+    """Where the app's files sit in the synced tree, relative to ``root``."""
+
+    root: Path
+    # sys.path entries, and the working directory, of the app process.
+    paths: list[str]
+    workdir: str
+    # Folder app_files_ignore patterns are matched from.
+    ignore_base: str
+    ignore: list[str]
+
+
+@dataclasses.dataclass
+class DeployedBox:
+    class_name: str
+    run_url: str
+    layout: Layout
+
+
+def resolve_app(app_ref: tuple[str | None, str | None]) -> tuple[str, str | None, Any]:
+    """(file, class name, AppData) for a file ref or a pyproject.toml app name.
+
+    Same resolution as `fal deploy`: an app name reads ``[tool.fal.apps.<name>]``
+    (ref, requirements, machine type, app_files and the rest); a file ref does
+    not read pyproject.toml.
+    """
+    from fal.api.deploy import _resolve_deployment_reference
+
+    try:
+        (file_path, class_name), app_data = _resolve_deployment_reference(app_ref)
+    except ValueError as exc:
+        raise DevAppError(str(exc)) from exc
+    if file_path is None or not file_path.endswith(".py"):
+        raise DevAppError(
+            "Pass the app as path/to/file.py[::App], or the name of an app in "
+            "pyproject.toml whose ref is a Python file."
+        )
+    return str(Path(file_path).resolve()), class_name, app_data
+
+
+def package_root(file: Path) -> Path:
+    """The folder holding the file's top-level package (or the file's folder).
+
+    `fal deploy` ships that whole package with the app, so it is the tree the
+    app imports from.
+    """
+    folder = file.parent
+    while (folder / "__init__.py").exists():
+        folder = folder.parent
+    return folder
+
+
+def _app_files(target: type[App], file_path: str, options: Any) -> AppFiles:
+    """The app_files settings `fal deploy` would ship ``target`` with.
+
+    Same merge as ``load_function_from``: the class's host options, then the
+    pyproject.toml ones where the class keeps App's defaults or sets nothing.
+    """
+    from fal.app import App
+    from fal.file_sync import _get_script_dir
+    from fal.utils import _merge_host_config, _toml_host_keys_overriding_app_defaults
+
+    host = dict(target.host_kwargs)
+    if options is not None:
+        overrides = _toml_host_keys_overriding_app_defaults(target, App, options)
+        _merge_host_config(host, options.host, overrides)
+    return AppFiles(
+        files=list(host.get("app_files") or []),
+        ignore=list(host.get("app_files_ignore") or []),
+        context_dir=_get_script_dir(file_path, host.get("app_files_context_dir")),
+        script_dir=Path(file_path).resolve().parent,
+    )
+
+
+def layout(import_root: Path, app_files: AppFiles, *, explicit_root: bool) -> Layout:
+    """The synced tree and the app's place in it, as on a deployed runner.
+
+    There the app_files context folder is /app, and the app file's folder and
+    /app are on sys.path, the former as the working directory. Without
+    app_files the app imports from ``import_root``. Unlike a runner, these
+    entries go first on sys.path (as the dev box always did).
+    """
+    root = import_root
+    if app_files.files and not app_files.context_dir.is_relative_to(root):
+        if explicit_root:
+            raise DevAppError(
+                f"The app's app_files folder {app_files.context_dir} is not inside "
+                f"--root {root}."
+            )
+        root = Path(os.path.commonpath([root, app_files.context_dir]))
+    # The whole tree is synced: never a home folder or anything above one.
+    if root == Path(root.anchor) or Path.home().resolve().is_relative_to(root):
+        fix = (
+            "Pass --root with a narrower folder."
+            if explicit_root or not app_files.files
+            else "Point app_files_context_dir at a narrower folder."
+        )
+        raise DevAppError(f"Refusing to sync {root}: it holds your home folder. {fix}")
+
+    def rel(path: Path) -> str:
+        return path.relative_to(root).as_posix() or "."
+
+    paths = [rel(import_root)]
+    workdir = rel(import_root)
+    ignore_base = rel(root)
+    # Like `fal deploy`, app_files_ignore only applies to apps with app_files.
+    ignore = list(app_files.ignore) if app_files.files else []
+    for pattern in ignore:
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise DevAppError(f"Bad app_files_ignore pattern {pattern!r}: {exc}")
+    if app_files.files:
+        workdir = rel(app_files.script_dir)
+        ignore_base = rel(app_files.context_dir)
+        for path in (workdir, ignore_base):
+            if path not in paths:
+                paths.append(path)
+    return Layout(root, paths, workdir, ignore_base, ignore)
+
+
 def deploy_box(
     file_path: str,
     class_name: str | None,
     *,
+    app_data: Any = None,
     root: Path,
+    explicit_root: bool = False,
     app_name: str,
     session: str,
     token: str,
@@ -165,36 +313,82 @@ def deploy_box(
     team: str | None,
     host: str | None,
     environment: str | None,
-) -> tuple[str, str]:
-    """Deploy the holder for the app in ``file_path``; returns (class name, run URL).
+) -> DeployedBox:
+    """Deploy the holder for the app in ``file_path``.
 
-    Loads the module the way `fal deploy` does, then deploys a subclass built by
-    ``make_holder`` through the SDK's deployment path instead of the module's
-    own class. The SDK internals this needs are confined to this function:
-    ``_find_target``, ``SyncServerlessClient._create_host``, ``AppData`` from
-    ``fal.cli._utils``, ``fal._serialization`` (by-value module registration),
-    a hand-built ``LoadedFunction`` and ``PreparedDeployment`` passed to
-    ``execute_prepared_deployment``, setting ``app_name``/``app_auth`` on the
-    wrapped function, and ``DeploymentResult.urls``. pyproject.toml
-    ``[tool.fal]`` options are not applied.
+    Loads the app through `fal deploy`'s loader (``load_function_from``), so
+    pyproject.toml options in ``app_data.options`` apply as they would on a
+    deploy, and deploys a subclass built by ``make_holder`` in place of the
+    app's own class. ``root`` is the folder the app imports from; the synced
+    tree's layout is worked out (and refused) before anything is deployed.
+    The box's scaling, request timeout, health check, auth, team and port
+    always come from here, never from pyproject.toml. The app's ``app_files``
+    are not uploaded with the box: the dev sync sends the source tree instead.
+
+    SDK internals used here and by its helpers: ``load_function_from``'s
+    ``prepare_app`` hook and the option merge it does (``_merge_host_config``,
+    ``_toml_host_keys_overriding_app_defaults``), ``_resolve_deployment_reference``
+    (``resolve_app``), ``fal.file_sync._get_script_dir``,
+    ``SyncServerlessClient._create_host``, ``AppData`` from ``fal.cli._utils``,
+    ``fal._serialization`` (by-value module registration),
+    ``execute_prepared_deployment`` and ``DeploymentResult.urls``.
     """
-    import runpy
-
     import fal._serialization
+    from fal.api import FalServerlessError
     from fal.api.client import SyncServerlessClient
     from fal.api.deploy import PreparedDeployment, execute_prepared_deployment
-    from fal.app import App, wrap_app
     from fal.cli._utils import AppData
-    from fal.dev.app_holder import ROUTE_PREFIX, make_holder
-    from fal.utils import LoadedFunction, _find_target
+    from fal.dev.app_holder import ROUTE_PREFIX, box_host_options, make_holder
+    from fal.utils import load_function_from
 
+    found: dict[str, Any] = {}
+
+    def prepare(target: type[App]) -> type[App]:
+        found["target"] = target
+        found["layout"] = layout(
+            root, _app_files(target, file_path, options), explicit_root=explicit_root
+        )
+        return make_holder(
+            target,
+            app_name=app_name,
+            session=session,
+            token=token,
+            keep_alive=keep_alive,
+            machine_type=machine_type,
+        )
+
+    options = None
+    if app_data is not None:
+        # The box serves its own routes on the port every App gets.
+        options = copy.deepcopy(app_data.options)
+        options.gateway.pop("exposed_port", None)
     sys.path.insert(0, str(root))
-    module = runpy.run_path(file_path)
-    target, _, _, class_name = _find_target(module, class_name)
-    if not (isinstance(target, type) and issubclass(target, App)) or not class_name:
-        raise DevAppError(f"{file_path}::{class_name} is not a fal.App class.")
+    client = SyncServerlessClient(host=host, team=team)
+    serverless = client._create_host(
+        local_file_path=file_path, environment_name=environment
+    )
+    try:
+        loaded = load_function_from(
+            serverless,
+            file_path,
+            class_name,
+            options=options,
+            app_name=app_name,
+            app_auth="private",
+            prepare_app=prepare,
+        )
+    except FalServerlessError as exc:
+        raise DevAppError(str(exc)) from exc
+    if "target" not in found:
+        what = f"{file_path}::{class_name}" if class_name else file_path
+        raise DevAppError(f"No fal.App class found at {what}.")
+    function = loaded.function
+    # pyproject.toml may set scaling, timeouts or a health check; the box keeps
+    # its own. Its app_files are synced, not uploaded.
+    function.options.host.update(box_host_options(keep_alive, machine_type))
+    for key in ("app_files", "app_files_ignore", "app_files_context_dir"):
+        function.options.host.pop(key, None)
 
-    fal._serialization.include_package_from_path(file_path)
     # The box never calls the app's code, but unpickling the class still needs
     # its local helper modules, so ship them by value. Installed packages (a
     # virtualenv inside the root) stay by reference; fal is already by value.
@@ -207,28 +401,6 @@ def deploy_box(
         if path.is_relative_to(root) and not installed:
             fal._serialization.include_module(name)
 
-    holder = make_holder(
-        target,
-        app_name=app_name,
-        session=session,
-        token=token,
-        keep_alive=keep_alive,
-        machine_type=machine_type,
-    )
-    client = SyncServerlessClient(host=host, team=team)
-    serverless = client._create_host(
-        local_file_path=file_path, environment_name=environment
-    )
-    function = wrap_app(holder, host=serverless)
-    function.app_name = app_name
-    function.app_auth = "private"
-    loaded = LoadedFunction(
-        function,
-        app_name=app_name,
-        app_auth="private",
-        source_code=Path(file_path).read_text(),
-        class_name=holder.__name__,
-    )
     result = execute_prepared_deployment(
         PreparedDeployment(
             host=serverless,
@@ -245,7 +417,13 @@ def deploy_box(
     )
     status_route = f"{ROUTE_PREFIX}status"
     status_url = result.urls["sync"][status_route]
-    return class_name, status_url[: -len(status_route)]
+    assert loaded.class_name
+    return DeployedBox(
+        # The name the module exposes it under, which the box imports.
+        class_name=loaded.class_name,
+        run_url=status_url[: -len(status_route)],
+        layout=found["layout"],
+    )
 
 
 def box_exists(

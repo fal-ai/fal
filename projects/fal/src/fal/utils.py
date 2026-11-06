@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from fal.api.api import _uses_isolate, merge_basic_config
 from fal.sdk import AuthModeLiteral
@@ -135,7 +135,13 @@ def load_function_from(
     app_auth: AuthModeLiteral | None = None,
     limit_max_requests: int | None = None,
     python_entry_point: str | None = None,
+    prepare_app: Callable[[type[App]], type[App]] | None = None,
 ) -> LoadedFunction:
+    """Load the app or function at ``file_path`` the way `fal deploy` does.
+
+    ``prepare_app``, when given, receives the App class after pyproject.toml
+    app file options are applied and returns the class to deploy instead.
+    """
     import os
     import runpy
     import sys
@@ -202,6 +208,8 @@ def load_function_from(
         toml_host_overrides = _toml_host_keys_overriding_app_defaults(
             target, App, options
         )
+        if prepare_app is not None:
+            target = prepare_app(target)
         target = wrap_app(
             target,
             host=host,

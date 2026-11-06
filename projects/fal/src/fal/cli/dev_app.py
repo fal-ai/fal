@@ -90,12 +90,23 @@ def _wait_ready(session, *, after: int | None = None, timeout: float = 3600) -> 
     raise DevAppError("Timed out waiting for setup() to finish.")
 
 
+def _collect(session, skipped: list[str] | None = None):
+    from fal.dev import app_sync
+
+    return app_sync.collect(
+        Path(session.root),
+        skipped,
+        ignore=session.ignore,
+        ignore_base=session.ignore_base,
+    )
+
+
 def _sync(session, *, full: bool = False, reload: bool = True) -> dict[str, Any] | None:
     from fal.dev import app_sync
     from fal.dev.app_session import call
 
     skipped: list[str] = []
-    files = app_sync.collect(Path(session.root), skipped)
+    files = _collect(session, skipped)
     if skipped:
         _console().print(
             f"[yellow]Not synced (over 10 MiB)[/]: {', '.join(skipped[:8])}"
@@ -184,6 +195,7 @@ def _boot(session) -> dict:
             "class_name": session.class_name,
             "sdk_archive": app_sync.pack(sdk, sorted(sdk)),
             "sdk_requirements": app_sync.sdk_requirements(),
+            "layout": {"paths": session.paths, "workdir": session.workdir},
         },
         timeout=300,
     )
@@ -256,29 +268,41 @@ def _start(args):
         deploy_box,
         find_session,
         new_token,
+        package_root,
+        resolve_app,
         session_name,
     )
 
     console = _console()
-    file_path, class_name = args.app_ref
-    if file_path is None or not file_path.endswith(".py"):
-        raise ValueError("Pass the app as path/to/file.py or path/to/file.py::App.")
-    file = Path(file_path).resolve()
-    root = Path(args.root).resolve() if args.root else file.parent
-    if not file.is_relative_to(root):
-        raise ValueError(f"{file} is not inside --root {root}")
-    module = ".".join(file.relative_to(root).with_suffix("").parts)
-    name = session_name(args.session, class_name or file.stem)
+    file_path, class_name, app_data = resolve_app(args.app_ref)
+    file = Path(file_path)
+    import_root = Path(args.root).resolve() if args.root else package_root(file)
+    if not file.is_relative_to(import_root):
+        raise ValueError(f"{file} is not inside --root {import_root}")
+    module = ".".join(file.relative_to(import_root).with_suffix("").parts)
+    # A pyproject.toml app is named after its entry there, as on a deploy.
+    ref_is_file = (args.app_ref[0] or "").endswith(".py")
+    default_name = class_name or file.stem if ref_is_file else args.app_ref[0]
+    name = session_name(args.session, default_name)
     # Pin the team now, so a later `fal team set` cannot retarget the session.
+    # A team in pyproject.toml is where the app is deployed for real; the box
+    # always goes to the caller's own team.
     team = args.team or Config().get_internal("team")
+    if app_data.team and app_data.team != team:
+        console.print(
+            escape(
+                f"Ignoring team {app_data.team!r} from pyproject.toml: the box is "
+                f"deployed to {team or 'your personal account'}."
+            )
+        )
     try:
         existing = find_session(name)
         ours = (
             existing.team,
             existing.host,
             existing.environment,
-            existing.root,
-        ) == (team, args.host, args.env, str(root))
+            existing.file_path,
+        ) == (team, args.host, args.env, str(file))
     except DevAppError:
         ours = False
     exists = box_exists(name, team=team, host=args.host, environment=args.env)
@@ -292,10 +316,12 @@ def _start(args):
     started = time.perf_counter()
     console.print(f"Deploying dev box [bold]{name}[/] ...")
     token = new_token()
-    class_name, run_url = deploy_box(
+    deployed = deploy_box(
         str(file),
         class_name,
-        root=root,
+        app_data=app_data,
+        root=import_root,
+        explicit_root=bool(args.root),
         app_name=name,
         session=name,
         token=token,
@@ -305,25 +331,30 @@ def _start(args):
         host=args.host,
         environment=args.env,
     )
+    layout = deployed.layout
     timings["deploy"] = time.perf_counter() - started
     session = Session(
         name=name,
         app_name=name,
         file_path=str(file),
-        root=str(root),
+        root=str(layout.root),
         module=module,
-        class_name=class_name,
-        run_url=run_url,
+        class_name=deployed.class_name,
+        run_url=deployed.run_url,
         token=token,
         team=team,
         host=args.host,
         environment=args.env,
         machine_type=args.machine_type,
+        paths=layout.paths,
+        workdir=layout.workdir,
+        ignore=layout.ignore,
+        ignore_base=layout.ignore_base,
     )
     session.save()
 
     step = time.perf_counter()
-    console.print("Waiting for a runner, then uploading the source tree ...")
+    console.print(f"Waiting for a runner, then uploading {layout.root} ...")
     status = _boot(session)
     timings["runner+setup"] = time.perf_counter() - step
     app = status.get("app", {})
@@ -358,11 +389,11 @@ def _sync_cmd(args):
         return
     root = Path(session.root)
     _console().print(f"Watching {root} (Ctrl+C to stop) ...")
-    signature = app_sync.stat_signature(app_sync.collect(root))
+    signature = app_sync.stat_signature(_collect(session))
     try:
         while True:
             time.sleep(0.3)
-            current = app_sync.stat_signature(app_sync.collect(root))
+            current = app_sync.stat_signature(_collect(session))
             if current == signature:
                 continue
             signature = current
@@ -890,11 +921,16 @@ def add_parser(main_subparsers, parents=None):
         parents=[*parents, session_parser],
     )
     start.add_argument(
-        "app_ref", action=RefAction, help="path/to/app.py or path/to/app.py::App"
+        "app_ref",
+        action=RefAction,
+        help="path/to/app.py, path/to/app.py::App, or the name of an app in "
+        "pyproject.toml's tool.fal.apps table (as with `fal deploy`).",
     )
     start.add_argument("--machine-type", help="Override the app's machine type.")
     start.add_argument(
-        "--root", help="Source tree to sync (defaults to the app file's folder)."
+        "--root",
+        help="Source tree to sync and import from (defaults to the folder holding "
+        "the app's top-level package, widened to its app_files folder).",
     )
     add_env_argument(start)
     start.add_argument(
