@@ -80,12 +80,15 @@ def _comparable(value: Any) -> str | None:
     return None if " at 0x" in text else text
 
 
-def _analyze(cls: type, root: Path) -> tuple[dict[str, str], dict[str, set[str]]]:
+def analyze_setup(
+    cls: type, root: str | Path
+) -> tuple[dict[str, str], dict[str, set[str]]]:
     """Walk setup() and the local code it references.
 
     Returns the fingerprint (source and constant values by name) and the module
     globals that code assigns, which hold runtime state rather than constants.
     """
+    root = Path(root).resolve()
     stack: list[Any] = [
         klass.__dict__["setup"]
         for klass in reversed(cls.__mro__)
@@ -140,16 +143,6 @@ def _analyze(cls: type, root: Path) -> tuple[dict[str, str], dict[str, set[str]]
         if key.rsplit(".", 1)[-1] not in writes.get(scope_name, ()):
             fingerprint[key] = text
     return fingerprint, writes
-
-
-def setup_fingerprint(cls: type, root: str | Path) -> dict[str, str]:
-    """Source of ``setup()`` and of the local code and constants it references."""
-    return _analyze(cls, Path(root).resolve())[0]
-
-
-def setup_global_writes(cls: type, root: str | Path) -> dict[str, set[str]]:
-    """Module globals that ``setup()`` (or code it calls) assigns, by module."""
-    return _analyze(cls, Path(root).resolve())[1]
 
 
 def environment_fingerprint(cls: type) -> dict[str, str]:

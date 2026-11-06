@@ -1,10 +1,10 @@
-"""Local side of `fal dev app` file sync: pick files, diff them, pack them.
+"""Local side of `fal dev app` file sync: pick, hash, diff and pack files.
 
 Inside a git checkout the file list is `git ls-files` (tracked plus untracked,
 minus ignored); elsewhere it is a directory walk that skips the usual virtualenv
-and cache folders. `.env` files or folders, SSH keys, key and certificate files
-(``.pem``, ``.key``, ...), credential files and files over 10 MiB are never
-sent. Only files that changed since the last sync are sent.
+and cache folders. Key, credential and env files (see
+``fal.dev.files.secret_like``) and files over 10 MiB are never sent. Only
+files that changed since the last sync are sent.
 
 The box runs the app from this synced tree. The app's ``app_files_ignore``
 patterns apply here too, matched like `fal deploy` matches them: against the
@@ -20,56 +20,12 @@ import os
 import re
 import subprocess
 import tarfile
-from importlib import metadata
 from pathlib import Path
 
-SKIP_DIRS = {
-    ".git",
-    ".hg",
-    ".venv",
-    "venv",
-    "__pycache__",
-    "node_modules",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".tox",
-}
+from fal.dev.files import SKIP_DIRS, secret_like
+from fal.dev.remote.protocol import MAX_FILE_BYTES
+
 SKIP_SUFFIXES = (".pyc", ".pyo")
-# Local secrets stay local: synced files also land in the team's object store.
-# A denylist, so it catches the usual names only.
-SKIP_PREFIXES = (".env",)
-SECRET_PREFIXES = ("id_rsa", "id_ed25519", "id_ecdsa", "id_dsa")
-SECRET_DIRS = {".ssh", ".aws", ".gnupg", ".docker", ".kube", ".azure"}
-SECRET_NAMES = {
-    ".netrc",
-    ".npmrc",
-    ".pypirc",
-    ".pgpass",
-    ".htpasswd",
-    ".git-credentials",
-    "credentials.json",
-    "service-account.json",
-    "token.json",
-    "kubeconfig",
-    ".dockercfg",
-    ".boto",
-    "application_default_credentials.json",
-}
-SECRET_SUFFIXES = (
-    ".pem",
-    ".key",
-    ".p7b",
-    ".p8",
-    ".p12",
-    ".pfx",
-    ".jks",
-    ".keystore",
-    ".gpg",
-    ".kdbx",
-)
-SECRET_STEMS = ("secrets.", "secret.")
-MAX_FILE_BYTES = 10 * 1024 * 1024
 BATCH_BYTES = 25 * 1024 * 1024
 
 
@@ -101,26 +57,6 @@ def _walk_files(root: Path) -> list[str]:
         for filename in filenames:
             found.append(str((Path(dirpath) / filename).relative_to(root)))
     return found
-
-
-def _skipped(parts: tuple[str, ...]) -> bool:
-    return bool(SKIP_DIRS.intersection(parts)) or any(
-        part.lower().startswith(SKIP_PREFIXES) for part in parts
-    )
-
-
-def secret_like(parts: tuple[str, ...]) -> bool:
-    """Key, certificate and credential files, which are never synced."""
-    lowered = tuple(part.lower() for part in parts)
-    name = lowered[-1] if lowered else ""
-    return (
-        bool(SECRET_DIRS.intersection(lowered))
-        or name.startswith(SECRET_PREFIXES)
-        # secrets.yaml, secrets.json...; a secrets.py module is code.
-        or (name.startswith(SECRET_STEMS) and not name.endswith(".py"))
-        or name in SECRET_NAMES
-        or name.endswith(SECRET_SUFFIXES)
-    )
 
 
 def _ignored(name: str, patterns: list[re.Pattern[str]], base: str) -> bool:
@@ -166,7 +102,7 @@ def collect(
                 withheld.append(name)
             continue
         try:
-            if _skipped(parts) or not path.is_file():
+            if SKIP_DIRS.intersection(parts) or not path.is_file():
                 continue
             # A symlink is sent as its target, so the target must pass too.
             resolved = path.resolve()
@@ -175,7 +111,7 @@ def collect(
                 if resolved.is_relative_to(root)
                 else ()
             )
-            if not target or _skipped(target) or secret_like(target):
+            if not target or SKIP_DIRS.intersection(target) or secret_like(target):
                 continue
             size = path.stat().st_size
         except OSError:
@@ -251,22 +187,3 @@ def pack(files: dict[str, Path], names: list[str]) -> str:
         for rel in names:
             archive.add(files[rel], arcname=rel, recursive=False)
     return base64.b64encode(buffer.getvalue()).decode()
-
-
-def sdk_files() -> dict[str, Path]:
-    """The local fal package, which the runner does not have installed."""
-    package = Path(__file__).resolve().parents[2]
-    files = {}
-    for path in package.rglob("*"):
-        if path.is_file() and "__pycache__" not in path.parts:
-            files[(Path("fal") / path.relative_to(package)).as_posix()] = path
-    return files
-
-
-def sdk_requirements() -> list[str]:
-    """fal's own runtime dependencies, installed on the runner only if missing."""
-    try:
-        requires = metadata.requires("fal") or []
-    except metadata.PackageNotFoundError:
-        return []
-    return [r for r in requires if "extra ==" not in r]

@@ -1,8 +1,8 @@
 """Which project files may leave this machine.
 
-Used by the commands that upload a project folder to a box. Secrets stay
-local because uploaded files also land in the team's object store. The secret
-check is a denylist, so it catches the usual names only.
+Used by every command that uploads a project folder to a box. Secrets stay
+local: files `fal dev app` uploads also land in the team's shared object store.
+The secret check is a denylist, so it catches the usual names only.
 """
 
 from __future__ import annotations
@@ -27,7 +27,9 @@ SKIP_DIRS = frozenset(
 )
 _ENV_PREFIX = ".env"
 _SECRET_PREFIXES = ("id_rsa", "id_ed25519", "id_ecdsa", "id_dsa")
-_SECRET_DIRS = {".ssh", ".aws", ".gnupg", ".docker", ".kube", ".azure", "secrets"}
+_SECRET_DIRS = {".ssh", ".aws", ".gnupg", ".docker", ".kube", ".azure"}
+# Data under these is withheld; Python modules there are code and still sync.
+_SECRET_DATA_DIRS = {"secrets", "credentials"}
 _SECRET_NAMES = {
     ".netrc",
     ".npmrc",
@@ -68,16 +70,18 @@ def secret_like(parts: tuple[str, ...]) -> bool:
     """Whether a path (split into its parts) is an env, key or credential file."""
     lowered = tuple(part.lower() for part in parts)
     name = lowered[-1] if lowered else ""
+    # secrets.yaml or credentials.json are data; secrets.py is a module.
+    code = name.endswith(".py")
     return (
         any(part.startswith(_ENV_PREFIX) for part in lowered)
         or bool(_SECRET_DIRS.intersection(lowered))
+        or (not code and bool(_SECRET_DATA_DIRS.intersection(lowered[:-1])))
         or name.startswith(_SECRET_PREFIXES)
-        # secrets.yaml, secrets.json...; a secrets.py module is code.
-        or (name.startswith(_SECRET_STEMS) and not name.endswith(".py"))
+        or (name.startswith(_SECRET_STEMS) and not code)
         or name in _SECRET_NAMES
         or (name.startswith(_SERVICE_ACCOUNT) and name.endswith(".json"))
         or name == "credentials"
-        or name.startswith("credentials.")
+        or (name.startswith("credentials.") and not code)
         or (name.startswith(_SECRET_JSON_PREFIXES) and name.endswith(".json"))
         or ".tfstate." in name  # backups
         or name.endswith(_SECRET_JSON_SUFFIXES)

@@ -14,13 +14,10 @@ from typing import Callable
 
 from fal.cli.parser import FalClientParser, RefAction, add_env_argument
 from fal.dev import config
+from fal.dev.remote.protocol import MAX_PROFILE_WARMUPS, MAX_REPEAT, MAX_WARMUPS
 
 EXPERIMENTAL = "(experimental) "
 
-# Kept equal to the holder's limits (fal.dev.remote.holder), which this module
-# must not import.
-MAX_WARMUPS = 50
-MAX_REPEAT = 100
 DEFAULT_KEEP_ALIVE = 1800
 
 # Each dashboard refresh is a runner exec; faster only loads the box and the API.
@@ -40,6 +37,15 @@ the app shares with its deployed runners, such as a compile cache on /data,
 should be keyed by it so dev runs stay apart. An app that already reads
 another variable for this can have it set too, with `start --session-env NAME`.
 """
+
+START_DESCRIPTION = (
+    "Deploy a dev box from an app and run its setup() once. Synced source files "
+    "are also stored on your team's shared /data volume (under "
+    "/data/.fal-dev/objects, deleted after 30 days unused), so a new box copies "
+    "the files it already has instead of uploading them. Everyone on the team "
+    "can read that store, so do not sync a tree that holds anything teammates "
+    "should not see. Key, credential and .env files are never synced."
+)
 
 HOT_DESCRIPTION = (
     "A project folder holds load.py (load() -> state, run once) and infer.py "
@@ -343,7 +349,11 @@ def _add_app_commands(subparsers, parents) -> None:
     )
     add_app = functools.partial(add, app, "app", [*parents, name])
 
-    p = add_app("start", "Deploy a dev box from an app and run its setup() once.")
+    p = add_app(
+        "start",
+        "Deploy a dev box from an app and run its setup() once.",
+        description=START_DESCRIPTION,
+    )
     p.add_argument(
         "app_ref",
         action=RefAction,
@@ -434,8 +444,7 @@ def _add_app_commands(subparsers, parents) -> None:
         "the endpoint: work an async endpoint hands to other threads shows up "
         "as GPU kernels only.",
     )
-    p.add_argument("path", nargs="?", help="Endpoint path, e.g. /")
-    p.add_argument("--all", action="store_true", help="Profile every endpoint in turn.")
+    p.add_argument("path", help="Endpoint path, e.g. /")
     p.add_argument("--data", help="JSON body, or @file.json.")
     depth = p.add_mutually_exclusive_group()
     depth.add_argument(
@@ -455,7 +464,7 @@ def _add_app_commands(subparsers, parents) -> None:
     p.set_defaults(mode="standard")
     p.add_argument(
         "--warmups",
-        type=bounded(0, 10),
+        type=bounded(0, MAX_PROFILE_WARMUPS),
         default=1,
         help="Unprofiled requests to send first (default 1).",
     )
@@ -493,7 +502,7 @@ def _add_app_commands(subparsers, parents) -> None:
     )
     p = add_deps(
         "install",
-        "Install packages into a new overlay layer.",
+        "Install packages into the overlay.",
         handler="deps_install",
         extra_parents=(no_restart,),
     )
@@ -517,20 +526,20 @@ def _add_app_commands(subparsers, parents) -> None:
     )
     p = add_deps(
         "uninstall",
-        "Remove the overlay layers that installed these packages.",
+        "Remove packages from the overlay (their dependencies stay until reset).",
         handler="deps_uninstall",
         extra_parents=(no_restart,),
     )
     p.add_argument("packages", nargs="+")
     add_deps(
         "reset",
-        "Remove every overlay layer.",
+        "Delete the overlay.",
         handler="deps_reset",
         extra_parents=(no_restart,),
     )
     p = add_deps(
         "status",
-        "Show overlay layers and the versions the app imports.",
+        "Show the overlay and the versions the app imports.",
         handler="deps_status",
     )
     p.add_argument(

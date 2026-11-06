@@ -1,14 +1,14 @@
 """The resident process behind `fal dev app`: runs ``setup()`` once, reloads endpoints.
 
-Started on the runner by the dev box holder (``app_holder``) as
+Started on the runner by the dev box holder (``holder``) as
 ``python -m fal.dev.remote.child``. It imports the user's app from the synced
 source tree, runs ``setup()`` through the app's own lifespan, and serves the
 app's FastAPI routes on 127.0.0.1. The port only opens once ``setup()`` is done.
 
 ``POST /__fal_dev_child/reload`` re-imports the source tree and either swaps
 the app class in place (keeping the instance state ``setup()`` built), or says
-a restart or rebuild is needed; the holder acts on that answer. See
-``app_reload`` for the rules.
+a restart or rebuild is needed; the holder acts on that answer. See ``reload``
+for the rules.
 """
 
 from __future__ import annotations
@@ -30,9 +30,13 @@ import uvicorn
 
 import fal.ref
 from fal.app import App
-from fal.dev.remote import profile as app_profile
-from fal.dev.remote import reload as app_reload
-from fal.dev.remote.holder import CHILD_PREFIX
+from fal.dev.remote.profile import Profiler, wrap_routes
+from fal.dev.remote.protocol import CHILD_PREFIX
+from fal.dev.remote.reload import (
+    analyze_setup,
+    decide,
+    environment_fingerprint,
+)
 
 
 def _log(message: str) -> None:
@@ -78,9 +82,8 @@ def _versions(names: list[str]) -> dict[str, Any]:
 
 def _activate_overlay() -> None:
     """Process .pth files in the dependency overlay (already on PYTHONPATH)."""
-    for path in reversed(os.environ.get("FAL_DEV_OVERLAY", "").split(os.pathsep)):
-        if path:
-            site.addsitedir(path)
+    if overlay := os.environ.get("FAL_DEV_OVERLAY"):
+        site.addsitedir(overlay)
 
 
 class DevAppServer:
@@ -95,16 +98,13 @@ class DevAppServer:
         self.last_reload: dict[str, Any] = {}
         self.setup_seconds: float | None = None
         self.started_at = time.time()
-        self.profiler = app_profile.Profiler()
+        self.profiler = Profiler()
         self.instance, self.fastapi_app = self._load()
-        self.setup_fp = app_reload.setup_fingerprint(type(self.instance), self.root)
-        self.setup_writes = app_reload.setup_global_writes(
-            type(self.instance), self.root
-        )
+        self.setup_fp, self.setup_writes = analyze_setup(type(self.instance), self.root)
         # Values of those globals, kept here too: a failed reload drops the
         # modules that held them.
         self.kept_globals: dict[str, dict[str, Any]] = {}
-        self.env_fp = app_reload.environment_fingerprint(type(self.instance))
+        self.env_fp = environment_fingerprint(type(self.instance))
         self._lifespan: Any = None
 
     def _import_class(self) -> type[App]:
@@ -122,7 +122,7 @@ class DevAppServer:
 
     def _build(self, instance: App) -> Any:
         """The app's FastAPI app, with endpoints that can run under a profile."""
-        routes = app_profile.wrap_routes(instance.collect_routes(), self.profiler)
+        routes = wrap_routes(instance.collect_routes(), self.profiler)
         # _build_app() reads the routes from collect_routes(); shadow it on
         # the instance only while building, so reloads never copy it over.
         instance.collect_routes = lambda: routes  # type: ignore[method-assign]
@@ -166,11 +166,9 @@ class DevAppServer:
                     module = sys.modules.get(module_name)
                     if module is not None:
                         vars(module).update(values)
-            setup_fp = app_reload.setup_fingerprint(cls, self.root)
-            env_fp = app_reload.environment_fingerprint(cls)
-            action, reason = app_reload.decide(
-                self.setup_fp, setup_fp, self.env_fp, env_fp
-            )
+            setup_fp, setup_writes = analyze_setup(cls, self.root)
+            env_fp = environment_fingerprint(cls)
+            action, reason = decide(self.setup_fp, setup_fp, self.env_fp, env_fp)
             if action == "reload":
                 instance = object.__new__(cls)
                 # The state setup() built (models, pipelines) lives on the instance.
@@ -179,7 +177,7 @@ class DevAppServer:
                 self.instance, self.fastapi_app = instance, fastapi_app
                 # set_current_app() refuses to replace the app, so set it here.
                 fal.ref.current_app = instance
-                self.setup_writes = app_reload.setup_global_writes(cls, self.root)
+                self.setup_writes = setup_writes
                 self.generation += 1
             self.error = None
         except Exception:
@@ -257,10 +255,6 @@ class DevAppServer:
                 await _send_json(send, 200, self.status())
             elif action == "versions":
                 found = _versions(payload.get("names") or [])
-                await _send_json(send, 200, found)
-            elif action == "endpoints":
-                routes = self.instance.collect_routes()
-                found = {"endpoints": app_profile.endpoints(routes)}
                 await _send_json(send, 200, found)
             elif action == "profile/arm":
                 try:

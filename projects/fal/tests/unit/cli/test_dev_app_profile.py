@@ -1,19 +1,15 @@
 import contextlib
-import enum
 import gzip
 import json
-import os
 import sys
 import threading
-from pathlib import Path
-from typing import Literal
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import BaseModel, Field
 
 import fal
 from fal.dev.remote import profile as app_profile
+from fal.dev.remote import proxy
 from fal.dev.remote.child import DevAppServer
 
 APP_SOURCE = """
@@ -57,7 +53,7 @@ def server(tmp_path, monkeypatch):
     def capture(self, spec):
         captured.append((spec["path"], threading.get_ident()))
         yield
-        self.results[spec["id"]] = {"status": "ok", "id": spec["id"]}
+        self.finished = {"status": "ok", "id": spec["id"]}
 
     monkeypatch.setattr(app_profile.Profiler, "capture", capture)
     server = DevAppServer(tmp_path, "profile_app", "Demo")
@@ -113,73 +109,10 @@ def test_wrapped_routes_survive_reload(server):
     assert [entry[0] for entry in captured] == ["/"]
 
 
-def test_endpoints_lists_default_bodies(server):
-    server, client, captured, tmp_path = server
-    found = client.post("/__fal_dev_child/endpoints", json={}).json()["endpoints"]
-    by_path = {entry["path"]: entry for entry in found}
-    assert by_path["/"]["body"] == {"prompt": "a fox", "steps": 4}
-    assert by_path["/ping"]["body"] == {}
-
-
 def test_arm_rejects_unknown_mode(server):
     server, client, captured, tmp_path = server
     spec = {"id": "b" * 32, "path": "/", "mode": "huge", "dir": str(tmp_path)}
     assert client.post("/__fal_dev_child/profile/arm", json=spec).status_code == 422
-
-
-class Color(enum.Enum):
-    RED = "red"
-
-
-class Size(BaseModel):
-    width: int = Field(ge=64)
-
-
-class Rich(BaseModel):
-    prompt: str
-    count: int = Field(gt=2)
-    ratio: float
-    flag: bool
-    color: Color
-    mode: Literal["fast", "slow"]
-    tags: list[str] = Field(min_length=2)
-    size: Size
-    optional: str | None = None
-    seed: int = 7
-
-
-def test_default_body_fills_required_fields_and_keeps_defaults():
-    body = app_profile.default_body(Rich)
-    assert body == {
-        "prompt": "test",
-        "count": 3,
-        "ratio": 1.0,
-        "flag": False,
-        "color": "red",
-        "mode": "fast",
-        "tags": ["test", "test"],
-        "size": {"width": 64},
-        "optional": None,
-        "seed": 7,
-    }
-
-
-def test_default_body_names_the_field_it_cannot_build():
-    class Opaque(BaseModel):
-        blob: bytes
-
-    with pytest.raises(ValueError, match="Opaque.blob"):
-        app_profile.default_body(Opaque)
-
-
-def test_prune_keeps_newest(tmp_path):
-    for index in range(4):
-        folder = tmp_path / f"p{index}"
-        folder.mkdir()
-        (folder / "trace.json.gz").write_bytes(b"x")
-        os.utime(folder, (index, index))
-    app_profile.prune(tmp_path, keep=2)
-    assert sorted(path.name for path in tmp_path.iterdir()) == ["p2", "p3"]
 
 
 def test_capture_writes_a_perfetto_trace(tmp_path):
@@ -188,7 +121,7 @@ def test_capture_writes_a_perfetto_trace(tmp_path):
     spec = {"id": "c" * 32, "path": "/", "mode": "standard", "dir": str(tmp_path)}
     with profiler.capture(spec):
         torch.ones(64, 64) @ torch.ones(64, 64)
-    status = json.loads((tmp_path / app_profile.STATUS_NAME).read_text())
+    status = profiler.result("c" * 32)
     assert status["status"] == "ok", status
     trace = json.loads(
         gzip.decompress((tmp_path / app_profile.TRACE_NAME).read_bytes())
@@ -197,75 +130,73 @@ def test_capture_writes_a_perfetto_trace(tmp_path):
     assert "aten::mm" in status["top_ops"]
 
 
-def test_holder_profile_warms_up_arms_and_collects(tmp_path, monkeypatch):
-    from fal.dev.remote import holder as app_holder
-
+def test_profile_warms_up_arms_and_collects(tmp_path, monkeypatch):
     child_calls, forwarded = [], []
 
     def child_call(action, payload, timeout):
         child_calls.append(action)
-        if action == "endpoints":
-            return 200, {"endpoints": [{"path": "/", "body": {"prompt": "x"}}]}
         if action == "profile/arm":
             return 200, {"armed": payload["id"]}
         return 200, {"status": "ok", "trace_bytes": 10, "top_ops": "table"}
 
-    def forward(payload):
-        forwarded.append(payload["body"])
+    def forward(request, timeout):
+        forwarded.append(request["body"])
         return {"status_code": 200, "elapsed_seconds": 1.0, "body": "{}"}
 
-    monkeypatch.setattr(app_holder, "_child_call", child_call)
-    monkeypatch.setattr(app_holder, "_forward", forward)
-    result = app_holder._profile({"path": "/", "warmups": 2}, tmp_path)
+    monkeypatch.setattr(proxy, "child_call", child_call)
+    monkeypatch.setattr(proxy, "forward", forward)
+    result = proxy.profile(
+        {"path": "/", "body": {"prompt": "x"}, "warmups": 2}, tmp_path
+    )
 
-    assert child_calls == ["endpoints", "profile/arm", "profile/result"]
-    # Two warmups, then the profiled request, all with the derived body.
+    assert child_calls == ["profile/arm", "profile/result"]
+    # Two warmups, then the profiled request.
     assert forwarded == [{"prompt": "x"}] * 3
     assert result["status"] == "ok"
     assert result["request"]["status_code"] == 200
-    assert result["body"] == {"prompt": "x"}
 
 
-def test_holder_profile_needs_a_body_it_can_build(tmp_path, monkeypatch):
-    from fal.dev.remote import holder as app_holder
-
+def test_profile_stops_at_a_failing_warmup(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        app_holder,
-        "_child_call",
-        lambda *a, **k: (200, {"endpoints": [{"path": "/", "error": "no model"}]}),
+        proxy,
+        "forward",
+        lambda request, timeout: {
+            "status_code": 422,
+            "elapsed_seconds": 0.1,
+            "body": "bad input",
+        },
     )
-    with pytest.raises(ValueError, match="pass --data"):
-        app_holder._profile({"path": "/"}, tmp_path)
+    result = proxy.profile({"path": "/", "body": {}}, tmp_path)
+    assert result["status"] == "request_failed"
+    assert result["request"]["body"] == "bad input"
 
 
-def test_holder_artifact_reads_chunks_and_refuses_other_files(tmp_path, monkeypatch):
-    from fal.dev.remote import holder as app_holder
-
-    monkeypatch.setattr(app_holder, "ARTIFACT_CHUNK_BYTES", 4)
+def test_artifact_reads_chunks_and_refuses_other_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(proxy, "ARTIFACT_CHUNK_BYTES", 4)
     folder = tmp_path / ("d" * 32)
     folder.mkdir()
     (folder / "trace.json.gz").write_bytes(b"0123456789")
-    chunk = app_holder._artifact(
+    chunk = proxy.artifact(
         {"id": "d" * 32, "name": "trace.json.gz", "offset": 4}, tmp_path
     )
     assert chunk["size"] == 10
     assert chunk["data"] == "NDU2Nw=="  # b"4567"
     for bad in ({"id": "../x", "name": "trace.json.gz"}, {"id": "d" * 32, "name": "x"}):
         with pytest.raises(ValueError):
-            app_holder._artifact(bad, tmp_path)
+            proxy.artifact(bad, tmp_path)
 
 
 def _fake_profile_box(monkeypatch, trace_bytes):
     import base64
 
-    from fal.dev.cli import app as dev_app
+    from fal.dev.app import client
 
     trace = gzip.compress(json.dumps({"traceEvents": [{"name": "k"}]}).encode())
     files = {"trace.json.gz": trace, "ops.txt": b"ops table\n"}
     calls = []
 
     def call(_session, action, payload=None, **_):
-        calls.append(action)
+        calls.append((action, payload))
         if action == "status":
             return {"phase": "ready", "module": "demo_app"}
         if action == "profile":
@@ -281,7 +212,7 @@ def _fake_profile_box(monkeypatch, trace_bytes):
         piece = data[payload["offset"] : payload["offset"] + 7]
         return {"size": len(data), "data": base64.b64encode(piece).decode()}
 
-    monkeypatch.setattr(dev_app, "call", call)
+    monkeypatch.setattr(client, "call", call)
     return calls, trace
 
 
@@ -291,7 +222,6 @@ def _profile_session(tmp_path, monkeypatch):
     monkeypatch.setattr(app_session, "SESSIONS_DIR", tmp_path / "sessions")
     app_session.Session(
         name="dev-demo-me",
-        app_name="dev-demo-me",
         file_path="/src/demo_app.py",
         root="/src",
         module="demo_app",
@@ -316,6 +246,24 @@ def test_profile_command_downloads_the_trace(tmp_path, monkeypatch, capsys):
     printed = capsys.readouterr().out
     assert "TOP OPS" in printed
     assert "ui.perfetto.dev" in printed
+    # Without --data the request body is empty.
+    (sent,) = (p for action, p in calls if action == "profile")
+    assert sent["body"] == {}
+
+
+def test_profile_command_sends_the_given_body(tmp_path, monkeypatch):
+    from fal.cli.main import parse_args
+
+    _profile_session(tmp_path, monkeypatch)
+    calls, _ = _fake_profile_box(monkeypatch, None)
+    args = parse_args(
+        ["dev", "app", "profile", "/", "--data", '{"prompt": "x"}', "--light"]
+        + ["--output-dir", str(tmp_path / "profiles")]
+    )
+    args.func(args)
+    (sent,) = (p for action, p in calls if action == "profile")
+    assert sent["body"] == {"prompt": "x"}
+    assert sent["mode"] == "light"
 
 
 def test_profile_command_skips_traces_over_the_cap(tmp_path, monkeypatch, capsys):
@@ -371,43 +319,39 @@ def test_profiler_modes(monkeypatch, mode, cuda, activities, deep):
         assert profiler.kwargs[flag] is deep
 
 
-def test_holder_profile_disarms_when_the_request_fails(tmp_path, monkeypatch):
-    from fal.dev.remote import holder as app_holder
-
+def test_profile_disarms_when_the_request_fails(tmp_path, monkeypatch):
     child_calls = []
 
     def child_call(action, payload, timeout):
         child_calls.append(action)
         return 200, {"armed": "x"} if action == "profile/arm" else {}
 
-    def forward(payload):
+    def forward(request, timeout):
         raise TimeoutError("timed out")
 
-    monkeypatch.setattr(app_holder, "_child_call", child_call)
-    monkeypatch.setattr(app_holder, "_forward", forward)
+    monkeypatch.setattr(proxy, "child_call", child_call)
+    monkeypatch.setattr(proxy, "forward", forward)
     with pytest.raises(TimeoutError):
-        app_holder._profile({"path": "/", "body": {}, "warmups": 0}, tmp_path)
+        proxy.profile({"path": "/", "body": {}, "warmups": 0}, tmp_path)
     assert child_calls == ["profile/arm", "profile/result"]
 
 
-def test_holder_profile_warmups_share_the_time_budget(tmp_path, monkeypatch):
-    from fal.dev.remote import holder as app_holder
-
+def test_profile_warmups_share_the_time_budget(tmp_path, monkeypatch):
     timeouts = []
     clock = iter([0.0, 100.0, 3400.0])
-    monkeypatch.setattr(app_holder.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(proxy.time, "monotonic", lambda: next(clock))
 
-    def forward(payload):
-        timeouts.append(payload["timeout"])
+    def forward(request, timeout):
+        timeouts.append(timeout)
         return {"status_code": 200, "elapsed_seconds": 1.0}
 
-    monkeypatch.setattr(app_holder, "_forward", forward)
+    monkeypatch.setattr(proxy, "forward", forward)
     with pytest.raises(ValueError, match="time budget"):
-        app_holder._profile({"path": "/", "body": {}, "warmups": 2}, tmp_path)
-    assert timeouts == [app_holder.RUNS_BUDGET_SECONDS - 100]
+        proxy.profile({"path": "/", "body": {}, "warmups": 2}, tmp_path)
+    assert timeouts == [proxy.RUNS_BUDGET_SECONDS - 100]
 
 
-def test_capture_survives_a_status_write_failure(tmp_path, monkeypatch):
+def test_capture_reports_a_profiler_that_cannot_start(tmp_path, monkeypatch):
     profiler = app_profile.Profiler()
 
     def broken(mode):
@@ -415,22 +359,20 @@ def test_capture_survives_a_status_write_failure(tmp_path, monkeypatch):
 
     monkeypatch.setattr(app_profile, "_start", broken)
     spec = {"id": "f" * 32, "path": "/", "mode": "light", "dir": str(tmp_path / "p")}
-    monkeypatch.setattr(
-        Path, "write_text", lambda *a, **k: (_ for _ in ()).throw(OSError("full"))
-    )
+    ran = []
     with profiler.capture(spec):
-        pass
+        ran.append(1)
+    # The request still ran.
+    assert ran == [1]
     assert profiler.result("f" * 32)["status"] == "error"
 
 
-def test_armed_profile_expires(monkeypatch):
+def test_arming_again_replaces_the_armed_profile():
     profiler = app_profile.Profiler()
-    profiler.arm({"id": "1", "path": "/", "mode": "light", "dir": "/tmp/x"})
-    monkeypatch.setattr(
-        app_profile.time, "monotonic", lambda: app_profile.ARM_SECONDS * 2 + 1e9
-    )
-    assert profiler.claim("/") is None
-    assert profiler.armed is None
+    profiler.arm({"id": "1", "path": "/a", "mode": "light", "dir": "/tmp/x"})
+    profiler.arm({"id": "2", "path": "/b", "mode": "light", "dir": "/tmp/x"})
+    assert profiler.claim("/a") is None
+    assert profiler.claim("/b")["id"] == "2"
 
 
 def test_child_control_routes_reject_non_objects(server):

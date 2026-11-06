@@ -5,17 +5,16 @@ import pytest
 from fal.cli.main import parse_args
 from fal.cli.parser import FalParserExit
 from fal.dev.app import bench as app_bench
+from fal.dev.app import client
 from fal.dev.app import session as app_session
 from fal.dev.app.session import Session
-from fal.dev.cli import app as dev_app
-from fal.dev.cli import parser
-from fal.dev.remote import holder as app_holder
+from fal.dev.errors import DevError
+from fal.dev.remote import proxy
 
 
 def _session(**kwargs) -> Session:
     values = {
         "name": "dev-demo-me",
-        "app_name": "dev-demo-me",
         "file_path": "/src/demo_app.py",
         "root": "/src",
         "module": "demo_app",
@@ -38,9 +37,9 @@ def home(tmp_path, monkeypatch):
 def _fake_child(monkeypatch, statuses, times):
     calls: list[dict] = []
 
-    def forward(payload):
+    def forward(request, timeout):
         index = len(calls)
-        calls.append(payload)
+        calls.append({**request, "timeout": timeout})
         return {
             "status_code": statuses[index],
             "content_type": "application/json",
@@ -48,13 +47,13 @@ def _fake_child(monkeypatch, statuses, times):
             "body": json.dumps({"run": index}),
         }
 
-    monkeypatch.setattr(app_holder, "_forward", forward)
+    monkeypatch.setattr(proxy, "forward", forward)
     return calls
 
 
 def test_forward_runs_times_warmups_and_runs_separately(monkeypatch):
     calls = _fake_child(monkeypatch, [200] * 5, [9.0, 1.0, 2.0, 3.0, 4.0])
-    result = app_holder._forward_runs({"path": "/", "warmups": 1, "repeat": 4})
+    result = proxy.forward_runs({"path": "/", "warmups": 1, "repeat": 4})
 
     assert len(calls) == 5
     assert [run["elapsed_seconds"] for run in result["warmup_runs"]] == [9.0]
@@ -65,7 +64,7 @@ def test_forward_runs_times_warmups_and_runs_separately(monkeypatch):
 
 def test_forward_runs_stops_at_the_first_failure(monkeypatch):
     calls = _fake_child(monkeypatch, [200, 422, 200], [1.0, 1.0, 1.0])
-    result = app_holder._forward_runs({"path": "/", "repeat": 3})
+    result = proxy.forward_runs({"path": "/", "repeat": 3})
 
     assert len(calls) == 2
     assert result["status_code"] == 422
@@ -78,7 +77,7 @@ def test_forward_runs_stops_at_the_first_failure(monkeypatch):
 )
 def test_forward_runs_checks_counts(payload):
     with pytest.raises(ValueError):
-        app_holder._forward_runs({"path": "/", **payload})
+        proxy.forward_runs({"path": "/", **payload})
 
 
 def test_stats_use_nearest_rank_p90():
@@ -144,13 +143,13 @@ def test_compare_flags_different_requests(home):
 
 def test_benchmark_names_are_checked(home, tmp_path):
     for bad in ("../escape", "a\n", ""):
-        with pytest.raises(app_bench.BenchmarkError):
+        with pytest.raises(DevError):
             app_bench.check_name(bad)
-    with pytest.raises(app_bench.BenchmarkError):
+    with pytest.raises(DevError):
         app_bench.load("missing", "dev-demo-me")
     foreign = tmp_path / "foreign.json"
     foreign.write_text('{"hello": 1}')
-    with pytest.raises(app_bench.BenchmarkError, match="not a saved benchmark"):
+    with pytest.raises(DevError, match="not a saved benchmark"):
         app_bench.load(str(foreign), None)
     partial = tmp_path / "partial.json"
     partial.write_text(
@@ -158,7 +157,7 @@ def test_benchmark_names_are_checked(home, tmp_path):
             {"name": "x", "path": "/", "repeat": 1, "created_at": 0, "stats": {}}
         )
     )
-    with pytest.raises(app_bench.BenchmarkError, match="not a saved benchmark"):
+    with pytest.raises(DevError, match="not a saved benchmark"):
         app_bench.load(str(partial), None)
     # Stray files in the session folder do not break listing.
     folder = app_bench.BENCHMARKS_DIR / "dev-demo-me"
@@ -188,7 +187,7 @@ def _fake_box(monkeypatch, statuses, truncated=False):
             "stopped": "run 3 did not complete: boom" if truncated else "",
         }
 
-    monkeypatch.setattr(dev_app, "call", call)
+    monkeypatch.setattr(client, "call", call)
     return sent
 
 
@@ -237,32 +236,27 @@ def test_failed_or_truncated_benchmarks_are_not_saved(
 def test_forward_runs_stops_at_the_time_budget(monkeypatch):
     calls = _fake_child(monkeypatch, [200] * 3, [1.0] * 3)
     clock = iter([0.0, 10.0, 4000.0])
-    monkeypatch.setattr(app_holder.time, "monotonic", lambda: next(clock))
-    result = app_holder._forward_runs({"path": "/", "repeat": 3})
+    monkeypatch.setattr(proxy.time, "monotonic", lambda: next(clock))
+    result = proxy.forward_runs({"path": "/", "repeat": 3})
     assert "time budget" in result["stopped"]
     assert len(result["runs"]) == 2
     # The second run only gets what is left of the budget.
-    assert calls[1]["timeout"] == app_holder.RUNS_BUDGET_SECONDS - 10
+    assert calls[1]["timeout"] == proxy.RUNS_BUDGET_SECONDS - 10
 
 
 def test_forward_runs_keeps_runs_when_a_later_run_fails_to_connect(monkeypatch):
     calls = _fake_child(monkeypatch, [200], [1.0])
-    forward = app_holder._forward
+    forward = proxy.forward
 
-    def flaky(payload):
+    def flaky(request, timeout):
         if calls:
             raise TimeoutError("timed out")
-        return forward(payload)
+        return forward(request, timeout)
 
-    monkeypatch.setattr(app_holder, "_forward", flaky)
-    result = app_holder._forward_runs({"path": "/", "repeat": 3})
+    monkeypatch.setattr(proxy, "forward", flaky)
+    result = proxy.forward_runs({"path": "/", "repeat": 3})
     assert result["stopped"] == "run 2 did not complete: timed out"
     assert [run["elapsed_seconds"] for run in result["runs"]] == [1.0]
-
-
-def test_request_limits_match_the_holder():
-    assert parser.MAX_WARMUPS == app_holder.MAX_WARMUPS
-    assert parser.MAX_REPEAT == app_holder.MAX_REPEAT
 
 
 def test_request_flags_are_bounded(capsys):
@@ -277,7 +271,7 @@ def test_request_flags_are_bounded(capsys):
 
 def test_empty_benchmark_name_is_refused(home):
     _session().save()
-    with pytest.raises(app_bench.BenchmarkError):
+    with pytest.raises(DevError):
         _request("--save", "")
 
 

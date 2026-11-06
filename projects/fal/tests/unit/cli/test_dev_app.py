@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import io
 import os
@@ -7,21 +8,21 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import fal
 from fal.cli.main import parse_args
+from fal.dev.app import deploy
 from fal.dev.app import sync as app_sync
-from fal.dev.app.session import NAME_PREFIX, session_name
+from fal.dev.app.session import NAME_PREFIX, Session, session_name
+from fal.dev.errors import DevError
+from fal.dev.remote import proxy
 from fal.dev.remote import reload as app_reload
 from fal.dev.remote.child import DevAppServer
-from fal.dev.remote.holder import (
-    DevAppHolder,
-    _ChildProcess,
-    _extract,
-    _forward,
-    make_holder,
-)
+from fal.dev.remote.holder import DevAppHolder, make_holder
+from fal.dev.remote.process import ChildProcess, LogBuffer
+from fal.dev.remote.tree import SourceTree, extract
 
 APP_SOURCE = """
 import fal
@@ -155,7 +156,7 @@ def test_parent_setup_is_fingerprinted(tmp_path):
     try:
         import base_app
 
-        fingerprint = app_reload.setup_fingerprint(base_app.Child, tmp_path)
+        fingerprint, _ = app_reload.analyze_setup(base_app.Child, tmp_path)
     finally:
         sys.path.remove(str(tmp_path))
         sys.modules.pop("base_app", None)
@@ -203,13 +204,7 @@ def test_decide_prefers_rebuild_over_restart():
 def test_make_holder_inherits_environment_but_not_routes_or_scaling(project):
     import demo_app
 
-    holder = make_holder(
-        demo_app.Demo,
-        app_name="dev-demo-me",
-        session="dev-demo-me",
-        token="t",
-        keep_alive=900,
-    )
+    holder = make_holder(demo_app.Demo, name="dev-demo-me", token="t", keep_alive=900)
     assert issubclass(holder, demo_app.Demo)
     assert holder.app_name == "dev-demo-me"
     assert holder.machine_type == "GPU-H100"
@@ -226,39 +221,61 @@ def test_make_holder_inherits_environment_but_not_routes_or_scaling(project):
     assert "/__fal_dev/request" in paths
 
     overridden = make_holder(
-        demo_app.Demo,
-        app_name="x",
-        session="x",
-        token="t",
-        keep_alive=1,
-        machine_type="GPU-A100",
+        demo_app.Demo, name="x", token="t", keep_alive=1, machine_type="GPU-A100"
     )
     assert overridden.machine_type == "GPU-A100"
 
 
-def test_holder_rejects_bad_token(project):
+def test_holder_routes_check_the_token_and_report_failures_as_400(project):
     import demo_app
-    from fastapi import HTTPException
 
-    holder = make_holder(
-        demo_app.Demo, app_name="x", session="x", token="secret", keep_alive=1
-    )
+    holder = make_holder(demo_app.Demo, name="x", token="secret", keep_alive=1)
     instance = holder(_allow_init=True)
+
+    def run(payload, handler):
+        return asyncio.run(instance._run(payload, handler))
+
     for bad in ("wrong", "", "\u00e9"):
         with pytest.raises(HTTPException) as exc:
-            instance._check({"token": bad})
+            run({"token": bad}, lambda payload: {})
         assert exc.value.status_code == 403
-    assert instance._check({"token": "secret", "a": 1})["a"] == 1
+    with pytest.raises(HTTPException) as exc:
+        run(["not", "an", "object"], lambda payload: {})
+    assert exc.value.status_code == 422
+    assert run({"token": "secret", "a": 1}, lambda payload: {"a": payload["a"]}) == {
+        "a": 1
+    }
+
+    def refuse(payload):
+        raise DevError("no way")
+
+    with pytest.raises(HTTPException) as exc:
+        run({"token": "secret"}, refuse)
+    assert (exc.value.status_code, exc.value.detail) == (400, "no way")
+
+
+def test_holder_hides_index_credentials_in_errors(project):
+    import demo_app
+
+    holder = make_holder(demo_app.Demo, name="x", token="t", keep_alive=1)
+    instance = holder(_allow_init=True)
+
+    def refuse(payload):
+        raise DevError("failed for https://user:secret@pypi.example/simple")
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(instance._run({"token": "t"}, refuse))
+    assert "secret" not in exc.value.detail
 
 
 def test_forward_refuses_child_control_paths():
     for path in ("/__fal_dev_child/reload", "/%5F_fal_dev_child/reload", "x"):
         with pytest.raises(ValueError):
-            _forward({"path": path})
+            proxy.forward({"path": path}, 1)
 
 
 def test_child_process_reload_states(tmp_path):
-    child = _ChildProcess(tmp_path)
+    child = ChildProcess(tmp_path, LogBuffer())
     assert child.start() is False
     assert child.reload([])["action"] == "not_running"
     child.phase = "setup"
@@ -281,7 +298,7 @@ def test_extract_refuses_escaping_paths(tmp_path):
         info.size = len(data)
         archive.addfile(info, io.BytesIO(data))
     with pytest.raises(ValueError):
-        _extract(base64.b64encode(buffer.getvalue()).decode(), tmp_path / "dest")
+        extract(base64.b64encode(buffer.getvalue()).decode(), tmp_path / "dest")
 
 
 def test_sync_roundtrip(tmp_path):
@@ -304,7 +321,7 @@ def test_sync_roundtrip(tmp_path):
     assert changed == ["a.py", "c.py"]
     assert deleted == ["pkg/b.py"]
 
-    written = _extract(app_sync.pack(files, changed), tmp_path / "dest")
+    written = extract(app_sync.pack(files, changed), tmp_path / "dest")
     assert sorted(written) == ["a.py", "c.py"]
     assert (tmp_path / "dest" / "a.py").read_text() == "a = 2\n"
 
@@ -320,16 +337,9 @@ def test_sync_sends_symlinks_and_skips_env(tmp_path):
     os.symlink(src / ".env", src / "config.txt")
     files = app_sync.collect(src)
     assert sorted(files) == ["a.py", "b.py"]
-    written = _extract(app_sync.pack(files, sorted(files)), tmp_path / "dest")
+    written = extract(app_sync.pack(files, sorted(files)), tmp_path / "dest")
     assert sorted(written) == ["a.py", "b.py"]
     assert (tmp_path / "dest" / "b.py").read_text() == "a = 1\n"
-
-
-def test_sdk_files_ship_the_child():
-    files = app_sync.sdk_files()
-    assert "fal/dev/remote/child.py" in files
-    assert "fal/app.py" in files
-    assert not any("__pycache__" in name for name in files)
 
 
 def test_parser_registers_commands():
@@ -345,7 +355,7 @@ def test_parser_registers_commands():
 def test_setup_fingerprint_ignores_endpoint_only_constants(project):
     import demo_app
 
-    fingerprint = app_reload.setup_fingerprint(demo_app.Demo, project)
+    fingerprint, _ = app_reload.analyze_setup(demo_app.Demo, project)
     assert any(key.endswith(".MODEL") for key in fingerprint)
     assert not any(key.endswith(".STEPS") for key in fingerprint)
     assert textwrap.dedent("def setup(self):") in "".join(fingerprint.values())
@@ -364,7 +374,7 @@ def test_config_object_used_by_setup_is_fingerprinted(tmp_path):
         try:
             import cfg_app
 
-            fingerprints.append(app_reload.setup_fingerprint(cfg_app.Demo, tmp_path))
+            fingerprints.append(app_reload.analyze_setup(cfg_app.Demo, tmp_path)[0])
         finally:
             sys.path.remove(str(tmp_path))
             sys.modules.pop("cfg_app", None)
@@ -374,7 +384,7 @@ def test_config_object_used_by_setup_is_fingerprinted(tmp_path):
 
 
 def test_child_process_ignores_stale_restart(tmp_path):
-    child = _ChildProcess(tmp_path)
+    child = ChildProcess(tmp_path, LogBuffer())
     child.module, child.class_name = "app", "App"
     stale = child.generation
     child.stop()
@@ -391,11 +401,8 @@ def test_sync_batches_large_trees(tmp_path, monkeypatch):
 
 
 def test_stop_box_refuses_non_dev_apps():
-    from fal.dev.app.session import DevAppError, Session, stop_box
-
     session = Session(
         name="prod",
-        app_name="prod",
         file_path="app.py",
         root=".",
         module="app",
@@ -403,47 +410,120 @@ def test_stop_box_refuses_non_dev_apps():
         run_url="https://example.invalid",
         token="t",
     )
-    with pytest.raises(DevAppError):
-        stop_box(session)
+    with pytest.raises(DevError):
+        deploy.stop_box(session)
 
 
 def test_start_refuses_to_take_over_an_unknown_app(monkeypatch, tmp_path):
-    from fal.dev.app import session as app_session
     from fal.dev.cli import app as dev_app
 
     (tmp_path / "app.py").write_text("import fal\n")
-    monkeypatch.setattr(dev_app, "box_exists", lambda *a, **k: True)
+    monkeypatch.setattr(deploy, "box_exists", lambda *a, **k: True)
     monkeypatch.setattr(
-        dev_app,
+        deploy,
         "find_session",
-        lambda name: (_ for _ in ()).throw(app_session.DevAppError("none")),
+        lambda name: (_ for _ in ()).throw(DevError("none")),
     )
     deployed = []
-    monkeypatch.setattr(dev_app, "deploy_box", lambda *a, **k: deployed.append(1))
+    monkeypatch.setattr(deploy, "deploy_box", lambda *a, **k: deployed.append(1))
     args = parse_args(
         ["dev", "app", "start", f"{tmp_path / 'app.py'}::App", "--team", "t"]
     )
-    with pytest.raises(app_session.DevAppError, match="--replace"):
+    with pytest.raises(DevError, match="--replace"):
         dev_app.cmd_start(args)
     assert not deployed
 
 
 def test_sync_handles_file_becoming_folder_and_back(tmp_path):
-    from fal.dev.remote.holder import _delete
-
     src, dest = tmp_path / "src", tmp_path / "dest"
     src.mkdir()
     (src / "data").write_text("file\n")
+    tree = SourceTree(dest, None, print)
     files = app_sync.collect(src)
-    _extract(app_sync.pack(files, ["data"]), dest)
+    tree.sync(archive=app_sync.pack(files, ["data"]), deleted=[])
 
     (src / "data").unlink()
     (src / "data").mkdir()
     (src / "data" / "x.txt").write_text("x\n")
     files = app_sync.collect(src)
-    assert _delete(["data"], dest) == ["data"]
-    _extract(app_sync.pack(files, ["data/x.txt"]), dest)
+    written, deleted = tree.sync(
+        archive=app_sync.pack(files, ["data/x.txt"]), deleted=["data"]
+    )
+    assert (written, deleted) == (["data/x.txt"], ["data"])
     assert (dest / "data" / "x.txt").read_text() == "x\n"
 
-    assert _delete(["data/x.txt"], dest) == ["data/x.txt"]
+    _, deleted = tree.sync(deleted=["data/x.txt"])
+    assert deleted == ["data/x.txt"]
     assert not (dest / "data").exists()
+
+
+def test_full_sync_deletes_only_synced_files_that_are_gone(tmp_path):
+    src, dest = tmp_path / "src", tmp_path / "dest"
+    src.mkdir()
+    for name in ("a.py", "b.py"):
+        (src / name).write_text(name)
+    tree = SourceTree(dest, None, print)
+    files = app_sync.collect(src)
+    tree.sync(archive=app_sync.pack(files, sorted(files)), deleted=[])
+    # A file the app wrote itself is not the sync's to delete.
+    (dest / "cache.bin").write_text("x")
+
+    _, deleted = tree.sync(deleted=[], all_files=["a.py"])
+    assert deleted == ["b.py"]
+    assert (dest / "a.py").exists() and (dest / "cache.bin").exists()
+    assert not (dest / "b.py").exists()
+
+
+def test_log_buffer_returns_what_came_after_a_line_number(capsys):
+    buffer = LogBuffer()
+    for number in range(5):
+        buffer.emit(f"line {number}")
+    assert buffer.since(None, 2) == {"lines": ["line 3", "line 4"], "total": 5}
+    assert buffer.since(None, 0)["lines"] == []
+    assert buffer.since(3, 10)["lines"] == ["line 3", "line 4"]
+    # A client ahead of the box (a new runner) starts from the last lines.
+    assert buffer.since(99, 1)["lines"] == ["line 4"]
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [("repeat", 1.5), ("repeat", True), ("warmups", -1), ("timeout", "soon")],
+)
+def test_request_numbers_are_checked(key, value):
+    with pytest.raises(ValueError, match=key):
+        proxy.number({key: value}, key, 1 if key != "timeout" else 1.0, 0, 100)
+
+
+def test_start_help_says_synced_source_is_shared_with_the_team(capsys):
+    from fal.cli.parser import FalParserExit
+
+    with pytest.raises(FalParserExit):
+        parse_args(["dev", "app", "start", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "shared /data" in out
+    assert "Everyone on the team can read" in out
+
+
+def test_app_sync_withholds_what_hot_sync_withholds(tmp_path):
+    for name in ["app.py", "secrets/token.txt", "prod.tfvars", ".env.local", "id_rsa"]:
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text("x")
+    withheld: list[str] = []
+    files = app_sync.collect(tmp_path, withheld=withheld)
+    assert list(files) == ["app.py"]
+    assert sorted(withheld) == [
+        ".env.local",
+        "id_rsa",
+        "prod.tfvars",
+        "secrets/token.txt",
+    ]
+
+
+def test_app_sync_keeps_code_named_like_secrets(tmp_path):
+    for name in ["credentials.py", "app/secrets/store.py", "secrets/key.json"]:
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text("x")
+    assert sorted(app_sync.collect(tmp_path)) == [
+        "app/secrets/store.py",
+        "credentials.py",
+    ]

@@ -17,17 +17,16 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fal.dev.remote.deps import redact
+from fal.dev.app.session import Session
+from fal.dev.errors import DevError
+from fal.dev.remote.protocol import redact
+from fal.dev.state import STATE_DIR
 
-BENCHMARKS_DIR = Path("~/.fal/dev/benchmarks").expanduser()
+BENCHMARKS_DIR = STATE_DIR / "benchmarks"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
 # Fields that must match for a comparison to mean anything.
 COMPARE_KEYS = ("app", "path", "method", "payload_sha256", "machine_type")
 STAT_KEYS = ("median", "p90", "min", "max", "mean")
-
-
-class BenchmarkError(Exception):
-    pass
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -60,7 +59,7 @@ def source_digest(manifest: dict[str, str]) -> str:
 
 def check_name(name: str) -> str:
     if not NAME_RE.fullmatch(name):
-        raise BenchmarkError(
+        raise DevError(
             f"Invalid benchmark name {name!r}: use letters, digits, '.', '_' or '-'."
         )
     return name
@@ -69,7 +68,7 @@ def check_name(name: str) -> str:
 def record(
     *,
     name: str | None,
-    session: Any,
+    session: Session,
     path: str,
     body: Any,
     result: dict[str, Any],
@@ -86,9 +85,7 @@ def record(
         "path": path,
         "payload_sha256": payload_sha256(body),
         "source": source_digest(session.manifest),
-        "overlay": [
-            redact(pin) for layer in session.overlay for pin in layer["packages"]
-        ],
+        "overlay": [redact(pin) for pin in session.overlay.get("packages", [])],
         "warmups": warmups,
         "repeat": len(runs),
         "runs": runs,
@@ -119,13 +116,13 @@ def load(ref: str, session_name: str | None) -> dict[str, Any]:
             path = named
     if not path.is_file() or path.suffix != ".json":
         where = f" for {session_name}" if session_name else ""
-        raise BenchmarkError(f"No saved benchmark {ref!r}{where}.")
+        raise DevError(f"No saved benchmark {ref!r}{where}.")
     try:
         run = json.loads(path.read_text())
     except ValueError as exc:
-        raise BenchmarkError(f"{path} is not valid JSON: {exc}") from exc
+        raise DevError(f"{path} is not valid JSON: {exc}") from exc
     if not valid(run):
-        raise BenchmarkError(f"{path} is not a saved benchmark.")
+        raise DevError(f"{path} is not a saved benchmark.")
     return run
 
 

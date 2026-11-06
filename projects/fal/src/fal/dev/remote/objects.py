@@ -1,32 +1,37 @@
 """A content-addressed store of synced files, shared by a team's dev boxes.
 
-A fresh runner would otherwise get the whole source tree from the laptop on
-every `fal dev app start` (and after every idle shutdown). Instead each file
-the box receives is also kept on the team's persistent ``/data`` volume, named
-by its sha256. On boot the CLI sends the tree's manifest; the box copies every
-file it already holds into place and the CLI uploads only the rest. Files are
-shared across sessions, branches and teammates, so after the first upload a
-new box costs only the files that changed since any box last saw them, with
-no git hosting token anywhere.
+Every file the box receives is also kept on the team's persistent ``/data``
+volume, named by its sha256. When the CLI syncs, the box copies the files it
+already holds into place and the CLI uploads only the rest, so a new box (or a
+switch back to an earlier branch) costs only the files no box has seen. The
+store is shared by every box and teammate of the team, so synced source is
+readable by teammates. Files the sync never sends (``.env``, key and credential
+files, files over 10 MiB) never reach it.
 
-Objects are checked against their name when written and again when copied
-out, so a damaged object is treated as missing and sent again; symlinks in the
-store are never followed. Nothing is ever deleted: the store grows with every
-version synced, and stops growing while the volume has under 20 GiB free.
-Delete /data/.fal-dev to reset it. Files the dev sync never sends (``.env``,
-key and credential files, files over 10 MiB) never reach it.
+Objects are checked against their name when written and again when copied out,
+so a damaged object is treated as missing and sent again. Symlink checks guard
+against links planted in the store, not against a concurrent swap, which the
+hash check catches. An object that no box has used for 30 days is deleted
+(``expire``), and no objects are added while the volume has under 20 GiB free.
+Delete /data/.fal-dev to reset the store.
 
 Runs on the runner inside the holder, so: standard library only.
 """
 
+import contextlib
 import hashlib
 import os
+import queue
 import re
 import shutil
 import stat
 import tempfile
+import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
+
+from fal.dev.remote.protocol import MAX_FILE_BYTES
 
 DATA_ROOT = Path("/data")
 STORE_DIR = ".fal-dev/objects"
@@ -35,17 +40,10 @@ CHUNK = 1024 * 1024
 # Stop adding objects when the team's volume gets this full: /data also holds
 # the team's weights and caches.
 MIN_FREE_BYTES = 20 * 1024**3
-# The dev sync never sends files over 10 MiB.
-MAX_OBJECT_BYTES = 10 * 1024 * 1024
+MAX_OBJECT_BYTES = MAX_FILE_BYTES
 TMP_MAX_AGE_SECONDS = 3600
-
-
-def _digest(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(CHUNK), b""):
-            digest.update(block)
-    return digest.hexdigest()
+# An object nobody has used for this long is deleted.
+OBJECT_MAX_AGE_SECONDS = 30 * 24 * 3600
 
 
 def _checked(digest: str) -> str:
@@ -65,6 +63,12 @@ def _regular(path: Path) -> bool:
         return stat.S_ISREG(os.lstat(path).st_mode)
     except OSError:
         return False
+
+
+def _touch(path: Path) -> None:
+    """Mark an object as used now, which is what keeps it from expiring."""
+    with contextlib.suppress(OSError):
+        os.utime(path, follow_symlinks=False)
 
 
 class Store:
@@ -88,17 +92,23 @@ class Store:
             probe.close()
         except OSError:
             return None
-        store = cls(root)
-        store.sweep()
-        return store
+        return cls(root)
 
-    def sweep(self, older_than: float = TMP_MAX_AGE_SECONDS) -> None:
-        """Delete copies left half-written by boxes that stopped mid-put."""
-        cutoff = time.time() - older_than
-        for tmp in self.root.glob("*/.tmp-*"):
+    def expire(self) -> None:
+        """Delete objects nobody has used for 30 days, and half-written copies
+        left by boxes that stopped mid-put."""
+        now = time.time()
+        for entry in self.root.glob("*/*"):
+            max_age = (
+                TMP_MAX_AGE_SECONDS
+                if entry.name.startswith(".tmp-")
+                else OBJECT_MAX_AGE_SECONDS
+            )
             try:
-                if os.lstat(tmp).st_mtime < cutoff:
-                    tmp.unlink()
+                if not entry.parent.is_symlink() and (
+                    now - os.lstat(entry).st_mtime > max_age
+                ):
+                    entry.unlink()
             except OSError:
                 continue
 
@@ -106,18 +116,18 @@ class Store:
         digest = _checked(digest)
         return self.root / digest[:2] / digest
 
-    def missing(self, digests: list[str]) -> list[str]:
-        return sorted({d for d in digests if not _regular(self.path(d))})
-
-    def put(self, source: Path) -> str | None:
-        """Keep a copy of ``source``; returns its digest, or None if not kept.
+    def put(self, data: bytes) -> str | None:
+        """Keep a copy of ``data``; returns its digest, or None if not kept.
 
         Best effort: a full or failing volume never fails the sync.
         """
+        if len(data) > MAX_OBJECT_BYTES:
+            return None
+        digest = hashlib.sha256(data).hexdigest()
         try:
-            digest = _digest(source)
             target = self.path(digest)
             if _regular(target):
+                _touch(target)
                 return digest
             if shutil.disk_usage(self.root).free < MIN_FREE_BYTES:
                 return None
@@ -126,11 +136,8 @@ class Store:
                 return None
             fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".tmp-")
             try:
-                with os.fdopen(fd, "wb") as writer, source.open("rb") as reader:
-                    shutil.copyfileobj(reader, writer, CHUNK)
-                # The source may change while it is copied; keep only a true copy.
-                if _digest(Path(tmp)) != digest:
-                    return None
+                with os.fdopen(fd, "wb") as writer:
+                    writer.write(data)
                 # Readable by the team's other boxes (mkstemp makes it 0600).
                 os.chmod(tmp, 0o644)
                 os.replace(tmp, target)
@@ -174,9 +181,35 @@ class Store:
             tmp.chmod(0o755 if executable else 0o644)
             os.replace(tmp, target)
         except OSError:
-            try:
+            with contextlib.suppress(OSError):
                 tmp.unlink(missing_ok=True)
-            except OSError:
-                pass
             return False
+        _touch(source)
         return True
+
+
+class Keeper:
+    """Copies file contents into the store on one background thread, so a sync
+    never waits on /data. The same thread expires old objects first."""
+
+    def __init__(self, store: Store, log: Callable[[str], None]) -> None:
+        self.store = store
+        self.log = log
+        self.queue: queue.SimpleQueue[bytes] = queue.SimpleQueue()
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def keep(self, data: bytes) -> None:
+        self.queue.put(data)
+
+    def _run(self) -> None:
+        # Whatever fails, the worker stays alive for the next file.
+        try:
+            self.store.expire()
+        except Exception as exc:
+            self.log(f"[fal dev] could not expire stored files: {exc}")
+        while True:
+            data = self.queue.get()
+            try:
+                self.store.put(data)
+            except Exception as exc:
+                self.log(f"[fal dev] could not store a synced file: {exc}")

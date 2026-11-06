@@ -180,7 +180,8 @@ def test_building_the_parsers_imports_no_handler_module():
         "    else:\n"
         "        raise AssertionError(command)\n"
         "heavy = [m for m in sys.modules if m.startswith('fal.dev.') and m not in (\n"
-        "    'fal.dev.config', 'fal.dev.cli', 'fal.dev.cli.parser')]\n"
+        "    'fal.dev.config', 'fal.dev.cli', 'fal.dev.cli.parser', 'fal.dev.errors',\n"
+        "    'fal.dev.remote', 'fal.dev.remote.protocol')]\n"
         "assert not heavy, heavy\n"
     )
     done = subprocess.run(
