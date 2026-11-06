@@ -1142,3 +1142,18 @@ def test_o_reports_a_viewer_that_fails(monkeypatch):
         monkeypatch, ["o", "q"], _show_output=lambda path, console: False
     )
     assert said == ["open failed: no viewer"]
+
+
+def test_gpu_panel_puts_util_vram_and_temp_on_their_own_rows():
+    from fal.dev.dash import view
+
+    probe = _probe()
+    text = _text(view.gpu_panel(probe))
+    assert re.search(r"util .* 37%", text)
+    assert re.search(r"vram .* 26% 21\.0/80 GiB", text)
+    assert re.search(r"temp +41°C  212W", text)
+    assert "#0" not in text
+
+    two = _probe(gpus=[{**probe["gpus"][0], "index": i} for i in range(2)])
+    text = _text(view.gpu_panel(two))
+    assert "#0 vram" in text and "#1 vram" in text

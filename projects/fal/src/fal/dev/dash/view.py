@@ -283,22 +283,37 @@ def gpu_panel(probe: dict, history: dict | None = None) -> RenderableType:
         note = Text(probe["gpu_error"] or "no GPUs reported", style=MUTED)
         return _panel(note, "GPU")
     for gpu in gpus:
+        # Rows laid out like the Box panel's; numbered only when there are several.
+        prefix = f"#{gpu['index']} " if len(gpus) > 1 else ""
         util = gpu["util_pct"]
-        power = gpu["power_w"]
+        used, total = gpu["mem_used_mib"], gpu["mem_total_mib"]
+        vram = used / total * 100 if used is not None and total else None
+        temp, power = gpu["temp_c"], gpu["power_w"]
         table.add_row(
-            Text(f"#{gpu['index']}", style=MUTED),
+            Text(f"{prefix}util", style=MUTED),
             _bar(util),
-            Text(f"{util if util is not None else '-':>3}%"),
+            Text(f"{round(util) if util is not None else '-':>3}%"),
+            Text(""),
+            Text(""),
+        )
+        table.add_row(
+            Text(f"{prefix}vram", style=MUTED),
+            _bar(vram),
+            Text(f"{round(vram) if vram is not None else '-':>3}%"),
             Text(
-                f"{(gpu['mem_used_mib'] or 0) / 1024:.1f}"
-                f"/{(gpu['mem_total_mib'] or 0) / 1024:.0f} GiB"
+                f"{used / 1024:.1f}/{total / 1024:.0f} GiB" if vram is not None else "-"
             ),
+            Text(""),
+        )
+        table.add_row(
+            Text(f"{prefix}temp", style=MUTED),
+            Text(""),
+            Text(""),
             Text(
-                f"{gpu['temp_c'] if gpu['temp_c'] is not None else '-'}"
-                f"{get_degrees_celsius_icon()} "
-                f"{round(power) if power is not None else '-'}W",
-                style=MUTED,
+                f"{temp if temp is not None else '-'}{get_degrees_celsius_icon()}"
+                f"  {round(power) if power is not None else '-'}W"
             ),
+            Text(""),
         )
     title = Text.styled("GPU", style=TITLE) + Text(
         f"  {gpus[0]['name']}", style=f"default {MUTED}"
