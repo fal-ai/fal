@@ -94,6 +94,7 @@ def _deploy(args):
             claude=args.claude,
             no_save=args.no_save,
             dockerfile=args.dockerfile,
+            team_data=args.team_data,
         )
     )
 
@@ -322,6 +323,17 @@ def _add_box_parsers(subparsers, parents) -> None:
     p.add_argument(
         "--dockerfile",
         help="Your own image, based on the default (see fal/dev/Dockerfile).",
+    )
+    p.add_argument(
+        "--team-data",
+        action="store_true",
+        help=(
+            "Keep the box on the team-shared /data (shared model weights, other "
+            "apps' files) instead of its own volume. By default /data is the box's "
+            "volume, devbox-<name>, and the team /data is not mounted; the first "
+            "start copies the box's workspace over from the team /data. Not "
+            "remembered: pass it on every deploy."
+        ),
     )
 
     p = add(

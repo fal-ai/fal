@@ -172,6 +172,7 @@ def test_hold_rejects_out_of_range_hours():
 
 def test_deploy_stops_a_running_box_first_and_restarts_it(monkeypatch):
     box = _box([_runner("r1")])
+    box.team_workspace_exists = MagicMock(return_value=False)
     box.save_work = MagicMock()
     box.stop = MagicMock(return_value=True)
 
@@ -532,3 +533,298 @@ def test_published_idle_state_is_what_the_dash_reads(monkeypatch, tmp_path):
     # On/off comes from the box's warnings, never from this file.
     assert "watchdog" not in json.loads(path.read_text())
     assert view.remaining_seconds == 60 * 60 - 60
+
+
+# --- storage ---
+
+
+def test_volume_name_fits_the_controller_limit():
+    from fal.volumes import canonical_volume_name
+
+    assert config.volume_name("klein") == "devbox-klein"
+    long_a, long_b = "a" * 40, "a" * 39 + "b"
+    for name in (long_a, long_b, "x" * 25, "ab-" + "c" * 37):
+        volume = config.volume_name(name)
+        assert len(volume) <= config.VOLUME_NAME_MAX
+        assert canonical_volume_name(volume) == volume
+    assert config.volume_name(long_a) != config.volume_name(long_b)
+    assert config.volume_name(long_a) == config.volume_name(long_a)
+
+
+def test_deploy_mounts_the_box_volume(monkeypatch):
+    box = _box(min_concurrency=0)
+    box.stop = MagicMock(return_value=True)
+    box.team_workspace_exists = MagicMock(return_value=False)
+    seen = {}
+    box.client.deploy.side_effect = lambda *a, **k: seen.update(
+        volume=box_module.os.environ[config.ENV_VOLUME]
+    )
+
+    message = box.deploy()
+
+    box.client.volumes.create.assert_called_once_with("devbox-klein")
+    assert seen["volume"] == "devbox-klein"
+    assert "volume devbox-klein" in message
+
+
+def test_deploy_with_team_data_skips_the_volume():
+    box = _box(min_concurrency=0)
+    box.stop = MagicMock(return_value=True)
+    seen = {}
+    box.client.deploy.side_effect = lambda *a, **k: seen.update(
+        volume=box_module.os.environ[config.ENV_VOLUME]
+    )
+
+    message = box.deploy(team_data=True)
+
+    box.client.volumes.create.assert_not_called()
+    assert seen["volume"] == ""
+    assert "team-shared /data" in message
+
+
+def test_ensure_volume_reuses_an_existing_volume():
+    from fal.exceptions.volumes import VolumeAlreadyExistsError
+
+    box = _box()
+    box.client.volumes.create.side_effect = VolumeAlreadyExistsError("exists")
+    box.team_workspace_exists = MagicMock()
+
+    assert box.ensure_volume() == "devbox-klein"
+    box.team_workspace_exists.assert_not_called()
+
+
+def test_ensure_volume_points_ineligible_teams_at_team_data():
+    from fal.exceptions.volumes import VolumeAccountNotEligibleError
+
+    box = _box()
+    box.client.volumes.create.side_effect = VolumeAccountNotEligibleError("no")
+
+    with pytest.raises(DevError, match="--team-data"):
+        box.ensure_volume()
+
+
+def test_ensure_volume_warns_when_the_copy_needs_the_admin_key(capsys):
+    box = _box()
+    box.team_workspace_exists = MagicMock(return_value=True)
+    box.client.secrets.list.return_value = []
+
+    assert box.ensure_volume() == "devbox-klein"
+    assert config.ADMIN_KEY_SECRET in capsys.readouterr().err
+
+
+def test_box_app_mounts_its_volume_at_data(monkeypatch):
+    monkeypatch.setenv(config.ENV_VOLUME, "devbox-klein")
+    app = runpy.run_path(str(BOX_APP))["DevBox"]
+    assert app.host_kwargs["volumes"] == {"/data": "devbox-klein"}
+
+    monkeypatch.setenv(config.ENV_VOLUME, "")
+    app = runpy.run_path(str(BOX_APP))["DevBox"]
+    assert "volumes" not in app.host_kwargs
+
+
+def _migration(monkeypatch, tmp_path, team_files, admin=True):
+    """box_app's migration against a fake files API serving `team_files`."""
+    import httpx
+
+    module = runpy.run_path(str(BOX_APP))
+    migrate = module["_migrate_from_team_data"]
+    workspace = tmp_path / "data" / "devboxes" / "klein"
+    g = migrate.__globals__
+    g.update(
+        VOLUME="devbox-klein",
+        APP_NAME="devbox-klein",
+        WORKSPACE=workspace,
+        SNAPSHOT=workspace / config.SNAPSHOT_FILE,
+        WARNING_FILE=tmp_path / "warning",
+    )
+    workspace.mkdir(parents=True)  # setup creates it before the copy
+    root = str(workspace)
+    files = {f"{root}/{rel}": body for rel, body in team_files.items()}
+    downloads = []
+
+    def handler(request):
+        path = request.url.path
+        if path.startswith("/files/list/"):
+            folder = path[len("/files/list/") :].rstrip("/")
+            entries = {}
+            for name, body in files.items():
+                if not name.startswith(folder + "/"):
+                    continue
+                child = name[len(folder) + 1 :].split("/")[0]
+                full = f"{folder}/{child}"
+                entries[full] = {
+                    "path": full,
+                    "is_file": full == name,
+                    "size": len(body),
+                }
+            if not entries:
+                return httpx.Response(404)
+            return httpx.Response(200, json=list(entries.values()))
+        name = path[len("/files/file/") :]
+        downloads.append(name)
+        if name not in files:
+            return httpx.Response(404)
+        start = int(request.headers.get("Range", "bytes=0-")[len("bytes=") : -1])
+        size = len(files[name])
+        if start >= size and start:
+            return httpx.Response(416)
+        if start:
+            return httpx.Response(
+                206,
+                content=files[name][start:],
+                headers={"Content-Range": f"bytes {start}-{size - 1}/{size}"},
+            )
+        return httpx.Response(200, content=files[name])
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw),
+    )
+    client = MagicMock()
+    client._rest_url = "https://api.test"
+    client._credentials.to_headers.return_value = {}
+    client.apps.list.return_value = [MagicMock(alias="devbox-klein")]
+    g["_admin_client"] = lambda: client if admin else None
+    return migrate, workspace, downloads
+
+
+def test_migration_copies_the_team_workspace_once(monkeypatch, tmp_path):
+    team = {
+        config.SNAPSHOT_FILE: b"snapshot",
+        ".home/.ssh/id_ed25519": b"key",
+        ".bash_history": b"ls",
+        config.LEASE_FILE: b"runner active 1",
+        f"{config.SNAPSHOT_FILE}.host.tmp": b"partial",
+    }
+    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
+    (workspace / ".home").mkdir()
+    (workspace / ".bash_history").write_bytes(b"newer")
+
+    migrate()
+
+    assert (workspace / config.SNAPSHOT_FILE).read_bytes() == b"snapshot"
+    assert (workspace / ".home/.ssh/id_ed25519").stat().st_mode & 0o077 == 0
+    # Never overwrites the volume, skips the lease and partial saves.
+    assert (workspace / ".bash_history").read_bytes() == b"newer"
+    assert not (workspace / config.LEASE_FILE).exists()
+    assert downloads[-1].endswith(config.SNAPSHOT_FILE)
+    assert len(downloads) == 2
+    assert (workspace / config.MIGRATED_MARKER).exists()
+
+    migrate()
+    assert len(downloads) == 2
+
+
+def test_migration_waits_for_the_admin_key(monkeypatch, tmp_path):
+    team = {config.SNAPSHOT_FILE: b"snapshot"}
+    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team, admin=False)
+
+    migrate()
+
+    assert not downloads
+    assert not (workspace / config.MIGRATED_MARKER).exists()
+    assert config.ADMIN_KEY_SECRET in (tmp_path / "warning").read_text()
+
+
+def test_migration_with_no_team_copy_marks_the_volume(monkeypatch, tmp_path):
+    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, {})
+
+    migrate()
+
+    assert not downloads
+    assert (workspace / config.MIGRATED_MARKER).read_text() == "0 files copied\n"
+
+
+def test_migration_keeps_both_snapshots_after_an_early_save(monkeypatch, tmp_path):
+    """A box that saved /work before it had the key still gets the team copy."""
+    team = {config.SNAPSHOT_FILE: b"team", ".home/#odd?name": b"x"}
+    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
+    (workspace / config.SNAPSHOT_FILE).write_bytes(b"volume")
+
+    migrate()
+
+    assert (workspace / config.SNAPSHOT_FILE).read_bytes() == b"volume"
+    side = workspace / f"{config.SNAPSHOT_FILE}.from-team-data"
+    assert side.read_bytes() == b"team"
+    assert (workspace / ".home/#odd?name").read_bytes() == b"x"
+    assert (workspace / config.MIGRATED_MARKER).exists()
+
+
+def test_migration_refuses_paths_outside_the_workspace(monkeypatch, tmp_path):
+    team = {"../other/secret": b"x"}
+    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
+
+    migrate()
+
+    assert not downloads
+    assert not (workspace / config.MIGRATED_MARKER).exists()
+    assert "outside the workspace" in (tmp_path / "warning").read_text()
+
+
+def test_migration_restarts_a_finished_leftover_download(monkeypatch, tmp_path):
+    team = {config.SNAPSHOT_FILE: b"0123"}
+    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
+    (workspace / f"{config.SNAPSHOT_FILE}.migrating.tmp").write_bytes(b"0123")
+
+    migrate()
+
+    assert (workspace / config.SNAPSHOT_FILE).read_bytes() == b"0123"
+    assert (workspace / config.MIGRATED_MARKER).exists()
+
+
+def test_migration_copies_the_rest_when_one_file_fails(monkeypatch, tmp_path):
+    team = {"a.txt": b"a", config.SNAPSHOT_FILE: b"snap"}
+    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
+    (workspace / "a.txt.migrating.tmp").mkdir()  # makes the a.txt write fail
+
+    migrate()
+
+    assert (workspace / config.SNAPSHOT_FILE).read_bytes() == b"snap"
+    assert not (workspace / config.MIGRATED_MARKER).exists()
+    assert "1 files failed" in (tmp_path / "warning").read_text()
+
+    # The retry finishes without a second copy of the snapshot.
+    (workspace / "a.txt.migrating.tmp").rmdir()
+    migrate()
+    assert (workspace / "a.txt").read_bytes() == b"a"
+    assert not (workspace / f"{config.SNAPSHOT_FILE}.from-team-data").exists()
+    assert (workspace / config.MIGRATED_MARKER).exists()
+
+
+def test_migration_resumes_an_interrupted_download(monkeypatch, tmp_path):
+    team = {config.SNAPSHOT_FILE: b"0123456789"}
+    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
+    partial = workspace / f"{config.SNAPSHOT_FILE}.migrating.tmp"
+    partial.write_bytes(b"01234")
+
+    migrate()
+
+    assert (workspace / config.SNAPSHOT_FILE).read_bytes() == b"0123456789"
+    assert not partial.exists()
+
+
+def test_migration_drops_a_download_of_the_wrong_size(monkeypatch, tmp_path):
+    """A leftover from an older version of the file must not be spliced in."""
+    team = {config.SNAPSHOT_FILE: b"0123456789"}
+    migrate, workspace, downloads = _migration(monkeypatch, tmp_path, team)
+    stale = workspace / f"{config.SNAPSHOT_FILE}.migrating.tmp"
+    stale.write_bytes(b"x" * 12)
+
+    migrate()
+
+    assert (workspace / config.SNAPSHOT_FILE).read_bytes() == b"0123456789"
+
+
+def test_deploy_waits_for_a_runner_still_saving(monkeypatch):
+    box = _box([_runner("r1", state=RunnerState.DRAINING)], min_concurrency=0)
+    box.team_workspace_exists = MagicMock(return_value=False)
+    monkeypatch.setattr(box_module, "POLL_SECONDS", 0)
+    monkeypatch.setattr(config, "LEASE_WAIT_SECONDS", 0)
+
+    with pytest.raises(DevError, match="still saving"):
+        box.deploy()
+
+    box.client.deploy.assert_not_called()
+    box.client.runners.stop.assert_not_called()

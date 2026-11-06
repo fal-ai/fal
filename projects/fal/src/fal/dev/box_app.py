@@ -4,10 +4,11 @@ One app per developer (`devbox-<name>`), deployed and driven by `fal dev`. The
 app does little as an endpoint; it exists so that `min_concurrency=1` keeps
 exactly one GPU runner alive that you shell into.
 
-What persists across stop/start: everything under /data, the team-wide
-persistent volume. The container's local disk is fresh on every start, so the
-workspace, dotfiles and shell history live in /data/devboxes/<name>. /work is
-on the fast local disk and is kept in the workspace as one snapshot file.
+What persists across stop/start: everything under /data, the box's own volume
+(or, deployed with --team-data, the team-shared /data). The container's local
+disk is fresh on every start, so the workspace, dotfiles and shell history live
+in /data/devboxes/<name>. /work is on the fast local disk and is kept in the
+workspace as one snapshot file.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import glob
 import hmac
 import json
 import os
+import posixpath
 import re
 import secrets as token_secrets
 import shlex
@@ -27,6 +29,7 @@ import subprocess
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -43,6 +46,8 @@ from fal.dev import config
 BOX_NAME = os.environ.get(config.ENV_NAME, "default")
 IDLE_MINUTES = int(os.environ.get(config.ENV_IDLE_MINUTES, config.DEFAULT_IDLE_MINUTES))
 CLAUDE_ENABLED = os.environ.get(config.ENV_CLAUDE) == "1"
+# The box's volume, mounted at /data; None for the team-shared /data.
+VOLUME = os.environ.get(config.ENV_VOLUME) or None
 
 APP_NAME = config.app_name(BOX_NAME)
 WORKSPACE = Path(config.WORKSPACE_ROOT) / BOX_NAME
@@ -320,6 +325,154 @@ def _check_admin_key() -> None:
             f"{config.ADMIN_KEY_SECRET} belongs to another team, "
             "so idle shutdown is off."
         )
+
+
+def _migrate_from_team_data() -> None:
+    """Copy this box's workspace from the team-shared /data into its volume.
+
+    A volume hides the team /data, so the copy goes through the fal files API,
+    with the ADMIN key. It runs on each start until it succeeds once, and never
+    overwrites a file in the volume or changes the team copy. Runs while holding
+    the lease, so two runners never copy at once.
+    """
+    marker = WORKSPACE / config.MIGRATED_MARKER
+    if VOLUME is None or marker.exists():
+        return
+    hint = (
+        "if this box had a workspace on the team /data, set "
+        f"{config.ADMIN_KEY_SECRET} (an ADMIN key of this team) and restart the box "
+        "(fal dev down, fal dev up) to copy it; files the box creates before then "
+        "are kept over the team copy's, and the team copy is untouched"
+    )
+    client = _admin_client()
+    if client is None:
+        _warn(f"{config.ADMIN_KEY_SECRET} is not set: {hint}")
+        return
+    try:
+        if APP_NAME not in {app.alias for app in client.apps.list()}:
+            _warn(f"{config.ADMIN_KEY_SECRET} belongs to another team: {hint}")
+            return
+        copied, failed = _copy_team_workspace(client)
+        if failed:
+            raise RuntimeError(f"{len(failed)} files failed, first {failed[0]}")
+        marker.write_text(f"{copied} files copied\n")
+    except Exception as exc:
+        _warn(f"could not copy the workspace from the team /data ({exc}): {hint}")
+        return
+    if copied:
+        print(f"[devbox] copied {copied} files from the team /data", flush=True)
+
+
+def _copy_team_workspace(client: SyncServerlessClient) -> tuple[int, list[str]]:
+    """Download the team /data workspace's missing files.
+
+    One bad file does not stop the rest: returns how many were copied and the
+    ones that failed, with why.
+    """
+    import httpx
+
+    prefix = f"{WORKSPACE}/"
+    with httpx.Client(
+        base_url=client._rest_url,
+        headers=client._credentials.to_headers(),
+        timeout=httpx.Timeout(60, read=600),
+    ) as http:
+
+        def url(kind: str, path: str) -> str:
+            return f"/files/{kind}/{urllib.parse.quote(path, safe='/')}"
+
+        failed: list[str] = []
+
+        sizes: dict[str, int] = {}
+
+        def walk(path: str) -> list[str]:
+            response = http.get(url("list", path))
+            if response.status_code == 404:
+                return []
+            response.raise_for_status()
+            files = []
+            for entry in response.json():
+                # Only ever write inside this box's workspace.
+                child = posixpath.normpath(entry["path"])
+                if not child.startswith(prefix):
+                    failed.append(f"{child}: outside the workspace")
+                    continue
+                if entry["is_file"]:
+                    sizes[child] = entry["size"]
+                    files.append(child)
+                else:
+                    files += walk(child)
+            return files
+
+        paths = [
+            Path(p)
+            for p in walk(str(WORKSPACE))
+            # Runtime files of the team copy's runners: lease, partial saves.
+            if not (p.endswith(".tmp") or Path(p).name == config.LEASE_FILE)
+        ]
+        # The snapshot last, so a box that started fresh restores a complete one.
+        paths.sort(key=lambda p: p == SNAPSHOT)
+        copied = 0
+        for path in paths:
+            target = path
+            size = sizes[str(path)]
+            if (
+                path == SNAPSHOT
+                and SNAPSHOT.exists()
+                and SNAPSHOT.stat().st_size != size
+            ):
+                # This box already saved /work on its volume; keep both.
+                target = SNAPSHOT.with_name(f"{SNAPSHOT.name}.from-team-data")
+            if target.exists():
+                continue
+            try:
+                _download(http, url("file", str(path)), target, size)
+                if target != path:
+                    _warn(
+                        f"{LOCAL_WORK} was saved before the team copy arrived; "
+                        f"the team snapshot is at {target} (zstd -dc it | tar -x)"
+                    )
+            except Exception as exc:
+                failed.append(f"{path}: {exc}")
+                continue
+            copied += 1
+    return copied, failed
+
+
+def _download(http, url: str, target: Path, size: int) -> None:
+    """Download to `target` through a temp file; resumes an interrupted download.
+
+    Raises, dropping the temp file, if the result is not `size` bytes.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(f"{target.name}.migrating.tmp")
+    done = tmp.stat().st_size if tmp.exists() else 0
+    # Uncompressed, so Range offsets and the size check count the same bytes.
+    headers = {"Accept-Encoding": "identity"}
+    if done:
+        headers["Range"] = f"bytes={done}-"
+    with http.stream("GET", url, headers=headers) as response:
+        if response.status_code == 416:
+            # A finished leftover, or the file shrank: start over.
+            tmp.unlink()
+            return _download(http, url, target, size)
+        response.raise_for_status()
+        resumed = response.status_code == 206 and response.headers.get(
+            "Content-Range", ""
+        ).startswith(f"bytes {done}-")
+        # The files API does not keep modes; keys must stay private.
+        fd = os.open(
+            tmp, os.O_WRONLY | os.O_CREAT | (0 if resumed else os.O_TRUNC), 0o600
+        )
+        with open(fd, "ab" if resumed else "wb") as out:
+            for chunk in response.iter_bytes(1 << 20):
+                out.write(chunk)
+    if tmp.stat().st_size != size:
+        got = tmp.stat().st_size
+        tmp.unlink()
+        raise OSError(f"downloaded {got} bytes, expected {size}")
+    print(f"[devbox] copied {target} ({size >> 20} MiB)", flush=True)
+    tmp.rename(target)
 
 
 def _scale_to_zero() -> bool:
@@ -832,6 +985,8 @@ class DevBox(fal.App):
     # Opt in to the watchdog's key only. Set it with --not-exposed-by-default
     # so that only apps listing it receive it.
     secrets = [config.ADMIN_KEY_SECRET]
+    # The box's own volume replaces the team-shared /data.
+    volumes = {config.VOLUME_MOUNT: fal.Volume(VOLUME)} if VOLUME else None
 
     # Scaled to 1 by `fal dev up`, to 0 by `fal dev down` or the idle watchdog.
     min_concurrency = 0
@@ -845,6 +1000,7 @@ class DevBox(fal.App):
         WORKSPACE.mkdir(parents=True, exist_ok=True)
         _claim_lease()
         threading.Thread(target=_lease_heartbeat, daemon=True).start()
+        _migrate_from_team_data()
         _restore_work()
         _prepare_home()
         _check_admin_key()
@@ -855,7 +1011,9 @@ class DevBox(fal.App):
         if CLAUDE_ENABLED:
             threading.Thread(target=_claude_server, daemon=True).start()
         print(
-            f"[devbox] ready: workspace={WORKSPACE} idle_minutes={IDLE_MINUTES} "
+            f"[devbox] ready: workspace={WORKSPACE} "
+            f"storage={f'volume {VOLUME}' if VOLUME else 'team /data'} "
+            f"idle_minutes={IDLE_MINUTES} "
             f"claude={CLAUDE_ENABLED}",
             flush=True,
         )

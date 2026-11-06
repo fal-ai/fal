@@ -37,6 +37,8 @@ def test_dev_deploy_defaults():
     assert not args.claude
     assert not args.no_save
     assert args.dockerfile is None
+    assert not args.team_data
+    assert parse_args(["dev", "deploy", "--team-data"]).team_data
 
 
 def test_dev_box_commands_registered():

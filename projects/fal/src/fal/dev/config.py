@@ -5,11 +5,14 @@ Standard library only, so the CLI starts fast.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import shlex
 
 # Box apps are named `devbox-<name>` and keep their workspace in
 # /data/devboxes/<name>, the same as boxes made with the standalone devbox tool.
+# /data is the box's own volume (also `devbox-<name>`), mounted at /data so the
+# paths stay the same; with --team-data it is the team-shared /data instead.
 APP_PREFIX = "devbox-"
 DEFAULT_GPU = "GPU-H100"
 DEFAULT_NUM_GPUS = 1
@@ -38,6 +41,8 @@ ENV_CLAUDE = "DEVBOX_CLAUDE"
 ENV_DOCKERFILE = "DEVBOX_DOCKERFILE"
 ENV_PYTHON_VERSION = "DEVBOX_PYTHON_VERSION"
 ENV_FAL_SPEC = "DEVBOX_FAL_SPEC"
+# The box's volume name; empty for the team-shared /data.
+ENV_VOLUME = "DEVBOX_VOLUME"
 
 # Claude Code's config, login and transcripts, under the workspace's persisted home.
 CLAUDE_CONFIG_SUBDIR = ".home/.claude"
@@ -47,6 +52,12 @@ CLAUDE_TMUX_SESSION = "claude"
 CLAUDE_WORKDIR = "/work/fal-devbox"
 
 WORKSPACE_ROOT = "/data/devboxes"
+VOLUME_MOUNT = "/data"
+# The controller's limit on volume names.
+VOLUME_NAME_MAX = 32
+# Written to a workspace on a volume once it holds the copy from the team-shared
+# /data (or there was none), so the copy runs once.
+MIGRATED_MARKER = ".migrated-from-team-data"
 HOLD_FILE = "/tmp/devbox-hold-until"
 # Touched after each restore and save; a file under /work newer than it is a change.
 SAVE_STAMP = "/tmp/devbox-save-stamp"
@@ -90,6 +101,16 @@ NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 
 def app_name(name: str) -> str:
     return f"{APP_PREFIX}{name}"
+
+
+def volume_name(name: str) -> str:
+    """The box's volume: `devbox-<name>`, shortened with a hash past the limit."""
+    full = app_name(name)
+    if len(full) <= VOLUME_NAME_MAX:
+        return full
+    digest = hashlib.sha1(name.encode()).hexdigest()[:6]
+    keep = VOLUME_NAME_MAX - len(APP_PREFIX) - len(digest) - 1
+    return f"{APP_PREFIX}{name[:keep].rstrip('-')}-{digest}"
 
 
 # What hold_command prints when a longer hold is already in place.

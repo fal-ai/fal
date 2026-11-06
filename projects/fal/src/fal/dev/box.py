@@ -1,7 +1,9 @@
 """A personal, persistent dev box: a private fal app kept at one runner while in use.
 
 `fal dev deploy` deploys box_app.py as `devbox-<name>`; `up` and `down` scale it
-between one runner and none. Its files live on /data, so they survive restarts.
+between one runner and none. Its files live on /data, so they survive restarts:
+the box's own team-owned volume (`devbox-<name>`) mounted at /data, or with
+--team-data the team-shared /data.
 """
 
 from __future__ import annotations
@@ -190,6 +192,16 @@ class Box:
             time.sleep(POLL_SECONDS)
         return False
 
+    def wait_until_stopped(self, timeout: int) -> bool:
+        """Wait, without stopping anything, until no runner is left; True if so."""
+        deadline = time.time() + timeout
+        while any(r.state not in FINAL_STATES for r in self.runners()):
+            if time.time() > deadline:
+                return False
+            log("waiting for the last runner to finish saving ...")
+            time.sleep(POLL_SECONDS)
+        return True
+
     def save_work(self) -> None:
         """Save /work on a running box; raise, leaving the box up, if that fails."""
         live = newest_live(self.runners())
@@ -237,6 +249,7 @@ class Box:
         claude: bool = False,
         no_save: bool = False,
         dockerfile: str | None = None,
+        team_data: bool = False,
     ) -> str:
         from fal._version import __version__
 
@@ -250,6 +263,7 @@ class Box:
             )
         if dockerfile and not Path(dockerfile).is_file():
             raise DevError(f"no such Dockerfile: {dockerfile}")
+        volume = None if team_data else self.ensure_volume()
         app = self.app_info()
         was_stopped = not (app and app.min_concurrency)
         if not was_stopped:
@@ -267,6 +281,13 @@ class Box:
                     "the box is still shutting down; run `fal dev deploy` again, "
                     "then `fal dev up`"
                 )
+        elif not self.wait_until_stopped(config.LEASE_WAIT_SECONDS):
+            # A runner stopped moments ago may still be saving /work; the new
+            # revision must start from that save.
+            raise DevError(
+                "the box is still saving and shutting down; run `fal dev deploy` "
+                "again in a few minutes"
+            )
         current = app.machine_types[0] if app and app.machine_types else None
         machine_type = gpu or current or config.DEFAULT_GPU
         settings = {
@@ -280,6 +301,7 @@ class Box:
             else "",
             config.ENV_PYTHON_VERSION: f"{sys.version_info[0]}.{sys.version_info[1]}",
             config.ENV_FAL_SPEC: fal_spec(__version__),
+            config.ENV_VOLUME: volume or "",
         }
         # box_app.py reads these when the deploy loads it.
         try:
@@ -312,10 +334,60 @@ class Box:
             if was_stopped
             else "The box is restarting on the new image; check with: fal dev status"
         )
+        storage = f"volume {volume}" if volume else "the team-shared /data"
         return (
-            f"deployed {self.app} on {num_gpus}x {machine_type}, idle shutdown after "
-            f"{idle_minutes} min. {next_step}"
+            f"deployed {self.app} on {num_gpus}x {machine_type} with {storage} at "
+            f"/data, idle shutdown after {idle_minutes} min. {next_step}"
         )
+
+    def ensure_volume(self) -> str:
+        """Create the box's volume if needed; its name.
+
+        A new volume starts empty: the box copies its workspace from the team
+        /data on start, which needs the ADMIN key.
+        """
+        from fal.exceptions.volumes import (
+            VolumeAccountNotEligibleError,
+            VolumeAlreadyExistsError,
+        )
+
+        volume = config.volume_name(self.name)
+        try:
+            self.client.volumes.create(volume)
+        except VolumeAlreadyExistsError:
+            return volume
+        except VolumeAccountNotEligibleError as exc:
+            raise DevError(
+                f"this team cannot use volumes ({exc}); deploy with --team-data to "
+                "keep the box on the team-shared /data"
+            ) from exc
+        log(f"created volume {volume} for the box's /data")
+        if self.team_workspace_exists() and not self.has_admin_key():
+            log(
+                "warning: this box has a workspace on the team /data. The box copies "
+                f"it into {volume} when it starts, which needs the "
+                f"{config.ADMIN_KEY_SECRET} secret; until it is set the box starts "
+                "with an empty workspace (the team copy is untouched). Set it with: "
+                f"fal secrets set --not-exposed-by-default "
+                f"{config.ADMIN_KEY_SECRET}=<admin key>"
+            )
+        return volume
+
+    def team_workspace_exists(self) -> bool:
+        from fal.files import FalFileSystem
+
+        workspace = f"{config.WORKSPACE_ROOT}/{self.name}"
+        try:
+            return bool(FalFileSystem(host=self.host, team=self.team).ls(workspace))
+        except Exception:
+            return False
+
+    def has_admin_key(self) -> bool:
+        try:
+            secrets = self.client.secrets.list()
+        except Exception:
+            return True  # unknown: let the box report it
+        return any(s.name == config.ADMIN_KEY_SECRET for s in secrets)
 
     def wait_until_ready(self, timeout: int) -> RunnerInfo | None:
         """Poll until a runner is ready; None on timeout. Raises if the start fails."""
