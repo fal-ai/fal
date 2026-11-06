@@ -9,7 +9,7 @@ flock 9
 stamp=$STAMP
 me=$(hostname)
 if [ "${1:-}" != --force ] && [ -f "$stamp" ] \
-        && [ -z "$(find $WORK -newer "$stamp" -print -quit)" ]; then
+        && [ -z "$(find $WORK \( -newer "$stamp" -o -cnewer "$stamp" \) -print -quit)" ]; then
     echo "devbox-save: no changes since the last save"
     exit 0
 fi

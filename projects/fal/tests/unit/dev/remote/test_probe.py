@@ -47,3 +47,25 @@ def test_the_probe_as_installed_on_the_box_satisfies_the_dashboard(tmp_path):
     ).stdout
 
     assert parse_probe(output).keys() >= {"gpus", "activity", "work", "hot"}
+
+
+def test_a_file_with_an_old_mtime_but_a_new_ctime_counts_as_unsaved(
+    monkeypatch, tmp_path
+):
+    import importlib
+    import os
+    import time
+
+    monkeypatch.syspath_prepend(str(REMOTE))
+    probe = importlib.import_module("probe")
+    work = tmp_path / "work"
+    work.mkdir()
+    stamp = tmp_path / "stamp"
+    stamp.write_text("")
+    monkeypatch.setattr(probe.config, "LOCAL_WORK", str(work))
+    monkeypatch.setattr(probe.config, "SAVE_STAMP", str(stamp))
+    time.sleep(0.05)
+    (work / "big.bin").write_text("copied with its original mtime")
+    os.utime(work / "big.bin", (1, 1))  # what rsync -a and cp -p leave behind
+
+    assert probe._work(str(tmp_path), True)["dirty"] is True

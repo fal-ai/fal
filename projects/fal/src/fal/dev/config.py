@@ -54,7 +54,8 @@ VOLUME_MOUNT = "/data"
 # The controller's limit on volume names.
 VOLUME_NAME_MAX = 32
 HOLD_FILE = "/tmp/devbox-hold-until"
-# Touched after each restore and save; a file under /work newer than it is a change.
+# Touched after each restore and save; a file under /work newer than it (by mtime
+# or ctime) is a change.
 SAVE_STAMP = "/tmp/devbox-save-stamp"
 # Shown by every new shell when idle shutdown cannot work.
 WARNING_FILE = "/tmp/devbox-idle-shutdown-warning"

@@ -105,8 +105,14 @@ def _work(workspace, check_dirty):
                 [
                     "find",
                     config.LOCAL_WORK,
+                    # ctime too: rsync -a, cp -p and tar keep an old mtime.
+                    "(",
                     "-newer",
                     config.SAVE_STAMP,
+                    "-o",
+                    "-cnewer",
+                    config.SAVE_STAMP,
+                    ")",
                     "-print",
                     "-quit",
                 ],
