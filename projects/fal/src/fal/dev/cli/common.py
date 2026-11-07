@@ -44,7 +44,12 @@ def remember_name(args, name: str) -> None:
 
 
 def get_box(
-    args, *, quiet: bool = False, creates: bool = False, remember: bool = True
+    args,
+    *,
+    quiet: bool = False,
+    creates: bool = False,
+    remember: bool = True,
+    remember_team: bool = True,
 ) -> Box:
     """The box, with the account it runs as announced on stderr unless `quiet`.
 
@@ -52,7 +57,9 @@ def get_box(
     exist. A command that `creates` the box remembers it itself, on success.
     """
     name = resolve_name(args)
-    account = resolve_account(args.team, config.app_name(name), args.host)
+    account = resolve_account(
+        args.team, config.app_name(name), args.host, remember=remember_team
+    )
     if not quiet:
         announce(account)
     box = Box(name, host=args.host, account=account)

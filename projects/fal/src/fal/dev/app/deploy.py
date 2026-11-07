@@ -360,25 +360,24 @@ def start_box(
     return session
 
 
-def stop_box(session: Session) -> tuple[list[str], bool]:
-    """Kill the box's runners and delete its app.
+def delete_app(
+    name: str, host: str | None, team: str | None, environment: str | None = None
+) -> tuple[list[str], bool]:
+    """Kill the app's runners and delete it, with the same calls as `fal apps delete`.
 
-    Returns the killed runner ids and whether the app still existed.
+    Returns the killed runner ids and whether the app still existed. The caller
+    checks that the app is a dev box.
     """
     import grpc
 
     from fal.cli._utils import get_client
     from fal.flags import GRPC_HOST
 
-    if not session.name.startswith(NAME_PREFIX):
-        raise DevError(f"Refusing to delete {session.name!r}: not a dev box.")
-    client = get_client(session.host or GRPC_HOST, session.account.fal_team)
+    client = get_client(host or GRPC_HOST, team)
     killed = []
     with client.connect() as connection:
         try:
-            runners = connection.list_alias_runners(
-                session.name, environment_name=session.environment
-            )
+            runners = connection.list_alias_runners(name, environment_name=environment)
         except grpc.RpcError as exc:
             if exc.code() != grpc.StatusCode.NOT_FOUND:
                 raise
@@ -386,8 +385,18 @@ def stop_box(session: Session) -> tuple[list[str], bool]:
         for runner in runners:
             connection.kill_runner(runner.runner_id)
             killed.append(runner.runner_id)
-        # Same call as `fal apps delete`; the SDK client has no app delete yet.
-        revision = connection.delete_alias(
-            session.name, environment_name=session.environment
-        )
+        # The SDK client has no app delete yet.
+        revision = connection.delete_alias(name, environment_name=environment)
     return killed, revision is not None
+
+
+def stop_box(session: Session) -> tuple[list[str], bool]:
+    """Kill the box's runners and delete its app.
+
+    Returns the killed runner ids and whether the app still existed.
+    """
+    if not session.name.startswith(NAME_PREFIX):
+        raise DevError(f"Refusing to delete {session.name!r}: not a dev box.")
+    return delete_app(
+        session.name, session.host, session.account.fal_team, session.environment
+    )

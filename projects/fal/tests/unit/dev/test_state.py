@@ -43,3 +43,31 @@ def test_state_update_skips_unchanged_writes(monkeypatch, tmp_path):
     state.update(tmp_path, None, name="demo")
 
     assert path.stat().st_mtime_ns == before
+
+
+def test_forget_box_drops_the_boxs_state(monkeypatch, tmp_path):
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
+    state.update_box("devbox-a", "host", team="red")
+    state.update_box("devbox-b", "host", team="blue")
+
+    state.forget_box("devbox-a", "host")
+    state.forget_box("devbox-missing", "host")
+
+    assert state.load_box("devbox-a", "host") == {}
+    assert state.load_box("devbox-b", "host")["team"] == "blue"
+
+
+def test_forget_name_clears_only_that_folders_matching_name(monkeypatch, tmp_path):
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
+    one, two = tmp_path / "one", tmp_path / "two"
+    for folder in (one, two):
+        folder.mkdir()
+    state.update(one, "host", name="demo", hot_local="/p")
+    state.update(two, "host", name="demo")
+
+    state.forget_name(one, "demo", "host")
+    state.forget_name(two, "other", "host")
+
+    assert "name" not in state.load(one, "host")
+    assert state.load(one, "host")["hot_local"] == "/p"
+    assert state.load(two, "host")["name"] == "demo"

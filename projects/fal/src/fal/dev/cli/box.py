@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import signal
 import subprocess
 import sys
@@ -11,18 +12,27 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from rich.console import Console
-from rich.prompt import Confirm
+from rich.markup import escape
+from rich.prompt import Confirm, Prompt
 
+from fal.api.client import SyncServerlessClient
 from fal.cli.runners import LogPrinter, print_logs, shell_session
 from fal.cli.runners import _get_runner_info as get_runner_info
-from fal.dev import config, execute
+from fal.dev import config, execute, inventory, state
 from fal.dev import copy as file_copy
 from fal.dev.box import FINAL_STATES, newest_first, newest_live, ssh_config
-from fal.dev.cli.common import get_box, note_new_box, remember_name, resolve_name
+from fal.dev.cli.common import (
+    get_box,
+    note_new_box,
+    remember_name,
+    remembered_name,
+    resolve_name,
+)
+from fal.dev.dash.view import duration
 from fal.dev.errors import DevError
 from fal.dev.loading import STATES, runner_phase
 from fal.dev.steps import Steps
-from fal.dev.team import confirm_deploy
+from fal.dev.team import announce, confirm_deploy, resolve_account
 
 
 def _interrupt(signum, frame):
@@ -236,14 +246,113 @@ def cmd_down(args):
     box = get_box(args)
     _confirm_down(box, args)
     box.down(args.no_save)
-    args.console.print("stopped. Your files on /data are kept.")
+    args.console.print(
+        "stopped. Your files on /data are kept. To delete the box itself: "
+        "fal dev destroy"
+    )
 
 
 def cmd_status(args):
     from fal.dev.cli import summary
 
     box = get_box(args)
-    args.console.print(summary.status_line(summary.snapshot(box), box))
+    snap = summary.snapshot(box)
+    if args.json:
+        from fal.dev.cli.dash import payload
+
+        # Exit 0 for a stopped box: only a state that could not be read fails; probe
+        # and cost errors are in the JSON's "errors" (`dash --json` exits 1 on them).
+        args.console.print_json(payload(box, snap))
+        return
+    args.console.print(summary.status_line(snap, box))
+
+
+def _hold_text(row, now: float | None = None) -> str:
+    if not row.hold_known:
+        return "?"
+    left = inventory.hold_left(row, now)
+    return "-" if left is None else f"{duration(left)} left"
+
+
+def cmd_list(args):
+    from rich.table import Table
+
+    # Without --team this is your personal account; a team is never remembered here.
+    account = resolve_account(args.team, config.APP_PREFIX, args.host, remember=False)
+    client = SyncServerlessClient(host=args.host, team=account.fal_team)
+    mine = remembered_name(args)
+    rows = inventory.list_boxes(client, account, args.host)
+    if args.json:
+        args.console.print_json(
+            json.dumps([{**r.as_dict(), "remembered": r.name == mine} for r in rows])
+        )
+        return
+    announce(account)
+    if not rows:
+        args.console.print(
+            f"no dev boxes in {account.runs_as} (for a team, pass --team <name>); "
+            "create one with: fal dev up"
+        )
+        return
+    table = Table(box=None, pad_edge=False)
+    for column in ("NAME", "STATE", "MACHINE", "UPTIME", "HOLD", "VOLUME"):
+        table.add_column(column)
+    for row in rows:
+        marker = " *" if row.name == mine else ""
+        table.add_row(
+            escape(row.name) + marker,
+            row.state,
+            row.machine_type or "-",
+            duration(row.uptime_seconds) if row.uptime_seconds is not None else "-",
+            _hold_text(row),
+            escape(row.volume),
+        )
+    args.console.print(table)
+    if mine in {r.name for r in rows}:
+        args.console.print("[dim]* this folder's box[/]")
+
+
+def _confirm_destroy(box, args) -> None:
+    if args.yes:
+        return
+    if not sys.stdin.isatty():
+        raise DevError(f"pass --yes to delete {box.app} without a terminal to ask on")
+    err = Console(stderr=True)
+    err.print(
+        f"This deletes {box.app} of {box.account.runs_as} and ends its runners. "
+        f"A running box loses "
+        f"changes in {config.LOCAL_WORK} since its last save. The "
+        f"{config.LOCAL_WORK} snapshot and the files on {config.VOLUME_MOUNT} stay on "
+        f"the volume {config.volume_name(box.name)}, which cannot be deleted yet.",
+        highlight=False,
+    )
+    typed = Prompt.ask(f"Type the box name ({box.name}) to confirm", console=err)
+    if typed.strip() != box.name:
+        raise DevError("cancelled")
+
+
+def cmd_destroy(args):
+    if args.yes and not args.name:
+        # A remembered folder box must not be deleted without being named.
+        raise DevError("--yes needs --name: say which box to delete")
+    box = get_box(args, remember=False, remember_team=False)
+    if not box.app.startswith(config.APP_PREFIX):
+        raise DevError(f"refusing to delete {box.app!r}: not a dev box")
+    if box.app_info() is None:
+        raise DevError(f"no box named {box.name} ({box.app}) exists")
+    _confirm_destroy(box, args)
+    killed, _ = box.destroy()
+    with contextlib.suppress(OSError):
+        state.forget_box(box.app, args.host)
+    with contextlib.suppress(OSError):
+        state.forget_name(Path.cwd(), box.name, args.host)
+    args.console.print(f"deleted {box.app}, killed {len(killed)} runner(s).")
+    args.console.print(
+        f"/data volume {config.volume_name(box.name)} is kept (no delete API yet); "
+        f"`fal dev up --name {box.name}` reattaches it.",
+        markup=False,
+        highlight=False,
+    )
 
 
 def cmd_shell(args):
