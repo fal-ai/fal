@@ -173,6 +173,18 @@ def _work(workspace, check_dirty):
     return work
 
 
+def _user_env_names():
+    """The names (never values) of the secrets and variables the box was given."""
+    try:
+        names = json.loads(_read(config.USER_ENV_NAMES_FILE) or "{}")
+        return {
+            "secrets": [str(n) for n in names.get("secrets", [])],
+            "env": [str(n) for n in names.get("env", [])],
+        }
+    except (ValueError, AttributeError, TypeError):
+        return {"secrets": [], "env": []}
+
+
 def probe(workspace, check_dirty):
     now = time.time()
     gpus, gpu_error = signals.gpus()
@@ -199,6 +211,7 @@ def probe(workspace, check_dirty):
         },
         "idle_state": _idle_state(),
         "admin_key_set": bool(os.environ.get(config.ADMIN_KEY_SECRET)),
+        "user_env": _user_env_names(),
         "warnings": warnings,
         "claude_running": signals.tmux_session(config.CLAUDE_TMUX_SESSION),
         "hot": _hot(),

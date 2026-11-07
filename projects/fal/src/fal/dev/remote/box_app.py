@@ -47,6 +47,14 @@ CLAUDE_ENABLED = os.environ.get(config.ENV_CLAUDE) == "1"
 VOLUME = os.environ.get(config.ENV_VOLUME) or None
 # Your starship.toml, when deployed with --starship.
 STARSHIP_TOML = os.environ.get(config.ENV_STARSHIP) or None
+# The fal secrets (by name) and plain variables that reach your shells and jobs.
+# Never the watchdog's ADMIN key, even if listed.
+SECRET_NAMES = [
+    name
+    for name in (os.environ.get(config.ENV_SECRETS) or "").split(",")
+    if name and name != config.ADMIN_KEY_SECRET
+]
+USER_ENV = json.loads(os.environ.get(config.ENV_USER_ENV) or "{}")
 
 APP_NAME = config.app_name(BOX_NAME)
 WORKSPACE = Path(config.WORKSPACE_ROOT) / BOX_NAME
@@ -126,6 +134,37 @@ def _user_env() -> dict[str, str]:
     environment from /proc, so the box is one trust domain.
     """
     return {k: v for k, v in os.environ.items() if k != config.ADMIN_KEY_SECRET}
+
+
+def _prepare_user_env() -> None:
+    """Make your secrets and variables part of the box's environment.
+
+    They go into this process's environment (for `hot` and Claude sessions, via
+    `_user_env`) and into a root-only file that shells, `fal dev exec` and ssh
+    sessions source, since those do not all inherit this process's environment.
+    A second file lists the names alone, for `fal dev status`.
+    """
+    try:
+        env = {k: os.environ[k] for k in SECRET_NAMES if k in os.environ}
+        env.update(USER_ENV)
+        env.pop(config.ADMIN_KEY_SECRET, None)
+        os.environ.update(env)
+        _write_private(Path(config.USER_ENV_FILE), config.user_env_script(env))
+        names = {
+            "secrets": [k for k in SECRET_NAMES if k in env],
+            "env": sorted(USER_ENV),
+        }
+        _write_private(Path(config.USER_ENV_NAMES_FILE), json.dumps(names))
+    except Exception as exc:
+        _warn(f"your secrets and environment variables are unavailable ({exc})")
+
+
+def _write_private(path: Path, text: str) -> None:
+    """Write a file only root can read, never readable even for a moment."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)  # before the write, for a file that already existed
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
 
 
 def _kill_tmux(session: str) -> None:
@@ -586,6 +625,8 @@ def _prepare_home() -> None:
             WORKSPACE=WORKSPACE,
             WORK=LOCAL_WORK,
             CLAUDE_DIR=CLAUDE_CONFIG_DIR,
+            USER_ENV_FILE=config.USER_ENV_FILE,
+            ADMIN_KEY=config.ADMIN_KEY_SECRET,
         )
         existing = f"{env_block}\n{existing}"
         bashrc.write_text(existing)
@@ -795,9 +836,9 @@ class DevBox(fal.App):
     )
     machine_type = os.environ.get(config.ENV_MACHINE_TYPE, config.DEFAULT_GPU)
     num_gpus = int(os.environ.get(config.ENV_NUM_GPUS, config.DEFAULT_NUM_GPUS))
-    # Opt in to the watchdog's key only. Set it with --not-exposed-by-default
-    # so that only apps listing it receive it.
-    secrets = [config.ADMIN_KEY_SECRET]
+    # Opt in to the watchdog's key, set with --not-exposed-by-default so that only
+    # apps listing it receive it, and to the secrets you listed (--secret).
+    secrets = [config.ADMIN_KEY_SECRET, *SECRET_NAMES]
     # The box's own volume replaces the team-shared /data.
     volumes = {config.VOLUME_MOUNT: fal.Volume(VOLUME)} if VOLUME else None
 
@@ -814,6 +855,7 @@ class DevBox(fal.App):
         _claim_lease()
         threading.Thread(target=_lease_heartbeat, daemon=True).start()
         _restore_work()
+        _prepare_user_env()
         _prepare_home()
         _check_admin_key()
         _prepare_ssh()

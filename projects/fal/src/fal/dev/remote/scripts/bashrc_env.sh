@@ -2,6 +2,9 @@
 # Sourced from the top of ~/.bashrc, before the stock "not interactive" early return,
 # so ssh commands, editor tasks and scripts get the box environment too. Only
 # variables and functions: nothing here may print, or scp and rsync break.
+# Your secrets and variables (--secret, --set-env); never the watchdog's key.
+[ -r "$USER_ENV_FILE" ] && . "$USER_ENV_FILE"
+unset $ADMIN_KEY
 export DEVBOX_WORKSPACE="$WORKSPACE"
 export DEVBOX_WORK="$WORK"
 export CLAUDE_CONFIG_DIR="$CLAUDE_DIR"

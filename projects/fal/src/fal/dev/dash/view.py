@@ -492,6 +492,11 @@ def connections_panel(probe: dict, box_now: float) -> RenderableType:
     ]
     if not probe["hot"]["running"]:
         rows.append(("hot reload", Text("not running", style=MUTED)))
+    # Names only; an older box's probe has no such key.
+    user_env = probe.get("user_env") or {}
+    for label, key in (("secrets", "secrets"), ("env vars", "env")):
+        if names := user_env.get(key):
+            rows.append((label, Text(", ".join(names))))
     return _panel(_kv(rows), "Connections")
 
 

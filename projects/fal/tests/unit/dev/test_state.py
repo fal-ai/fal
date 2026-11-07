@@ -71,3 +71,12 @@ def test_forget_name_clears_only_that_folders_matching_name(monkeypatch, tmp_pat
     assert "name" not in state.load(one, "host")
     assert state.load(one, "host")["hot_local"] == "/p"
     assert state.load(two, "host")["name"] == "demo"
+
+
+def test_box_state_is_readable_by_its_owner_only(monkeypatch, tmp_path):
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
+
+    state.update_box("devbox-demo", None, env={"A": "1"})
+
+    (path,) = (tmp_path / "state" / "boxes").glob("*.json")
+    assert path.stat().st_mode & 0o777 == 0o600

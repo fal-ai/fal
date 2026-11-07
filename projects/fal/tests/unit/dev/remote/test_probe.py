@@ -425,3 +425,19 @@ def test_no_second_nvidia_smi_call_when_the_gpus_could_not_be_read(monkeypatch):
     monkeypatch.setattr(probe.signals, "gpu_memory_by_pid", stuck)
     reading = probe._system(gpus_answered=False)
     assert reading["processes"] == [{"pid": 6, "name": "b"}]
+
+
+def test_the_probe_reports_secret_names_and_never_values(monkeypatch, tmp_path):
+    import importlib
+
+    monkeypatch.syspath_prepend(str(REMOTE))
+    monkeypatch.syspath_prepend(str(Path(config.__file__).parent))
+    probe = importlib.import_module("probe")
+    names = tmp_path / "names.json"
+    monkeypatch.setattr(probe.config, "USER_ENV_NAMES_FILE", str(names))
+
+    assert probe._user_env_names() == {"secrets": [], "env": []}
+    names.write_text('{"secrets": ["HF_TOKEN"], "env": ["FOO"]}')
+    assert probe._user_env_names() == {"secrets": ["HF_TOKEN"], "env": ["FOO"]}
+    names.write_text("not json")
+    assert probe._user_env_names() == {"secrets": [], "env": []}

@@ -39,7 +39,10 @@ def _update(path: Path, values: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # Unique per process: editors may run several `fal dev ssh-proxy` at once.
     tmp = path.with_suffix(f".{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    # Owner only: a box's remembered variables may hold things like tokens.
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(json.dumps(data, indent=2) + "\n")
     tmp.replace(path)
 
 

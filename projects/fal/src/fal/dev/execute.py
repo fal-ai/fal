@@ -16,6 +16,7 @@ from __future__ import annotations
 import secrets
 import sys
 
+from fal.dev import config
 from fal.dev.remote.signals import EXEC_TAG
 
 # How long the wrapper outlives the command so its markers can drain; the client
@@ -27,6 +28,9 @@ _SCRIPT = (
     EXEC_TAG
     + """
 marker=$1$2; shift 2
+# Your secrets and variables; the watchdog's key never reaches your command.
+[ -r {env_file} ] && . {env_file}
+unset {admin_key}
 "$@"
 status=$?
 printf '%s%s\\n' "$marker" "$status"
@@ -40,7 +44,11 @@ exit "$status"
 def wrap(command: list[str]) -> tuple[list[str], bytes]:
     """The wrapped command to run on the box, and the marker it will print."""
     marker = f"__fal_dev_exec_{secrets.token_hex(8)}:"
-    script = _SCRIPT.format(linger=LINGER_SECONDS)
+    script = _SCRIPT.format(
+        linger=LINGER_SECONDS,
+        env_file=config.USER_ENV_FILE,
+        admin_key=config.ADMIN_KEY_SECRET,
+    )
     # The marker is passed in two halves so that it never appears whole in the
     # box's process list, where a command like `ps aux` would print it.
     half = len(marker) // 2

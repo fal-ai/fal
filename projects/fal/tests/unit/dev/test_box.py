@@ -1,4 +1,5 @@
 import io
+import json
 import time
 from unittest.mock import MagicMock
 
@@ -6,10 +7,16 @@ import pytest
 
 from dev.fakes import make_box, make_runner
 from fal.dev import box as box_module
-from fal.dev import config
+from fal.dev import config, state
 from fal.dev.box import BOX_APP, _HoldUntilMarker, fal_spec, newest_live, ssh_config
 from fal.dev.errors import DevError
 from fal.sdk import RunnerState
+
+
+@pytest.fixture(autouse=True)
+def state_dir(monkeypatch, tmp_path):
+    """A deploy remembers the box's secrets; never in the real home."""
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
 
 
 @pytest.mark.parametrize(
@@ -653,3 +660,156 @@ def test_clear_hold_reports_whether_one_was_set():
         box.clear_hold()
     with pytest.raises(DevError, match="not running"):
         make_box([]).clear_hold()
+
+
+def _deploy_seen(box, **kwargs):
+    """What the box app is given by the deploy: its settings, as environment."""
+    seen = {}
+    box.client.deploy.side_effect = lambda *a, **k: seen.update(
+        secrets=box_module.os.environ[config.ENV_SECRETS],
+        env=box_module.os.environ[config.ENV_USER_ENV],
+    )
+    box.stop = MagicMock(return_value=True)
+    box.deploy(**kwargs)
+    return seen
+
+
+def _secrets_in_team(box, *names):
+    box.client.secrets.list.return_value = [MagicMock(**{"name": n}) for n in names]
+    for entry, name in zip(box.client.secrets.list.return_value, names):
+        entry.name = name
+
+
+def test_deploy_passes_secret_names_and_variables_to_the_box_app():
+    box = make_box(min_concurrency=0)
+    _secrets_in_team(box, "HF_TOKEN", "REGISTRY_TOKEN")
+
+    seen = _deploy_seen(
+        box, secrets=["HF_TOKEN", "REGISTRY_TOKEN"], set_env={"FOO": "bar"}
+    )
+
+    assert seen == {"secrets": "HF_TOKEN,REGISTRY_TOKEN", "env": '{"FOO": "bar"}'}
+
+
+def test_deploy_without_secrets_sends_empty_settings():
+    box = make_box(min_concurrency=0)
+
+    assert _deploy_seen(box) == {"secrets": "", "env": ""}
+    box.client.secrets.list.assert_not_called()
+
+
+def test_deploy_remembers_secrets_and_variables_for_the_next_deploy():
+    box = make_box(min_concurrency=0)
+    _secrets_in_team(box, "HF_TOKEN", "REGISTRY_TOKEN")
+    _deploy_seen(box, secrets=["HF_TOKEN"], set_env={"FOO": "bar", "A": "1"})
+
+    seen = _deploy_seen(box, secrets=["REGISTRY_TOKEN"], set_env={"FOO": "baz"})
+
+    assert seen["secrets"] == "HF_TOKEN,REGISTRY_TOKEN"
+    assert json.loads(seen["env"]) == {"FOO": "baz", "A": "1"}
+
+
+def test_deploy_can_remove_a_remembered_secret_and_variable():
+    box = make_box(min_concurrency=0)
+    _secrets_in_team(box, "HF_TOKEN", "REGISTRY_TOKEN")
+    _deploy_seen(
+        box, secrets=["HF_TOKEN", "REGISTRY_TOKEN"], set_env={"FOO": "bar", "A": "1"}
+    )
+
+    seen = _deploy_seen(box, unset_secrets=["HF_TOKEN"], unset_env=["FOO"])
+
+    assert seen == {"secrets": "REGISTRY_TOKEN", "env": '{"A": "1"}'}
+    assert _deploy_seen(box, unset_secrets=["REGISTRY_TOKEN"], unset_env=["A"]) == {
+        "secrets": "",
+        "env": "",
+    }
+
+
+def test_a_failed_deploy_does_not_change_what_is_remembered():
+    box = make_box(min_concurrency=0)
+    _secrets_in_team(box, "HF_TOKEN")
+    box.stop = MagicMock(return_value=True)
+    box.client.deploy.side_effect = RuntimeError("build failed")
+
+    with pytest.raises(RuntimeError):
+        box.deploy(secrets=["HF_TOKEN"])
+
+    box.client.deploy.side_effect = None
+    assert _deploy_seen(box)["secrets"] == ""
+
+
+def test_deploy_refuses_an_unknown_secret_before_touching_the_box():
+    box = make_box([make_runner("r1")])
+    _secrets_in_team(box, "HF_TOKEN")
+    box.save_work = MagicMock()
+    box.stop = MagicMock()
+
+    with pytest.raises(DevError, match="no such secret: NOPE") as err:
+        box.deploy(secrets=["HF_TOKEN", "NOPE"])
+
+    assert "fal secrets set NOPE=<value>" in str(err.value)
+    box.save_work.assert_not_called()
+    box.stop.assert_not_called()
+    box.client.deploy.assert_not_called()
+
+
+def test_deploy_still_works_when_the_secret_list_cannot_be_read():
+    box = make_box(min_concurrency=0)
+    box.client.secrets.list.side_effect = RuntimeError("no network")
+
+    assert _deploy_seen(box, secrets=["HF_TOKEN"])["secrets"] == "HF_TOKEN"
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"secrets": [config.ADMIN_KEY_SECRET]}, "never reaches your code"),
+        ({"set_env": {config.ADMIN_KEY_SECRET: "x"}}, "never reaches your code"),
+        ({"secrets": ["not a name"]}, "not a valid"),
+        ({"set_env": {"1BAD": "x"}}, "not a valid"),
+        ({"secrets": ["FOO"], "set_env": {"FOO": "x"}}, "both a secret and"),
+    ],
+)
+def test_deploy_rejects_names_the_box_cannot_export(kwargs, match):
+    box = make_box([make_runner("r1")])
+    _secrets_in_team(box, "FOO")
+    box.stop = MagicMock()
+
+    with pytest.raises(DevError, match=match):
+        box.deploy(**kwargs)
+
+    box.stop.assert_not_called()
+
+
+def test_up_passes_secrets_to_the_first_deploy_only():
+    box = make_box(deployed=False)
+    box.deploy = MagicMock(return_value="deployed")
+    box.start = MagicMock()
+    box.check_admin_key = MagicMock()
+    box.runners = MagicMock(return_value=[])
+
+    box.up(1, secrets=["HF_TOKEN"], set_env={"FOO": "bar"})
+
+    kwargs = box.deploy.call_args.kwargs
+    assert kwargs["secrets"] == ["HF_TOKEN"] and kwargs["set_env"] == {"FOO": "bar"}
+
+    existing = make_box()
+    existing.deploy = MagicMock()
+    existing.start = MagicMock()
+    existing.check_admin_key = MagicMock()
+    existing.runners = MagicMock(return_value=[])
+    existing.up(1, secrets=["HF_TOKEN"])
+    existing.deploy.assert_not_called()
+
+
+def test_deploy_summary_says_which_secrets_and_variables_it_applied():
+    box = make_box(min_concurrency=0)
+    _secrets_in_team(box, "HF_TOKEN")
+    box.stop = MagicMock(return_value=True)
+
+    with_env = box.deploy(secrets=["HF_TOKEN"], set_env={"FOO": "bar"})
+    without = box.deploy(unset_secrets=["HF_TOKEN"], unset_env=["FOO"])
+
+    assert "secrets: HF_TOKEN, env vars: FOO." in with_env
+    assert "secrets: none, env vars: none." in without
+    assert "bar" not in with_env

@@ -1161,3 +1161,16 @@ def test_gpu_panel_puts_util_vram_and_temp_on_their_own_rows():
     two = _probe(gpus=[{**probe["gpus"][0], "index": i} for i in range(2)])
     text = _text(view.gpu_panel(two))
     assert "#0 vram" in text and "#1 vram" in text
+
+
+def test_connections_panel_lists_secret_and_variable_names():
+    from fal.dev.dash import view
+
+    probe = _probe(user_env={"secrets": ["HF_TOKEN"], "env": ["FOO", "BAR"]})
+    console = Console(record=True, width=100, force_terminal=False, color_system=None)
+
+    console.print(view.connections_panel(probe, NOW))
+    text = console.export_text()
+
+    assert "secrets" in text and "HF_TOKEN" in text
+    assert "env vars" in text and "FOO, BAR" in text

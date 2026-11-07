@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import shlex
 
 # Box apps are named `devbox-<name>` and keep their workspace in
 # /data/devboxes/<name>. /data is the box's own volume (also `devbox-<name>`);
@@ -54,6 +55,16 @@ STARSHIP_INSTALL_URL = "https://starship.rs/install.sh"
 STARSHIP_INSTALL_TIMEOUT_SECONDS = 120
 # The box's volume name; empty for the team-shared /data.
 ENV_VOLUME = "DEVBOX_VOLUME"
+# The fal secrets the box receives (comma-separated names, never values) and the
+# plain environment variables it sets (a JSON object).
+ENV_SECRETS = "DEVBOX_SECRETS"
+ENV_USER_ENV = "DEVBOX_USER_ENV"
+# Written by the box at start (root only): `export NAME='value'` for every secret
+# and variable above. New shells, `fal dev exec` and ssh sessions source it.
+USER_ENV_FILE = "/tmp/devbox-user-env"
+# The names in that file, as JSON, for `fal dev status` and `fal dev dash`.
+USER_ENV_NAMES_FILE = "/tmp/devbox-user-env.json"
+ENV_VAR_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # Claude Code's config, login and transcripts, under the workspace's persisted home.
 CLAUDE_CONFIG_SUBDIR = ".home/.claude"
@@ -132,3 +143,23 @@ def volume_name(name: str) -> str:
     digest = hashlib.sha1(name.encode()).hexdigest()[:6]
     keep = VOLUME_NAME_MAX - len(APP_PREFIX) - len(digest) - 1
     return f"{APP_PREFIX}{name[:keep].rstrip('-')}-{digest}"
+
+
+def check_env_name(name: str, what: str) -> str:
+    """`name` if the box can export it; else a ValueError saying why."""
+    if not ENV_VAR_PATTERN.fullmatch(name):
+        raise ValueError(f"{what} {name!r} is not a valid environment variable name")
+    if name == ADMIN_KEY_SECRET:
+        raise ValueError(
+            f"{name} is the idle watchdog's key and never reaches your code"
+        )
+    return name
+
+
+def user_env_script(env: dict[str, str]) -> str:
+    """Shell lines that export `env`, for sh and bash; never the ADMIN key."""
+    return "".join(
+        f"export {name}={shlex.quote(value)}\n"
+        for name, value in env.items()
+        if name != ADMIN_KEY_SECRET and ENV_VAR_PATTERN.fullmatch(name)
+    )

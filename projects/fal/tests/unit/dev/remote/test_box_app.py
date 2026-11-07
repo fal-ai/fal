@@ -504,3 +504,154 @@ def test_bashrc_uses_starship_only_when_installed_with_its_config(tmp_path):
     assert prompt(home, path).strip().splitlines()[-1] == "STARSHIP"
     # Config copied but the install failed: the default prompt stays.
     assert "demo" in prompt(home, "/usr/bin:/bin")
+
+
+def _user_env_module(monkeypatch, tmp_path, secrets="HF_TOKEN,DEVBOX_ADMIN_KEY"):
+    """box_app loaded with secrets and variables, writing its files under tmp_path."""
+    import os
+
+    monkeypatch.setenv(config.ENV_SECRETS, secrets)
+    monkeypatch.setenv(config.ENV_USER_ENV, '{"FOO": "it\'s \\"bar\\"\\nbaz"}')
+    monkeypatch.setattr(config, "USER_ENV_FILE", str(tmp_path / "env"))
+    monkeypatch.setattr(config, "USER_ENV_NAMES_FILE", str(tmp_path / "names.json"))
+    # What the runtime gives the app: every listed secret, and the admin key.
+    monkeypatch.setattr(
+        os,
+        "environ",
+        {**os.environ, "HF_TOKEN": "hf-value", config.ADMIN_KEY_SECRET: "admin-value"},
+    )
+    return runpy.run_path(str(BOX_APP))
+
+
+def test_box_app_lists_the_secrets_you_chose_after_the_admin_key(monkeypatch, tmp_path):
+    module = _user_env_module(monkeypatch, tmp_path)
+
+    # The admin key is listed once, whatever --secret said.
+    assert module["DevBox"].secrets == [config.ADMIN_KEY_SECRET, "HF_TOKEN"]
+    assert module["USER_ENV"] == {"FOO": 'it\'s "bar"\nbaz'}
+
+
+def test_box_app_without_user_env_keeps_only_the_admin_key(monkeypatch):
+    monkeypatch.delenv(config.ENV_SECRETS, raising=False)
+    monkeypatch.delenv(config.ENV_USER_ENV, raising=False)
+
+    assert runpy.run_path(str(BOX_APP))["DevBox"].secrets == [config.ADMIN_KEY_SECRET]
+
+
+def test_user_processes_get_your_secrets_but_never_the_admin_key(monkeypatch, tmp_path):
+    module = _user_env_module(monkeypatch, tmp_path)
+
+    module["_prepare_user_env"]()
+    env = module["_user_env"]()
+
+    assert env["HF_TOKEN"] == "hf-value"
+    assert env["FOO"] == 'it\'s "bar"\nbaz'
+    assert config.ADMIN_KEY_SECRET not in env
+    # The file that shells, exec and ssh read has no admin key either, even
+    # though the runtime gave it to this process.
+    text = (tmp_path / "env").read_text()
+    assert "admin-value" not in text and config.ADMIN_KEY_SECRET not in text
+    assert "hf-value" in text
+    assert (tmp_path / "env").stat().st_mode & 0o777 == 0o600
+
+
+def test_the_names_file_has_names_and_no_values(monkeypatch, tmp_path):
+    import json
+
+    module = _user_env_module(monkeypatch, tmp_path)
+
+    module["_prepare_user_env"]()
+
+    text = (tmp_path / "names.json").read_text()
+    assert json.loads(text) == {"secrets": ["HF_TOKEN"], "env": ["FOO"]}
+    assert "hf-value" not in text and "baz" not in text
+    assert (tmp_path / "names.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_a_secret_missing_from_the_environment_is_not_reported(monkeypatch, tmp_path):
+    import json
+
+    module = _user_env_module(monkeypatch, tmp_path, secrets="HF_TOKEN,NOPE")
+
+    module["_prepare_user_env"]()
+
+    assert json.loads((tmp_path / "names.json").read_text())["secrets"] == ["HF_TOKEN"]
+
+
+def test_sshd_config_never_carries_the_admin_key_with_user_env(monkeypatch, tmp_path):
+    module = _user_env_module(monkeypatch, tmp_path)
+    module["_prepare_user_env"]()
+
+    text = module["_sshd_config"](tmp_path / "host_key")
+
+    assert '"HF_TOKEN=hf-value"' in text
+    assert "admin-value" not in text
+    assert f'"{config.ADMIN_KEY_SECRET}=' not in text
+
+
+def _filled_env_block(monkeypatch, tmp_path):
+    module = _user_env_module(monkeypatch, tmp_path)
+    module["_prepare_user_env"]()
+    text = module["_fill"](
+        (REMOTE / "scripts" / "bashrc_env.sh").read_text(),
+        WORKSPACE="/data/devboxes/demo",
+        WORK="/work",
+        CLAUDE_DIR="/data/c",
+        USER_ENV_FILE=config.USER_ENV_FILE,
+        ADMIN_KEY=config.ADMIN_KEY_SECRET,
+    )
+    block = tmp_path / "bashrc"
+    block.write_text(text)
+    return block
+
+
+def test_new_shells_have_your_environment_and_not_the_admin_key(monkeypatch, tmp_path):
+    import os
+    import subprocess
+
+    block = _filled_env_block(monkeypatch, tmp_path)
+    # A runner shell may carry the admin key from the app's environment.
+    env = {"PATH": os.environ["PATH"], config.ADMIN_KEY_SECRET: "admin-value"}
+
+    done = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f". {block}; "
+            f'printf "%s|%s|%s" "$HF_TOKEN" "$FOO" "${config.ADMIN_KEY_SECRET}"',
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert done.stdout == 'hf-value|it\'s "bar"\nbaz|'
+    assert done.stderr == ""
+
+
+def test_exec_runs_with_your_environment_and_without_the_admin_key(
+    monkeypatch, tmp_path
+):
+    import os
+    import subprocess
+
+    from fal.dev import execute
+
+    _filled_env_block(monkeypatch, tmp_path)
+    monkeypatch.setattr(execute, "LINGER_SECONDS", 0)
+    command, marker = execute.wrap(
+        [
+            "bash",
+            "-c",
+            f'echo "$FOO"; test -n "$HF_TOKEN" && echo has-secret; '
+            f'test -z "${config.ADMIN_KEY_SECRET}" && echo admin-hidden',
+        ]
+    )
+    env = {"PATH": os.environ["PATH"], config.ADMIN_KEY_SECRET: "admin-value"}
+
+    done = subprocess.run(command, env=env, capture_output=True, text=True, check=True)
+
+    assert done.stdout.split(marker.decode())[0] == (
+        'it\'s "bar"\nbaz\nhas-secret\nadmin-hidden\n'
+    )

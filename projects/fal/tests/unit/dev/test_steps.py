@@ -312,7 +312,7 @@ def test_a_failed_up_marks_the_step_and_prints_the_log_tail():
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait, starship=False, take_over=False):
+        def up(self, timeout, machine_type, on_wait, **kwargs):
             self.progress.begin("runner")
             self.progress.capture("image pull failed")
             raise DevError("setup() failed")
@@ -340,6 +340,8 @@ def test_a_failed_up_marks_the_step_and_prints_the_log_tail():
             yes=True,
             starship=False,
             take_over=False,
+            secret=[],
+            set_env=[],
         )
         with pytest.raises(DevError):
             box_cli.cmd_up(args)
@@ -351,11 +353,15 @@ def test_a_failed_up_marks_the_step_and_prints_the_log_tail():
     assert "image pull failed" in console.export_text()
 
 
-def test_box_deploy_walks_the_steps_in_order(monkeypatch):
+def test_box_deploy_walks_the_steps_in_order(monkeypatch, tmp_path):
+    from fal.dev import state
+
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
     steps, clock, _ = make()
     box = box_module.Box.__new__(box_module.Box)
     box.progress = steps
     box.name, box.app, box.volume_created = "voice", "devbox-voice", False
+    box.host = None
     seen = []
 
     class Client:
@@ -400,7 +406,7 @@ def test_plain_ready_line_carries_the_billing_hint_not_the_cancel_hint(monkeypat
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait, starship=False, take_over=False):
+        def up(self, timeout, machine_type, on_wait, **kwargs):
             self.progress.begin("runner")
             self.progress.finish("runner")
 
@@ -420,6 +426,8 @@ def test_plain_ready_line_carries_the_billing_hint_not_the_cancel_hint(monkeypat
         yes=True,
         starship=False,
         take_over=False,
+        secret=[],
+        set_env=[],
     )
     assert box_cli.cmd_up(args) == 130
     out = err.getvalue()

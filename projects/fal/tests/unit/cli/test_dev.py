@@ -740,3 +740,96 @@ def test_hold_until_reads_the_hold_and_raises_on_garbage(monkeypatch):
     for _ in range(2):
         with pytest.raises(DevError, match="could not read the hold"):
             box.hold_until()
+
+
+def test_dev_deploy_takes_secrets_and_variables_and_their_removal():
+    args = parse_args(
+        [
+            "dev",
+            "deploy",
+            "--secret",
+            "HF_TOKEN",
+            "--secret",
+            "REGISTRY_TOKEN",
+            "--set-env",
+            "FOO=a=b",
+            "--set-env",
+            "EMPTY=",
+            "--unset-secret",
+            "OLD",
+            "--unset-env",
+            "STALE",
+        ]
+    )
+
+    assert args.secret == ["HF_TOKEN", "REGISTRY_TOKEN"]
+    assert dict(args.set_env) == {"FOO": "a=b", "EMPTY": ""}
+    assert args.unset_secret == ["OLD"] and args.unset_env == ["STALE"]
+    defaults = parse_args(["dev", "deploy"])
+    assert defaults.secret == [] and defaults.set_env == []
+
+
+def test_dev_up_takes_secrets_and_variables_for_the_first_deploy():
+    args = parse_args(["dev", "up", "--secret", "HF_TOKEN", "--set-env", "A=1"])
+
+    assert args.secret == ["HF_TOKEN"] and dict(args.set_env) == {"A": "1"}
+    assert not hasattr(args, "unset_secret")
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--secret", config.ADMIN_KEY_SECRET],
+        ["--secret", "has space"],
+        ["--set-env", "NOEQUALS"],
+        ["--set-env", "=value"],
+        ["--set-env", f"{config.ADMIN_KEY_SECRET}=x"],
+    ],
+)
+def test_dev_deploy_rejects_bad_secret_and_variable_names(flags):
+    with pytest.raises(FalParserExit):
+        parse_args(["dev", "deploy", *flags])
+
+
+def test_deploy_help_says_secrets_are_team_level(capsys):
+    with pytest.raises(FalParserExit):
+        parse_args(["dev", "deploy", "--help"])
+
+    out = " ".join(capsys.readouterr().out.split())
+    assert "Secrets are team-level" in out
+    assert "fal secrets set NAME=value" in out
+    assert "sees only the names you list" in out
+    assert "—" not in out
+
+
+def test_cmd_deploy_hands_secrets_and_variables_to_the_box(monkeypatch):
+    box = _named_box(exists=False)
+    box.deploy.return_value = "ok"
+    monkeypatch.setattr(box_commands, "get_box", lambda args, **kw: box)
+    monkeypatch.setattr(box_commands, "_confirm_deploy", lambda *a: None)
+    args = parse_args(
+        [
+            "dev",
+            "deploy",
+            "--secret",
+            "HF_TOKEN",
+            "--set-env",
+            "A=1",
+            "--unset-env",
+            "B",
+        ]
+    )
+
+    box_commands.cmd_deploy(args)
+
+    kwargs = box.deploy.call_args.kwargs
+    assert kwargs["secrets"] == ["HF_TOKEN"]
+    assert kwargs["set_env"] == {"A": "1"}
+    assert kwargs["unset_env"] == ["B"] and kwargs["unset_secrets"] == []
+
+
+def test_a_secret_value_slipped_into_a_flag_is_never_echoed(capsys):
+    for flags in (["--secret", "HF_TOKEN=hf_leak"], ["--set-env", "hf_leak"]):
+        with pytest.raises(FalParserExit):
+            parse_args(["dev", "deploy", *flags])
+        assert "hf_leak" not in capsys.readouterr().err

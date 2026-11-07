@@ -68,6 +68,10 @@ def cmd_deploy(args):
         dockerfile=args.dockerfile,
         team_data=args.team_data,
         take_over=args.take_over,
+        secrets=args.secret,
+        set_env=dict(args.set_env),
+        unset_secrets=args.unset_secret,
+        unset_env=args.unset_env,
     )
     remember_name(args, box.name)
     print(message)
@@ -126,6 +130,8 @@ def cmd_up(args):
             on_wait,
             starship=args.starship,
             take_over=args.take_over,
+            secrets=args.secret,
+            set_env=dict(args.set_env),
         )
     except KeyboardInterrupt:
         steps.fail("cancelled")

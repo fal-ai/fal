@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
 import posixpath
 import shlex
@@ -26,7 +27,7 @@ import httpx
 
 from fal.api.client import SyncServerlessClient
 from fal.cli.runners import recent_logs, shell_session
-from fal.dev import config
+from fal.dev import config, state
 from fal.dev.account import Account
 from fal.dev.errors import DevError
 from fal.dev.transport import CONNECT_TIMEOUT, host_of, retry_connect
@@ -121,6 +122,43 @@ def _environ(values: dict[str, str]) -> Iterator[None]:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
+
+
+def merge_user_env(
+    remembered: dict,
+    secrets: list[str] | None = None,
+    set_env: dict[str, str] | None = None,
+    unset_secrets: list[str] | None = None,
+    unset_env: list[str] | None = None,
+) -> tuple[list[str], dict[str, str]]:
+    """The box's secret names and variables: those remembered, plus --secret and
+    --set-env, minus --unset-secret and --unset-env."""
+    names = remembered.get("secrets")
+    env = remembered.get("env")
+    kept = [n for n in names if isinstance(n, str)] if isinstance(names, list) else []
+    values = (
+        {k: v for k, v in env.items() if isinstance(k, str) and isinstance(v, str)}
+        if isinstance(env, dict)
+        else {}
+    )
+    try:
+        for name in secrets or []:
+            config.check_env_name(name, "secret name")
+        for name in set_env or {}:
+            config.check_env_name(name, "variable name")
+    except ValueError as exc:
+        raise DevError(str(exc)) from None
+    names = list(dict.fromkeys([*kept, *(secrets or [])]))
+    names = [n for n in names if n not in (unset_secrets or [])]
+    values = {**values, **(set_env or {})}
+    values = {k: v for k, v in values.items() if k not in (unset_env or [])}
+    clash = sorted(set(names) & set(values))
+    if clash:
+        raise DevError(
+            f"{', '.join(clash)} is both a secret and an environment variable; "
+            "keep one (--unset-secret or --unset-env removes the other)"
+        )
+    return names, values
 
 
 def newest_first(runners: list[RunnerInfo]) -> list[RunnerInfo]:
@@ -544,6 +582,23 @@ class Box:
                 f"{config.ADMIN_KEY_SECRET}=<admin key>"
             )
 
+    def check_secrets_exist(self, names: list[str]) -> None:
+        """Refuse names that are not secrets of this team: the box would not start."""
+        if not names:
+            return
+        try:
+            known = {s.name for s in self.client.secrets.list()}
+        except Exception:
+            return  # the deploy itself reports a missing secret
+        missing = [n for n in names if n not in known]
+        if missing:
+            raise DevError(
+                f"no such secret: {', '.join(missing)}. Secrets belong to the team; "
+                f"create one with: fal secrets set {missing[0]}=<value>, or stop "
+                f"asking for it with: fal dev deploy --unset-secret {missing[0]}",
+                title="unknown secret",
+            )
+
     def deploy(
         self,
         *,
@@ -557,6 +612,10 @@ class Box:
         team_data: bool = False,
         hint: bool = True,
         take_over: bool = False,
+        secrets: list[str] | None = None,
+        set_env: dict[str, str] | None = None,
+        unset_secrets: list[str] | None = None,
+        unset_env: list[str] | None = None,
     ) -> str:
         from fal._version import __version__
         from fal.dev.guard import check_limits, check_owner
@@ -581,6 +640,14 @@ class Box:
         check_limits(machine_type or current_type or config.DEFAULT_GPU, num_gpus)
         # Read first: a missing config must not fail after the box was stopped.
         starship_toml = local_starship_config() if starship else ""
+        secret_names, user_env = merge_user_env(
+            state.load_box(self.app, self.host),
+            secrets,
+            set_env,
+            unset_secrets,
+            unset_env,
+        )
+        self.check_secrets_exist(secret_names)
         volume = None
         if not team_data:
             self._begin("volume")
@@ -627,6 +694,8 @@ class Box:
             config.ENV_FAL_SPEC: fal_spec(__version__),
             config.ENV_VOLUME: volume or "",
             config.ENV_STARSHIP: starship_toml,
+            config.ENV_SECRETS: ",".join(secret_names),
+            config.ENV_USER_ENV: json.dumps(user_env) if user_env else "",
         }
         # box_app.py reads these when the deploy loads it.
         self._begin("build")
@@ -661,6 +730,10 @@ class Box:
         self._owner, self._owner_read = self.owner_identity(), True
         self._finish("build")  # a deploy that logged nothing still built
         self._finish("deploy")
+        # Remembered, so that later deploys keep them. Best effort: a read-only
+        # home must not fail a deploy that worked.
+        with contextlib.suppress(OSError):
+            state.update_box(self.app, self.host, secrets=secret_names, env=user_env)
         next_step = (
             "Start it with: fal dev up"
             if was_stopped
@@ -669,7 +742,9 @@ class Box:
         storage = f"volume {volume}" if volume else "the team-shared /data"
         summary = (
             f"deployed {self.app} on {num_gpus}x {machine_type} with {storage} at "
-            f"/data, idle shutdown after {idle_minutes} min."
+            f"/data, idle shutdown after {idle_minutes} min, "
+            f"secrets: {', '.join(secret_names) or 'none'}, "
+            f"env vars: {', '.join(user_env) or 'none'}."
         )
         return f"{summary} {next_step}" if hint else summary
 
@@ -824,6 +899,8 @@ class Box:
         on_wait: Callable[[str], None] | None = None,
         starship: bool = False,
         take_over: bool = False,
+        secrets: list[str] | None = None,
+        set_env: dict[str, str] | None = None,
     ) -> RunnerInfo:
         from fal.dev.guard import check_limits
 
@@ -832,6 +909,11 @@ class Box:
         if starship and exists:
             self._say(
                 "the box already exists; use `fal dev deploy --starship` to change it"
+            )
+        if (secrets or set_env) and exists:
+            self._say(
+                "the box already exists; use `fal dev deploy --secret` or "
+                "`--set-env` to change what it receives"
             )
         if not exists:
             if self.progress is None:
@@ -844,6 +926,8 @@ class Box:
                 starship=starship,
                 hint=False,
                 take_over=take_over,
+                secrets=secrets,
+                set_env=set_env,
             )
             if self.progress is None:
                 log(summary)
