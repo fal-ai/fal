@@ -1,13 +1,16 @@
 import io
 from types import SimpleNamespace
 
+import pytest
 from rich.console import Console
 
+from dev.fakes import make_runner
 from dev.test_dash import NOW, FakeDashBox, _probe, _snapshot
 from fal.dev import loading
 from fal.dev.cli import box as box_cli
 from fal.dev.cli import summary
 from fal.dev.dash.model import Cost, IdleWarning
+from fal.dev.errors import DevError
 
 
 def _text(renderable) -> str:
@@ -120,10 +123,6 @@ def test_ctrl_c_during_up_cancels_and_says_it_stopped_billing(monkeypatch):
 
 
 def test_status_fails_loudly_when_the_platform_does_not_answer(monkeypatch):
-    import pytest
-
-    from fal.dev.errors import DevError
-
     class Poller:
         def __init__(self, box):
             from fal.dev.dash.model import Snapshot
@@ -202,3 +201,116 @@ def test_once_the_box_is_up_the_hint_no_longer_promises_to_stop_billing(monkeypa
     assert box_cli.cmd_up(args) == 130
     assert "stops billing" in hints[0]
     assert "not the box" in hints[-1]
+
+
+def test_status_line_shows_an_active_hold_and_when_it_ends():
+    probe = _probe(
+        activity={"held": True, "hold_until": NOW + 5400},
+        idle_state={"last_active": NOW, "idle_minutes": 60},
+        now=NOW,
+    )
+    line = summary.status_line(_snapshot(probe), FakeDashBox(), now=NOW).plain
+    assert "held until" in line
+    assert "(1h 30m left)" in line
+    card = _text(summary.ready_card(_snapshot(probe), FakeDashBox(), now=NOW))
+    assert "fal dev hold --off" in card
+
+
+def test_status_line_has_no_hold_text_without_a_hold():
+    line = summary.status_line(
+        _snapshot(_idle_probe(38 * 60)), FakeDashBox(), now=NOW
+    ).plain
+    assert "held" not in line
+
+
+def _gpu_probe(util=0, processes=()):
+    probe = _probe()
+    probe["gpus"] = [{**probe["gpus"][0], "util_pct": util}]
+    probe["system"] = {"processes": list(processes)}
+    return probe
+
+
+def test_busy_reasons_name_a_busy_gpu_and_gpu_jobs():
+    assert box_cli.busy_reasons(_gpu_probe(util=0)) == []
+    assert "GPU is busy (97% utilization)" in box_cli.busy_reasons(_gpu_probe(97))[0]
+    job = {"pid": 7, "name": "python3", "gpu_mib": 900}
+    shell = {"pid": 8, "name": "bash", "gpu_mib": 10}
+    cpu_only = {"pid": 9, "name": "tar"}
+    reasons = box_cli.busy_reasons(_gpu_probe(0, [job, shell, cpu_only]))
+    assert reasons == ["python3 (pid 7) is using the GPU"]
+
+
+class _DownBox(FakeDashBox):
+    def __init__(self, probe):
+        super().__init__(probe)
+        self.downs = []
+
+    def runners(self):
+        return [make_runner("runner-abc")]
+
+    def down(self, no_save):
+        self.downs.append(no_save)
+
+
+def _down(box, monkeypatch, *, tty, yes=False):
+    monkeypatch.setattr(box_cli, "get_box", lambda args: box)
+    monkeypatch.setattr(box_cli.sys.stdin, "isatty", lambda: tty, raising=False)
+    box_cli.cmd_down(
+        SimpleNamespace(yes=yes, no_save=False, console=Console(file=io.StringIO()))
+    )
+
+
+def test_down_refuses_a_busy_gpu_without_a_terminal(monkeypatch):
+    box = _DownBox(_gpu_probe(95))
+    with pytest.raises(DevError, match="--yes"):
+        _down(box, monkeypatch, tty=False)
+    assert box.downs == []
+
+
+def test_down_asks_on_a_terminal_and_honors_the_answer(monkeypatch):
+    box = _DownBox(_gpu_probe(95))
+    monkeypatch.setattr(box_cli.Confirm, "ask", lambda *a, **k: False)
+    with pytest.raises(DevError, match="cancelled"):
+        _down(box, monkeypatch, tty=True)
+    monkeypatch.setattr(box_cli.Confirm, "ask", lambda *a, **k: True)
+    _down(box, monkeypatch, tty=True)
+    assert box.downs == [False]
+
+
+def test_down_yes_skips_the_check_and_an_idle_box_stops_quietly(monkeypatch):
+    busy = _DownBox(_gpu_probe(95))
+    _down(busy, monkeypatch, tty=False, yes=True)
+    assert busy.downs == [False] and busy.run_calls == []
+    idle = _DownBox(_gpu_probe(0))
+    _down(idle, monkeypatch, tty=False)
+    assert idle.downs == [False]
+
+
+def test_down_still_stops_when_the_probe_fails(monkeypatch):
+    box = _DownBox(_gpu_probe(0))
+    box.run = lambda *a, **k: (1, "boom")
+    _down(box, monkeypatch, tty=False)
+    assert box.downs == [False]
+
+
+def _hold(box, monkeypatch, **fields):
+    monkeypatch.setattr(box_cli, "get_box", lambda args: box)
+    out = io.StringIO()
+    args = SimpleNamespace(
+        off=False, hours=None, console=Console(file=out, width=200), **fields
+    )
+    return args, out
+
+
+def test_hold_off_and_zero_clear_the_hold(monkeypatch):
+    box = SimpleNamespace(clear_hold=lambda: True)
+    for fields in ({"off": True}, {"hours": 0.0}):
+        args, out = _hold(box, monkeypatch)
+        vars(args).update(fields)
+        box_cli.cmd_hold(args)
+        assert "hold cleared" in out.getvalue()
+    box = SimpleNamespace(clear_hold=lambda: False)
+    args, out = _hold(box, monkeypatch)
+    args.off = True
+    box_cli.cmd_hold(args)
+    assert "no hold was set" in out.getvalue()
