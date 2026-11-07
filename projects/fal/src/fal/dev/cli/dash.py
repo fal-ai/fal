@@ -35,24 +35,27 @@ def _info(box: Box, snapshot: Snapshot) -> dict | None:
     }
 
 
+def payload(box: Box, snapshot: Snapshot) -> str:
+    """The snapshot as the JSON that `dash --json` and `status --json` print."""
+    cost = dataclasses.asdict(snapshot.cost) if snapshot.cost else None
+    return json.dumps(
+        {
+            "info": _info(box, snapshot),
+            "probe": snapshot.probe,
+            "cost": cost,
+            "errors": snapshot.errors,
+        },
+        default=str,
+    )
+
+
 def cmd_dash(args) -> None:
     box = get_box(args)
     if args.json:
         poller = Poller(box)
         poller.prime()
         snapshot = poller.snapshot
-        cost = dataclasses.asdict(snapshot.cost) if snapshot.cost else None
-        args.console.print_json(
-            json.dumps(
-                {
-                    "info": _info(box, snapshot),
-                    "probe": snapshot.probe,
-                    "cost": cost,
-                    "errors": snapshot.errors,
-                },
-                default=str,
-            )
-        )
+        args.console.print_json(payload(box, snapshot))
         if snapshot.errors:
             raise SystemExit(1)
     elif args.once:

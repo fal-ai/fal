@@ -66,3 +66,14 @@ def load_box(app: str, host: str | None) -> dict:
 def update_box(app: str, host: str | None, **values) -> None:
     """Merge values into the state of box app `app`; None removes a key."""
     _update(_path("boxes", app, host), {**values, "app": app})
+
+
+def forget_box(app: str, host: str | None) -> None:
+    """Drop everything remembered about box app `app`."""
+    _path("boxes", app, host).unlink(missing_ok=True)
+
+
+def forget_name(project_dir: Path, name: str, host: str | None) -> None:
+    """Make the folder forget box `name`, if it is the one it remembers."""
+    if load(project_dir, host).get("name") == name:
+        update(project_dir, host, name=None)

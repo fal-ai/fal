@@ -408,7 +408,7 @@ def _named_box(exists):
 def _patch_get_box(monkeypatch, box):
     from fal.dev.cli import common
 
-    monkeypatch.setattr(common, "resolve_account", lambda *a: MagicMock())
+    monkeypatch.setattr(common, "resolve_account", lambda *a, **k: MagicMock())
     monkeypatch.setattr(common, "announce", lambda account: None)
     monkeypatch.setattr(common, "Box", lambda *a, **k: box)
     return common
@@ -512,3 +512,231 @@ def test_dev_hold_without_hours_or_off_is_a_usage_error(monkeypatch):
     monkeypatch.setattr(box_commands, "get_box", lambda a: pytest.fail("no box"))
     with pytest.raises(FalParserExit):
         box_commands.cmd_hold(args)
+
+
+def test_dev_list_status_and_destroy_parse(monkeypatch):
+    listed = _run(monkeypatch, "box", "list", ["dev", "list", "--team", "t", "--json"])
+    assert listed.json
+    assert listed.team == "t"
+    assert not hasattr(listed, "name")
+    assert _run(monkeypatch, "box", "status", ["dev", "status", "--json"]).json
+    assert not _run(monkeypatch, "box", "status", ["dev", "status"]).json
+    destroy = _run(monkeypatch, "box", "destroy", ["dev", "destroy", "--name", "x"])
+    assert destroy.name == "x"
+    assert not destroy.yes
+    assert parse_args(["dev", "destroy", "--yes"]).yes
+    with pytest.raises(FalParserExit):
+        parse_args(["dev", "destroy", "--keep-data"])
+
+
+def _destroy_box(monkeypatch, exists=True, app="devbox-gone"):
+    box = MagicMock(app=app, host=None)
+    box.name = app.removeprefix("devbox-")
+    box.app_info.return_value = MagicMock() if exists else None
+    box.destroy.return_value = (["r1", "r2"], True)
+
+    def get_box(args, **kw):
+        assert kw == {"remember": False, "remember_team": False}
+        return box
+
+    monkeypatch.setattr(box_commands, "get_box", get_box)
+    return box
+
+
+def _destroy_args(**values):
+    args = parse_args(["dev", "destroy", "--name", "gone"])
+    args.console = MagicMock()
+    for key, value in values.items():
+        setattr(args, key, value)
+    return args
+
+
+def test_destroy_with_yes_deletes_forgets_and_says_the_volume_is_kept(
+    monkeypatch, tmp_path
+):
+    box = _destroy_box(monkeypatch)
+    args = _destroy_args(yes=True)
+    state.update_box("devbox-gone", args.host, team="t")
+    state.update(tmp_path, args.host, name="gone")
+
+    box_commands.cmd_destroy(args)
+
+    box.destroy.assert_called_once()
+    assert state.load_box("devbox-gone", args.host) == {}
+    assert "name" not in state.load(tmp_path, args.host)
+    said = " ".join(str(c.args[0]) for c in args.console.print.call_args_list)
+    assert "killed 2 runner" in said
+    assert "volume devbox-gone is kept (no delete API yet)" in said
+    assert "fal dev up --name gone" in said
+
+
+def test_destroy_with_yes_needs_an_explicit_name(monkeypatch):
+    from fal.dev.errors import DevError
+
+    box = _destroy_box(monkeypatch)
+
+    with pytest.raises(DevError, match="--yes needs --name"):
+        box_commands.cmd_destroy(_destroy_args(yes=True, name=None))
+    box.destroy.assert_not_called()
+
+
+def test_list_does_not_remember_the_team(monkeypatch):
+    from fal.dev import inventory
+
+    seen = {}
+
+    def fake_resolve(team, app, host, *, remember=True):
+        seen["remember"] = remember
+        return MagicMock(fal_team=team, runs_as="team t")
+
+    monkeypatch.setattr(box_commands, "resolve_account", fake_resolve)
+    monkeypatch.setattr(inventory, "list_boxes", lambda *a, **k: [])
+    monkeypatch.setattr(box_commands, "SyncServerlessClient", MagicMock())
+    args = parse_args(["dev", "list", "--team", "t"])
+    args.console = MagicMock()
+
+    box_commands.cmd_list(args)
+
+    assert seen["remember"] is False
+
+
+def test_destroy_without_a_terminal_requires_yes(monkeypatch):
+    from fal.dev.errors import DevError
+
+    box = _destroy_box(monkeypatch)
+    monkeypatch.setattr(box_commands.sys, "stdin", MagicMock(isatty=lambda: False))
+
+    with pytest.raises(DevError, match="--yes"):
+        box_commands.cmd_destroy(_destroy_args())
+    box.destroy.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "typed, deleted", [("gone", True), ("nope", False), ("  gone ", True)]
+)
+def test_destroy_on_a_terminal_needs_the_box_name_typed(monkeypatch, typed, deleted):
+    from fal.dev.errors import DevError
+
+    box = _destroy_box(monkeypatch)
+    monkeypatch.setattr(box_commands.sys, "stdin", MagicMock(isatty=lambda: True))
+    monkeypatch.setattr(box_commands.Prompt, "ask", lambda *a, **k: typed)
+
+    if deleted:
+        box_commands.cmd_destroy(_destroy_args())
+        box.destroy.assert_called_once()
+    else:
+        with pytest.raises(DevError, match="cancelled"):
+            box_commands.cmd_destroy(_destroy_args())
+        box.destroy.assert_not_called()
+
+
+def test_destroy_refuses_what_is_not_a_devbox(monkeypatch):
+    from fal.dev.errors import DevError
+
+    box = _destroy_box(monkeypatch, app="dev-other")
+
+    with pytest.raises(DevError, match="not a dev box"):
+        box_commands.cmd_destroy(_destroy_args(yes=True))
+    box.destroy.assert_not_called()
+
+
+def test_destroy_of_a_missing_box_is_an_error(monkeypatch):
+    from fal.dev.errors import DevError
+
+    box = _destroy_box(monkeypatch, exists=False)
+
+    with pytest.raises(DevError, match="no box named"):
+        box_commands.cmd_destroy(_destroy_args(yes=True))
+    box.destroy.assert_not_called()
+
+
+def test_box_destroy_refuses_non_devbox_apps_and_keeps_the_volume(monkeypatch):
+    from fal.dev.app import deploy
+    from fal.dev.errors import DevError
+    from tests.unit.dev.fakes import make_box
+
+    box = make_box()
+    calls = []
+    monkeypatch.setattr(
+        deploy, "delete_app", lambda *a, **k: calls.append(a) or (["r"], True)
+    )
+
+    assert box.destroy() == (["r"], True)
+    assert calls[0][0] == "devbox-demo"
+    box.app = "dev-other"
+    with pytest.raises(DevError, match="not a dev box"):
+        box.destroy()
+
+
+def test_down_points_at_destroy(monkeypatch):
+    box = MagicMock()
+    monkeypatch.setattr(box_commands, "get_box", lambda args: box)
+    args = _destroy_args(yes=True, no_save=False)
+
+    box_commands.cmd_down(args)
+
+    assert "fal dev destroy" in args.console.print.call_args.args[0]
+
+
+def test_status_json_prints_the_dash_snapshot_and_exits_zero(monkeypatch):
+    from fal.dev.cli import summary
+
+    box = MagicMock()
+    monkeypatch.setattr(box_commands, "get_box", lambda args: box)
+    snap = MagicMock()
+    monkeypatch.setattr(summary, "snapshot", lambda b: snap)
+    monkeypatch.setattr(
+        "fal.dev.cli.dash.payload", lambda b, s: '{"info": {"state": "stopped"}}'
+    )
+    args = parse_args(["dev", "status", "--json"])
+    args.console = MagicMock()
+
+    assert box_commands.cmd_status(args) is None
+    args.console.print_json.assert_called_once_with('{"info": {"state": "stopped"}}')
+
+
+def test_list_prints_json_with_the_remembered_box(monkeypatch):
+    import json
+
+    from fal.dev import inventory
+
+    row = inventory.BoxRow(
+        "a", "devbox-a", "STOPPED", "GPU-H100", None, None, True, "devbox-a"
+    )
+    other = inventory.BoxRow(
+        "b", "devbox-b", "STOPPED", None, None, None, True, "devbox-b"
+    )
+    monkeypatch.setattr(inventory, "list_boxes", lambda *a, **k: [row, other])
+    monkeypatch.setattr(box_commands, "SyncServerlessClient", MagicMock())
+    monkeypatch.setattr(box_commands, "remembered_name", lambda args: "b")
+    args = parse_args(["dev", "list", "--json"])
+    args.console = MagicMock()
+
+    box_commands.cmd_list(args)
+
+    out = json.loads(args.console.print_json.call_args.args[0])
+    assert [(r["name"], r["remembered"]) for r in out] == [("a", False), ("b", True)]
+
+
+def test_hold_until_reads_the_hold_and_raises_on_garbage(monkeypatch):
+    import time as time_module
+
+    from fal.dev.errors import DevError
+    from tests.unit.dev.fakes import make_box, make_runner
+
+    box = make_box([make_runner("r1")])
+    outputs = iter(
+        [
+            (0, f"{time_module.time() + 600}\n"),
+            (0, "0\n"),
+            (0, "oops"),
+            (1, "sh: error"),
+        ]
+    )
+    monkeypatch.setattr(box, "run", lambda *a, **k: next(outputs))
+
+    assert box.hold_until() > time_module.time()
+    assert box.hold_until() is None
+    for _ in range(2):
+        with pytest.raises(DevError, match="could not read the hold"):
+            box.hold_until()

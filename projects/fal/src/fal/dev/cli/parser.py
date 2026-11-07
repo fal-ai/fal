@@ -397,7 +397,30 @@ def _add_box_commands(subparsers, parents) -> None:
             "(needed when there is no terminal to ask on)."
         ),
     )
-    add_box("status", "Show whether the box is running.")
+    p = add_box("status", "Show whether the box is running.")
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the same snapshot as `fal dev dash --json` and exit.",
+    )
+    add(
+        subparsers,
+        "box",
+        parents,
+        "list",
+        "List the dev boxes of your account or team.",
+    ).add_argument(
+        "--json", action="store_true", help="Print a JSON list, one object per box."
+    )
+    p = add_box(
+        "destroy",
+        "Delete the box's app. Its /data volume is kept: there is no delete API yet.",
+    )
+    p.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip typing the box name to confirm (needed without a terminal).",
+    )
     add_box(
         "shell",
         "Open an interactive shell on the box.",

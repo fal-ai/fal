@@ -60,7 +60,9 @@ def key_account() -> Account | None:
     return Account(nickname, False, via_key=True)
 
 
-def resolve_account(explicit: str | None, app: str, host: str | None) -> Account:
+def resolve_account(
+    explicit: str | None, app: str, host: str | None, *, remember: bool = True
+) -> Account:
     """--team, else the box's remembered team, else your personal account.
 
     A team is remembered for the box once it has proved to be one of yours.
@@ -86,7 +88,7 @@ def resolve_account(explicit: str | None, app: str, host: str | None) -> Account
                 f"--team {personal['nickname']} for your personal account"
             )
         raise DevError(message)
-    if explicit:
+    if explicit and remember:
         # Best effort: a read-only home must not break the command.
         with contextlib.suppress(OSError):
             state.update_box(app, host, team=found["nickname"])

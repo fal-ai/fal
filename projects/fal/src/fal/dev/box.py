@@ -185,6 +185,35 @@ class _HoldUntilMarker:
         self.out.flush()
 
 
+def live_code(app: AliasInfo | None) -> str:
+    """A box with a live runner is stopping once it is no longer armed."""
+    return "running" if app and app.min_concurrency else "stopping"
+
+
+def derive_state(
+    app: AliasInfo | None, runners: list[RunnerInfo], live: str | None = None
+) -> tuple[str, RunnerInfo | None]:
+    """The box's state code and its newest runner that is up or on its way.
+
+    One rule for `Box.state()` and `fal dev list`, so they cannot disagree.
+    `live` is the code for a box with a live runner (default: `live_code(app)`).
+    """
+    if app is None:
+        return "stopped", None  # never deployed: no runners
+    up = newest_live(runners)
+    if up:
+        return (live or live_code(app)), up[0]
+    pending = newest_first([r for r in runners if r.state not in FINAL_STATES])
+    if not pending:
+        return "stopped", None
+    states = {r.state for r in pending}
+    if RunnerState.CRASH_BACKOFF in states:
+        return "failed", pending[0]
+    if states <= STOPPING_STATES:
+        return "stopping", pending[0]
+    return "starting", pending[0]
+
+
 @dataclass(frozen=True)
 class BoxState:
     """What the platform says about the box (not the box itself)."""
@@ -293,24 +322,12 @@ class Box:
     def state(self) -> BoxState:
         app = self.app_info()
         if app is None:
-            return BoxState("stopped", None, None)  # never deployed: no runners
-        runners = self.runners()
-        live = newest_live(runners)
-        if live:
-            return BoxState(self._live_code(app), app, live[0])
-        pending = newest_first([r for r in runners if r.state not in FINAL_STATES])
-        if not pending:
-            return BoxState("stopped", app, None)
-        states = {r.state for r in pending}
-        if RunnerState.CRASH_BACKOFF in states:
-            return BoxState("failed", app, pending[0])
-        if states <= STOPPING_STATES:
-            return BoxState("stopping", app, pending[0])
-        return BoxState("starting", app, pending[0])
+            return BoxState("stopped", None, None)
+        code, runner = derive_state(app, self.runners(), self._live_code(app))
+        return BoxState(code, app, runner)
 
     def _live_code(self, app: AliasInfo | None) -> str:
-        """A box with a live runner is stopping once it is no longer armed."""
-        return "running" if app and app.min_concurrency else "stopping"
+        return live_code(app)
 
     def require_runner(self) -> str:
         live = newest_live(self.runners())
@@ -812,6 +829,41 @@ class Box:
                 f"could not clear the hold: {output.strip() or f'exit {code}'}"
             )
         return code == 0
+
+    def hold_until(self, timeout: float = 10) -> float | None:
+        """When the active hold ends (epoch seconds); None if there is none.
+
+        Reads the hold file on the live runner, so a box that is not up has none.
+        """
+        live = newest_live(self.runners())
+        if not live:
+            return None
+        script = 'cat "$0" 2>/dev/null || echo 0'
+        code, output = self.run(
+            live[0].runner_id,
+            ["sh", "-c", script, config.HOLD_FILE],
+            timeout=timeout,
+        )
+        try:
+            if code != 0:
+                raise ValueError(output)
+            until = float(output.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            raise DevError(
+                f"could not read the hold: {output.strip()[:100]!r}"
+            ) from None
+        return until if until > time.time() else None
+
+    def destroy(self) -> tuple[list[str], bool]:
+        """Kill the runners and delete the app. Its volume is kept: there is no API.
+
+        Returns the killed runner ids and whether the app still existed.
+        """
+        from fal.dev.app.deploy import delete_app
+
+        if not self.app.startswith(config.APP_PREFIX):
+            raise DevError(f"refusing to delete {self.app!r}: not a dev box")
+        return delete_app(self.app, self.host, self.account.fal_team)
 
     def ssh_proxy(self, timeout: int) -> int:
         """SSH ProxyCommand: carry the SSH connection over runner exec.
