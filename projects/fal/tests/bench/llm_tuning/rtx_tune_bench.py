@@ -645,7 +645,7 @@ def cmd_compare(_args):
         header = (
             f"{'label':<22}{'floor':<7}"
             f"{f'ttft95@{FLOOR_LEVEL}':>9}{f'tok/s@{FLOOR_LEVEL}':>9}"
-            f"{'agg@max':>9}{'$/1M':>8}{'$/task':>10}{'  at':>5}"
+            f"{'agg@max':>9}{'$/1M':>8}{'$/task':>12}{'at':>5}"
         )
         print(header)
         print("-" * len(header))
@@ -669,7 +669,7 @@ def cmd_compare(_args):
                 f"{str(gate.get('decode_tok_s_p50')):>9}"
                 f"{str(top.get('agg_out_tok_s')):>9}"
                 f"{str(best['usd_per_1m_out']) if best else '-':>8}"
-                f"{task_cell:>10}"
+                f"{task_cell:>12}"
                 f"{str(best['streams']) if best else '-':>5}"
             )
         scored = [

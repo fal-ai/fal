@@ -43,18 +43,21 @@ ENGINE_ARGS = [
     "--enable-auto-tool-choice", "--tool-call-parser", "qwen3_coder",
     "--reasoning-parser", "qwen3",
     "--language-model-only",
-    # Overlap the scheduler's CPU work with GPU execution. Decode tok/s at 32
-    # streams sits near the floor, and per-step overhead is what caps it.
+    # Overlap the scheduler's CPU work with GPU execution. No measurable win on
+    # its own, kept because it is free and carries no quality risk.
     "--async-scheduling",
-    # Provisional. vLLM picks FLASH_ATTN (FlashAttention 2) on SM120 out of
-    # FLASH_ATTN, FLASHINFER, TRITON_ATTN and FLEX_ATTENTION. At a 12k agent
-    # prompt and 8 streams, the only operating point measured that holds the
-    # latency floor, FlashInfer is about 2% ahead. The 8% gap at 32 streams is
-    # real throughput but neither backend holds the floor there. One sample
-    # each and run order is not controlled for, so this is not recipe material
-    # yet. The flag is the only way in: the VLLM_ATTENTION_BACKEND env var is
-    # gone in 0.32 and only warns. See ai-designs/2026-11-06-rtx-tuning-loop.md.
+    # vLLM picks FLASH_ATTN (FlashAttention 2) on SM120 out of FLASH_ATTN,
+    # FLASHINFER, TRITON_ATTN and FLEX_ATTENTION. FlashInfer is about 2% ahead
+    # at the gate concurrency, one sample each, so provisional. The flag is the
+    # only way in: the VLLM_ATTENTION_BACKEND env var is gone in 0.32 and only
+    # warns.
     "--attention-backend", "FLASHINFER",
+    # Three flags measured on a real box and rejected, each with the number
+    # that rejected it. Full write-up in ai-designs/2026-11-06-rtx-tuning-loop.md.
+    #   --kv-cache-dtype fp8            13% less throughput, TTFT p95 nearly 2x
+    #   --max-num-batched-tokens 16384  a wash; the prefix cache hits 98%, so
+    #                                   only ~217 tokens per prompt are prefilled
+    #   --speculative-config mtp        TTFT p95 60 s; decode alone looked better
 ]
 
 
