@@ -1,13 +1,9 @@
 # >>> devbox >>>
-export DEVBOX_WORKSPACE="$WORKSPACE"
-export DEVBOX_WORK="$WORK"
-export CLAUDE_CONFIG_DIR="$CLAUDE_DIR"
-export HISTFILE="$WORKSPACE/.bash_history"
-export HISTSIZE=100000
 [ -f "$WARNING_FILE" ] && cat "$WARNING_FILE"
-# Default prompt: box, GPU, path, git branch. Set before .devboxrc is sourced, so a
-# PS1 set there wins.
 if [ -n "$PS1" ]; then
+  printf '\e[2mrc file: ~/.devboxrc (%s/.devboxrc). /data is cold after a restart: copy weights you need fast to %s.\e[0m\n' "$DEVBOX_WORKSPACE" "$DEVBOX_WORK"
+  # Default prompt: box, GPU, path, git branch. Set before .devboxrc is sourced, so
+  # a PS1 set there wins.
   __devbox_gpu() {
     local cache=/tmp/devbox-gpu-short
     if [ ! -s "$cache" ]; then
@@ -26,15 +22,6 @@ if [ -n "$PS1" ]; then
   __DEVBOX_GPU=$(__devbox_gpu)
   PROMPT_DIRTRIM=3
   PS1='\[\e[1;35m\]$BOX_NAME\[\e[0m\]${__DEVBOX_GPU:+ \[\e[32m\]$__DEVBOX_GPU\[\e[0m\]} \[\e[34m\]\w\[\e[0m\]\[\e[33m\]$(__devbox_git)\[\e[0m\] \$ '
-  # /data is a network volume: a venv there copies every file over the network.
-  uv() {
-    case "$PWD/:$1" in
-      /data/*:venv | /data/*:sync | /data/*:pip)
-        printf '\e[33mnote:\e[0m %s is on the /data network volume, so environments there are slow.\n      Keep them in %s (local disk, saved with the box) and put models and data on /data.\n' "$PWD" "$WORK" >&2
-        ;;
-    esac
-    command uv "$@"
-  }
   # --starship: setup() copied the local config here and installed starship.
   if [ -f "$HOME/.config/starship.toml" ] && command -v starship >/dev/null 2>&1; then
     eval "$(starship init bash)"

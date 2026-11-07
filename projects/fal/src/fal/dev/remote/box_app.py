@@ -95,6 +95,7 @@ SCRIPTS = Path(__file__).with_name("scripts")
 SAVE_SCRIPT = (SCRIPTS / "devbox-save.sh").read_text()
 HOT_SCRIPT = (SCRIPTS / "devbox-hot.sh").read_text()
 BASHRC_BLOCK = (SCRIPTS / "bashrc.sh").read_text()
+BASHRC_ENV_BLOCK = (SCRIPTS / "bashrc_env.sh").read_text()
 SSHD_TEMPLATE = (SCRIPTS / "sshd_config").read_text()
 # Last request to a /hot route; counts as activity for idle shutdown.
 _last_hot_request = 0.0
@@ -569,8 +570,25 @@ def _prepare_home() -> None:
             link.unlink(missing_ok=True)
             link.symlink_to(target)
 
+    # Easy to find: the real file lives with the box on /data.
+    (WORKSPACE / ".devboxrc").touch()
+    rc_link = home / ".devboxrc"
+    if rc_link.is_symlink() or not rc_link.exists():
+        rc_link.unlink(missing_ok=True)
+        rc_link.symlink_to(WORKSPACE / ".devboxrc")
+
     bashrc = home / ".bashrc"
     existing = bashrc.read_text() if bashrc.exists() else ""
+    if "# >>> devbox-env >>>" not in existing:
+        # At the top: stock .bashrc files return early for non-interactive shells.
+        env_block = _fill(
+            BASHRC_ENV_BLOCK,
+            WORKSPACE=WORKSPACE,
+            WORK=LOCAL_WORK,
+            CLAUDE_DIR=CLAUDE_CONFIG_DIR,
+        )
+        existing = f"{env_block}\n{existing}"
+        bashrc.write_text(existing)
     if "# >>> devbox >>>" not in existing:
         block = _fill(
             BASHRC_BLOCK,
