@@ -27,6 +27,7 @@ from fal.dev.remote.protocol import (
     STOPPED_PHASES,
     redact,
 )
+from fal.dev.transport import BoxUnreachable
 
 POLL_SECONDS = 1.0
 # Calls that copy files or wait for a runner, and `start`'s own call.
@@ -105,27 +106,53 @@ def log_position(session: Session) -> int:
     return call(session, "logs", {"lines": 0}, timeout=SLOW_TIMEOUT)["total"]
 
 
+class AppFailed(DevError):
+    """The app's own setup() or process failed; the box is up, the code is wrong."""
+
+
 def wait_ready(
     session: Session, *, after: int | None = None, timeout: float = SETUP_TIMEOUT
 ) -> dict[str, Any]:
-    """Stream the app's log until it is ready, or raise if it stops."""
+    """Stream the app's log until it is ready, or raise if it stops.
+
+    A poll the box does not answer (no connect, gateway error) is skipped, not
+    fatal: setup() keeps running on the box, so polling goes on until the timeout.
+    """
     deadline = time.monotonic() + timeout
     if after is None:
         after = log_position(session)
+    unreachable: BoxUnreachable | None = None
     while time.monotonic() < deadline:
-        new = call(session, "logs", {"after": after})
-        print_log_lines(new["lines"])
-        after = new["total"]
-        state = call(session, "status")
+        try:
+            new = call(session, "logs", {"after": after})
+            print_log_lines(new["lines"])
+            after = new["total"]
+            state = call(session, "status")
+        except BoxUnreachable as exc:
+            unreachable = exc
+            time.sleep(POLL_SECONDS)
+            continue
+        unreachable = None
         phase = state["phase"]
         if phase == "ready":
             return state
-        if phase in STOPPED_PHASES:
+        if phase == "idle":
+            # A new runner without the app: not the code's fault, and nothing
+            # here will boot it. The caller stops the box.
             raise DevError(
-                f"The app did not start ({phase} {state['detail']}). "
-                "Fix the code and run `fal dev app restart`."
+                f"The box has no app running (idle {state['detail']}): its runner "
+                "was probably replaced. Boot it again with `fal dev app restart`, or "
+                "start a new box with `fal dev app start`."
+            )
+        if phase in STOPPED_PHASES:
+            raise AppFailed(
+                f"The app did not start ({phase} {state['detail']}). The runner is "
+                "still up and billing: fix the code and run `fal dev app restart`, "
+                "or release it with `fal dev app stop`."
             )
         time.sleep(POLL_SECONDS)
+    if unreachable is not None:
+        raise unreachable
     raise DevError("Timed out waiting for setup() to finish.")
 
 

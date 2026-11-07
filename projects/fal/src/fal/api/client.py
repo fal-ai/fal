@@ -385,9 +385,15 @@ class VolumesNamespace:
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
-    def create(self, name: str) -> str:
-        """Create a volume and return its canonical (lowercase) name."""
-        return volumes_api.create_volume(self.client, name)
+    def create(self, name: str, *, connect_timeout: float | None = None) -> str:
+        """Create a volume and return its canonical (lowercase) name.
+
+        `connect_timeout` shortens the wait to open a connection (default: the
+        client's overall timeout), for callers that retry a failed connect.
+        """
+        return volumes_api.create_volume(
+            self.client, name, connect_timeout=connect_timeout
+        )
 
 
 class _EnvironmentsNamespace:

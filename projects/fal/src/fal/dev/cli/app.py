@@ -19,7 +19,12 @@ from fal.dev.box import log
 from fal.dev.dash import waiting
 from fal.dev.errors import DevError
 from fal.dev.media import preview
-from fal.dev.remote.protocol import BODY_TAIL_CHARS, check_session_env, redact
+from fal.dev.remote.protocol import (
+    BODY_TAIL_CHARS,
+    STOPPED_PHASES,
+    check_session_env,
+    redact,
+)
 from fal.dev.state import STATE_DIR
 from fal.dev.team import announce, confirm_deploy, key_account, resolve_account
 
@@ -78,6 +83,43 @@ def _load_data(data: str | None) -> Any:
     return json.loads(data)
 
 
+STOP_TRIES = 3
+
+
+def _stop_orphan(session: Session, cause: BaseException) -> None:
+    """Stop a box that was allocated but cannot be used, so it does not keep billing."""
+    reason = (
+        "interrupted"
+        if isinstance(cause, KeyboardInterrupt)
+        else (str(cause).splitlines() or [type(cause).__name__])[0]
+    )
+    for attempt in range(1, STOP_TRIES + 1):
+        try:
+            deploy.stop_box(session)
+        except (Exception, KeyboardInterrupt) as exc:
+            # A second Ctrl-C, at the stop or while waiting to try again, ends the
+            # attempts but still says what is left.
+            if attempt < STOP_TRIES and not isinstance(exc, KeyboardInterrupt):
+                try:
+                    time.sleep(2 * attempt)
+                    continue
+                except KeyboardInterrupt:
+                    pass
+            console.print(
+                escape(
+                    f"could not stop box {session.name} "
+                    f"({str(exc) or type(exc).__name__}); it may still be billing. "
+                    "Run: fal dev app stop"
+                ),
+                markup=True,
+            )
+            return
+        else:
+            console.print(escape(f"stopped box {session.name}: {reason}"), markup=True)
+            session.delete()
+            return
+
+
 def cmd_start(args):
     session_env = check_session_env(list(args.session_env or []))
     file_path, class_name, app_data = deploy.resolve_app(args.app_ref)
@@ -134,7 +176,13 @@ def cmd_start(args):
         console.print(
             f"Waiting for a runner, then uploading {escape(session.root)} ..."
         )
-        status = client.boot(session)
+        try:
+            status = client.boot(session)
+        except client.AppFailed:
+            raise  # the box is up and keeps the code to fix: `restart` reuses it
+        except BaseException as exc:
+            _stop_orphan(session, exc)
+            raise
     booted = time.perf_counter() - started - deployed
     endpoints = escape(str(status.get("app", {}).get("endpoints")))
     console.print(
@@ -571,6 +619,11 @@ def cmd_status(args):
         info["remote"] = client.status(session)
     except DevError as exc:
         info["remote"] = {"error": str(exc)}
+    if info["remote"].get("phase") in STOPPED_PHASES:
+        info["billing"] = (
+            "the runner is up with no app running on it and is billing: run "
+            "`fal dev app restart` to boot it, or `fal dev app stop`"
+        )
     print(json.dumps(info, indent=2, default=str))
 
 

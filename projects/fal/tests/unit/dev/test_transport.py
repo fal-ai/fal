@@ -1,17 +1,22 @@
 def test_post_json_keeps_payloads_out_of_request_storage(monkeypatch):
     import httpx
 
-    from fal.dev.transport import post_json
+    from fal.dev import transport
 
     seen = {}
 
-    def fake_post(url, **kwargs):
-        seen.update(url=url, **kwargs)
+    def handler(request):
+        seen.update(url=str(request.url), headers=request.headers, body=request.content)
         return httpx.Response(200)
 
-    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(
+        transport, "_pool", [httpx.Client(transport=httpx.MockTransport(handler))]
+    )
 
-    post_json("https://fal.run/a/b/hot/files", {"x": 1}, {"Authorization": "Bearer t"})
+    transport.post_json(
+        "https://fal.run/a/b/hot/files", {"x": 1}, {"Authorization": "Bearer t"}
+    )
 
-    assert seen["json"] == {"x": 1}
-    assert seen["headers"] == {"Authorization": "Bearer t", "X-Fal-Store-IO": "0"}
+    assert seen["body"] == b'{"x":1}'
+    assert seen["headers"]["authorization"] == "Bearer t"
+    assert seen["headers"]["x-fal-store-io"] == "0"

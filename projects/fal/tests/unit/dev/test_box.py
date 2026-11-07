@@ -367,7 +367,8 @@ def test_deploy_mounts_the_box_volume(monkeypatch):
 
     message = box.deploy()
 
-    box.client.volumes.create.assert_called_once_with("devbox-demo")
+    box.client.volumes.create.assert_called_once()
+    assert box.client.volumes.create.call_args.args == ("devbox-demo",)
     assert seen["volume"] == "devbox-demo"
     assert "volume devbox-demo" in message
 

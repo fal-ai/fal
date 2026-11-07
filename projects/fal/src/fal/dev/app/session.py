@@ -23,12 +23,13 @@ from fal.dev.account import Account
 from fal.dev.errors import DevError
 from fal.dev.remote.protocol import ROUTE_PREFIX, TOKEN_FIELD
 from fal.dev.state import STATE_DIR
-from fal.dev.transport import post_json
+from fal.dev.transport import BoxUnreachable, post_json
 
 SESSIONS_DIR = STATE_DIR / "apps"
 # Every box is named with this prefix, so `start` and `stop` can only ever
 # replace or delete dev boxes, never a real app.
 NAME_PREFIX = "dev-"
+GATEWAY_ERRORS = (502, 503, 504)
 
 
 class NoSession(DevError):
@@ -179,13 +180,18 @@ def call(
             {**(payload or {}), TOKEN_FIELD: session.token},
             get_credentials(team=session.account.fal_team).to_headers(),
             timeout=timeout,
+            step=f"calling the dev box ({action})",
         )
     except httpx.HTTPError as exc:
-        raise DevError(f"Could not reach the dev box: {exc}") from exc
+        raise BoxUnreachable(f"Could not reach the dev box: {exc}") from exc
     if response.status_code >= 400:
         try:
             detail = response.json().get("detail", response.text)
         except ValueError:
             detail = response.text
-        raise DevError(f"{action} failed ({response.status_code}): {detail}")
+        failed = f"{action} failed ({response.status_code}): {detail}"
+        # A gateway that gave up, not the box's answer.
+        if response.status_code in GATEWAY_ERRORS:
+            raise BoxUnreachable(failed)
+        raise DevError(failed)
     return response.json()
