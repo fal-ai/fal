@@ -87,8 +87,14 @@ def test_a_long_wait_rings_the_bell_and_a_short_one_does_not():
         assert ("\a" in out.getvalue()) is bell
 
 
+class _BoxBase:
+    name = "demo"
+    account = SimpleNamespace(personal=True, team="troy")
+    progress = None
+
+
 def test_ctrl_c_during_up_cancels_and_says_it_stopped_billing(monkeypatch):
-    class Box:
+    class Box(_BoxBase):
         start_cancelled = True
 
         def app_info(self):
@@ -135,7 +141,7 @@ def test_status_fails_loudly_when_the_platform_does_not_answer(monkeypatch):
 def test_up_says_the_box_is_billing_when_its_details_cannot_be_read(monkeypatch):
     from fal.dev.errors import DevError
 
-    class Box:
+    class Box(_BoxBase):
         start_cancelled = None
 
         def app_info(self):
@@ -167,7 +173,7 @@ def test_up_says_the_box_is_billing_when_its_details_cannot_be_read(monkeypatch)
 def test_once_the_box_is_up_the_hint_no_longer_promises_to_stop_billing(monkeypatch):
     hints = []
 
-    class Box:
+    class Box(_BoxBase):
         start_cancelled = None
 
         def app_info(self):
@@ -175,24 +181,12 @@ def test_once_the_box_is_up_the_hint_no_longer_promises_to_stop_billing(monkeypa
 
         def up(self, timeout, machine_type, on_wait, starship=False):
             on_wait("pending")
-
-    real = box_cli.Loading
-
-    class Spy(real):
-        def update(self, status):
-            super().update(status)
-            hints.append(self.hint)
+            hints.append(self.progress.hint)
 
     def read(box):
-        hints.append(spy_holder[0].hint)
+        hints.append(box.progress.hint)
         raise KeyboardInterrupt
 
-    spy_holder = []
-    monkeypatch.setattr(
-        box_cli,
-        "Loading",
-        lambda *a, **k: spy_holder.append(Spy(*a, **k)) or spy_holder[0],
-    )
     monkeypatch.setattr(box_cli, "get_box", lambda args: Box())
     monkeypatch.setattr(box_cli, "_cleanup_on_hangup", lambda: None)
     monkeypatch.setattr(summary, "snapshot", read)
