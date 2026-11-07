@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 from rich.console import Console
@@ -6,6 +7,7 @@ from rich.console import Console
 from dev.app.fakes import make_session
 from fal.dev import config
 from fal.dev.dash import app as app_dash
+from fal.dev.dash import model, view
 from fal.dev.dash.model import Snapshot
 
 from .test_dash import NOW, _state
@@ -153,3 +155,62 @@ def test_the_probe_finds_the_app_process_not_itself(tmp_path, monkeypatch):
     assert app_probe._app_process(marker, str(tmp_path)) is None
     proc(12, "/usr/bin/python", "-m", marker, "--port", "8181")
     assert app_probe._app_process(marker, str(tmp_path))["pid"] == 12
+
+
+def _screen_frame(height: int, logs: int = 80) -> str:
+    box = app_dash.AppBox(make_session())
+    snapshot = Snapshot(
+        state=_state("running"),
+        state_at=NOW,
+        probe=_probe(),
+        probe_at=NOW,
+        probe_ms=400,
+        logs=[
+            {"timestamp": "", "level": "INFO", "message": f"line {i:03d}"}
+            for i in range(logs)
+        ],
+    )
+    console = Console(
+        record=True, width=150, height=height, force_terminal=False, color_system=None
+    )
+    console.print(app_dash.render(snapshot, box, NOW, screen=True))
+    return console.export_text()
+
+
+def test_logs_panel_fills_the_screen_and_grows_with_it():
+    short, tall = _screen_frame(50), _screen_frame(80)
+    assert short.count("line 0") < tall.count("line 0")
+    assert "line 079" in tall and "line 079" in short
+    # The panel ends on the row above the footer: no gap, nothing pushed off.
+    rows = tall.splitlines()
+    assert rows[-4].startswith("╰") and "r restart app" in rows[-3]
+
+
+def test_logs_without_a_screen_stay_at_the_fixed_tail():
+    box = app_dash.AppBox(make_session())
+    snapshot = Snapshot(
+        state=_state("running"),
+        state_at=NOW,
+        probe=_probe(),
+        probe_at=NOW,
+        logs=[{"level": "INFO", "message": f"line {i:03d}"} for i in range(80)],
+    )
+    console = Console(record=True, width=150, force_terminal=False, color_system=None)
+    console.print(app_dash.render(snapshot, box, NOW))
+    assert console.export_text().count("line 0") == view.LOGS_SHOWN
+
+
+def test_fetch_count_follows_the_terminal_height(monkeypatch):
+    monkeypatch.delenv("LINES", raising=False)
+    monkeypatch.setattr(
+        "shutil.get_terminal_size", lambda *a, **k: os.terminal_size((150, 80))
+    )
+    assert model.log_rows() == 80
+    monkeypatch.setattr(
+        "shutil.get_terminal_size", lambda *a, **k: os.terminal_size((150, 20))
+    )
+    assert model.log_rows() == model.LOG_LINES
+    monkeypatch.setattr(
+        "shutil.get_terminal_size", lambda *a, **k: os.terminal_size((150, 500))
+    )
+    assert model.log_rows() == model.LOG_ROWS_MAX

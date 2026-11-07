@@ -11,6 +11,7 @@ import contextlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -31,10 +32,20 @@ HOLD_HOURS = 1.0
 IDLE_WARNING_SECONDS = 600
 LOG_MINUTES = 30
 LOG_LINES = 30
+# The history request is several times this (the app dash filters its own polling).
+LOG_ROWS_MAX = 200
 STATE_INTERVAL = 15.0
 LOG_INTERVAL = 10.0
 COST_INTERVAL = 60.0
 HISTORY_SECONDS = 300.0
+
+
+def log_rows() -> int:
+    """How many log lines to fetch: enough to fill a full-height Logs panel,
+    read at each poll so a resized terminal is followed."""
+    return min(LOG_ROWS_MAX, max(LOG_LINES, shutil.get_terminal_size().lines))
+
+
 # Output images `fal dev hot run` saves next to the project, newest last.
 OUTPUT_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 # List price in USD per runner-hour by machine type, for the cost estimate shown
@@ -422,7 +433,7 @@ class Poller:
         if now >= self._next_logs:
             since = datetime.now(timezone.utc) - timedelta(minutes=LOG_MINUTES)
             try:
-                logs = self.box.logs(runner_id, LOG_LINES, since)
+                logs = self.box.logs(runner_id, log_rows(), since)
                 self.update(logs=clean(logs), errors={"logs": None})
             except Exception as exc:
                 self.update(errors={"logs": _short(exc)})

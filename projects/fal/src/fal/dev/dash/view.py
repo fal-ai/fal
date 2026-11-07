@@ -63,7 +63,7 @@ KEY_HINTS = [
     ("q", "quit", False),
 ]
 FOOTER_LINES = 3
-LOGS_SHOWN = 8
+LOGS_SHOWN = 8  # minimum, and the whole tail when there is no screen
 SPARK_WIDTH = 30
 # Free space below these turns a disk row yellow, then red.
 DISK_LOW_BYTES = (20 * 2**30, 5 * 2**30)
@@ -577,14 +577,14 @@ def _log_clock(stamp: str) -> str:
     return parsed.astimezone().strftime("%H:%M:%S")
 
 
-def logs_panel(snapshot: Snapshot) -> RenderableType:
+def logs_panel(snapshot: Snapshot, shown: int = LOGS_SHOWN) -> RenderableType:
     logs = [
         log
         for log in snapshot.logs
         if not str(log.get("message", "")).startswith(NOISE_PREFIXES)
     ]
     body = Text()
-    for log in logs[-LOGS_SHOWN:]:
+    for log in logs[-shown:]:
         level = str(log.get("level", "")).upper()
         style = (
             ERROR
@@ -605,6 +605,28 @@ def logs_panel(snapshot: Snapshot) -> RenderableType:
         f"  last {LOG_MINUTES} min", style=f"default {MUTED}"
     )
     return _panel(body, title)
+
+
+class WithLogs:
+    """The panels above, then a Logs panel that fills the rows left below them.
+
+    On a screen the height is known, so the tail grows with the terminal (never
+    below LOGS_SHOWN); without one it stays at LOGS_SHOWN lines.
+    """
+
+    def __init__(self, parts: list[RenderableType], snapshot: Snapshot):
+        self.parts = parts
+        self.snapshot = snapshot
+
+    def __rich_console__(self, console, options):
+        above = Group(*self.parts)
+        shown = LOGS_SHOWN
+        if options.height is not None:
+            lines = console.render_lines(above, options.update(height=None), pad=False)
+            # Two rows go to the panel's own border.
+            shown = max(LOGS_SHOWN, options.height - len(lines) - 2)
+        yield above
+        yield logs_panel(self.snapshot, shown)
 
 
 def footer(
@@ -687,8 +709,7 @@ def body(
         ]
     # Two panels per row when the terminal is wide enough, else stacked.
     parts.append(Columns(panels, equal=True))
-    parts.append(logs_panel(snapshot))
-    return Group(*parts)
+    return WithLogs(parts, snapshot)
 
 
 def render(

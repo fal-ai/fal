@@ -383,8 +383,7 @@ def body(
         if engine := _degraded(lambda: engine_panel(probe), "Engine"):
             panels.append(engine)
     parts.append(Columns(panels, equal=True))
-    parts.append(view.logs_panel(snapshot))
-    return Group(*parts)
+    return view.WithLogs(parts, snapshot)
 
 
 def render(
