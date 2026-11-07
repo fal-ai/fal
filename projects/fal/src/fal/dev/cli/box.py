@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import contextlib
 import signal
+import subprocess
 import sys
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fal.cli.runners import LogPrinter, print_logs, shell_session
 from fal.cli.runners import _get_runner_info as get_runner_info
 from fal.dev import config, execute
+from fal.dev import copy as file_copy
 from fal.dev.box import FINAL_STATES, newest_first, ssh_config
 from fal.dev.cli.common import get_box, note_new_box, remember_name, resolve_name
 from fal.dev.errors import DevError
@@ -284,6 +287,59 @@ def _fal_command() -> str:
 
 def cmd_ssh_config(args):
     print(ssh_config(resolve_name(args), _fal_command(), args.host, args.team))
+
+
+def _run_scp(argv: list[str]) -> int:
+    """Run scp, stopping it too when this process is interrupted or terminated."""
+    proc = subprocess.Popen(argv)
+    try:
+        return proc.wait()
+    except BaseException:
+        proc.terminate()
+        with contextlib.suppress(Exception):
+            proc.wait(timeout=5)
+        raise
+
+
+def cmd_cp(args):
+    _cleanup_on_hangup()
+    copy = file_copy.plan(args.src, args.dst)
+    file_copy.check_local(copy, args.recursive)
+    scp = file_copy.find_scp()
+    # Resolved here, without announcing the account: the proxy does it per connect.
+    name = resolve_name(args)
+    entry = ssh_config(name, _fal_command(), args.host, args.team)
+    with tempfile.TemporaryDirectory(prefix="fal-dev-cp-") as folder:
+        config_path = Path(folder) / "ssh_config"
+        config_path.write_text(entry + "\n")
+        argv = file_copy.scp_command(
+            copy, config.app_name(name), str(config_path), args.recursive, scp
+        )
+        if copy.upload:
+            size = file_copy.human_size(file_copy.tree_size(copy.local))
+            args.console.print(
+                f"[dim]uploading about {size} to {copy.remote} "
+                "(starts the box if stopped) ...[/]"
+            )
+        else:
+            args.console.print(
+                f"[dim]downloading {copy.remote} (starts the box if stopped) ...[/]"
+            )
+        code = _run_scp(argv)
+    if code != 0:
+        hint = " (could not connect; see the messages above)" if code == 255 else ""
+        raise DevError(
+            f"scp failed with exit {code}{hint}; the destination may be incomplete"
+        )
+    if copy.upload:
+        args.console.print(f"uploaded to {copy.remote}")
+        return
+    landed = file_copy.downloaded_path(copy)
+    if landed is None:
+        args.console.print(f"downloaded to {copy.local}")
+    else:
+        size = file_copy.human_size(file_copy.tree_size(landed))
+        args.console.print(f"downloaded {size} to {landed}")
 
 
 def cmd_ssh_proxy(args):
