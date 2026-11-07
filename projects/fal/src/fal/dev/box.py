@@ -50,6 +50,8 @@ RUN_TIMEOUT_SECONDS = 60
 SAVE_TIMEOUT_SECONDS = 1800
 # Credentials are rebuilt this often; building them can cost an API call.
 AUTH_TTL_SECONDS = 300
+# A failed owner lookup (for display) is tried again after this long.
+OWNER_RETRY_SECONDS = 30
 
 
 def is_network_error(exc: BaseException) -> bool:
@@ -251,6 +253,10 @@ class Box:
         self._stub = None
         self._auth: dict[str, str] = {}
         self._auth_at = 0.0
+        self._identity: str | None = None
+        self._owner: str | None = None
+        self._owner_read = False
+        self._owner_retry_at = 0.0
 
     def _say(self, message: str) -> None:
         if self.progress is not None:
@@ -314,6 +320,70 @@ class Box:
     def app_info(self) -> AliasInfo | None:
         apps = self.client.apps.list(filter=self.app)
         return next((a for a in apps if a.alias == self.app), None)
+
+    def owner_identity(self) -> str:
+        """Who you are, as stamped on boxes you deploy."""
+        from fal.dev.guard import identity
+
+        if self._identity is None:
+            self._identity = identity()
+        return self._identity
+
+    def stored_owner(self, attempts: int = 3) -> str | None:
+        """The owner stamped on the box's current deployment; None if there is none.
+
+        Read from the app's metadata over REST, so any machine sees it. Raises
+        DevError when the lookup fails: a guard that cannot look must not pass.
+        """
+        import openapi_fal_rest.api.applications.app_metadata as app_metadata
+
+        from fal.dev.guard import clean
+
+        namespace = self.account.team
+        if not namespace:
+            return None
+        for attempt in range(attempts):
+            try:
+                response = app_metadata.sync_detailed(
+                    app_user_id=namespace,
+                    app_alias_or_id=self.app,
+                    client=self.client._create_rest_client(),
+                )
+                break
+            except Exception as exc:
+                if attempt == attempts - 1:
+                    raise DevError(
+                        f"could not read who owns {self.app}: {exc}"
+                    ) from exc
+                time.sleep(2)
+        if response.status_code == 404:
+            return None
+        if response.status_code != 200 or response.parsed is None:
+            raise DevError(
+                f"could not read who owns {self.app} (HTTP {int(response.status_code)})"
+            )
+        annotations = response.parsed.additional_properties.get("annotations")
+        owner = annotations.get(config.OWNER_ANNOTATION) if annotations else None
+        return (clean(owner) or None) if owner else None
+
+    @property
+    def known_owner(self) -> str | None:
+        """The owner if `owner()` already read it; never touches the network."""
+        return self._owner
+
+    def owner(self) -> str | None:
+        """The stored owner for display, read once per session; None if unknown."""
+        if not self._owner_read:
+            if time.time() < self._owner_retry_at:
+                return None
+            try:
+                self._owner = self.stored_owner(attempts=1)
+            except Exception:
+                # Not remembered, but not retried on every poll either.
+                self._owner_retry_at = time.time() + OWNER_RETRY_SECONDS
+                return None
+            self._owner_read = True
+        return self._owner
 
     def armed(self) -> bool:
         info = self.app_info()
@@ -486,8 +556,10 @@ class Box:
         dockerfile: str | None = None,
         team_data: bool = False,
         hint: bool = True,
+        take_over: bool = False,
     ) -> str:
         from fal._version import __version__
+        from fal.dev.guard import check_limits, check_owner
 
         python = sys.version_info[:2]
         if not dockerfile and not SUPPORTED_PYTHON[0] <= python <= SUPPORTED_PYTHON[1]:
@@ -499,6 +571,14 @@ class Box:
             )
         if dockerfile and not Path(dockerfile).is_file():
             raise DevError(f"no such Dockerfile: {dockerfile}")
+        # Before anything is created or stopped: a lookup that fails fails here.
+        self.owner_identity()
+        check_owner(self, take_over=take_over)
+        existing = self.app_info()
+        current_type = (
+            existing.machine_types[0] if existing and existing.machine_types else None
+        )
+        check_limits(machine_type or current_type or config.DEFAULT_GPU, num_gpus)
         # Read first: a missing config must not fail after the box was stopped.
         starship_toml = local_starship_config() if starship else ""
         volume = None
@@ -556,6 +636,7 @@ class Box:
                     (str(BOX_APP), "DevBox"),
                     app_name=self.app,
                     auth="private",
+                    annotations={config.OWNER_ANNOTATION: self.owner_identity()},
                     # Without this the app's termination grace period, which gives
                     # teardown() time to save /work, is never set.
                     reset_scale=True,
@@ -577,6 +658,7 @@ class Box:
                 "the deploy's check runner is still shutting down; "
                 "if it lingers, run: fal dev down"
             )
+        self._owner, self._owner_read = self.owner_identity(), True
         self._finish("build")  # a deploy that logged nothing still built
         self._finish("deploy")
         next_step = (
@@ -741,7 +823,11 @@ class Box:
         machine_type: str | None = None,
         on_wait: Callable[[str], None] | None = None,
         starship: bool = False,
+        take_over: bool = False,
     ) -> RunnerInfo:
+        from fal.dev.guard import check_limits
+
+        check_limits(machine_type)
         exists = self.app_info() is not None
         if starship and exists:
             self._say(
@@ -754,7 +840,10 @@ class Box:
                     "deploying it with the default image ..."
                 )
             summary = self.deploy(
-                machine_type=machine_type, starship=starship, hint=False
+                machine_type=machine_type,
+                starship=starship,
+                hint=False,
+                take_over=take_over,
             )
             if self.progress is None:
                 log(summary)

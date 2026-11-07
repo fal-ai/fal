@@ -188,6 +188,17 @@ def _command(module: str, handler: str) -> Callable[[argparse.Namespace], object
     return run
 
 
+def _add_take_over(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--take-over",
+        action="store_true",
+        help=(
+            "Deploy over a box that another owner created. Without it a deploy "
+            "refuses; owners are recorded on each deploy."
+        ),
+    )
+
+
 def _add_yes(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--yes", action="store_true", help=YES_HELP)
 
@@ -296,14 +307,19 @@ def _add_box_commands(subparsers, parents) -> None:
         "--machine-type",
         help=(
             "Machine type, e.g. GPU-H100 "
-            f"(default: the current one, else {config.DEFAULT_GPU})."
+            f"(default: the current one, else {config.DEFAULT_GPU}). "
+            f"Limited by ${config.ENV_ALLOWED_MACHINES} (comma list); "
+            "a client-side guardrail, not enforcement."
         ),
     )
     p.add_argument(
         "--num-gpus",
         type=positive_int,
         default=config.DEFAULT_NUM_GPUS,
-        help="GPUs per box (default: %(default)s).",
+        help=(
+            "GPUs per box (default: %(default)s). Capped by "
+            f"${config.ENV_MAX_GPUS}; a client-side guardrail, not enforcement."
+        ),
     )
     p.add_argument(
         "--idle-minutes",
@@ -339,6 +355,7 @@ def _add_box_commands(subparsers, parents) -> None:
         help="Your own image, based on the default (see fal/dev/remote/Dockerfile).",
     )
     _add_yes(p)
+    _add_take_over(p)
     p.add_argument(
         "--team-data",
         action="store_true",
@@ -356,7 +373,10 @@ def _add_box_commands(subparsers, parents) -> None:
     )
     p.add_argument(
         "--machine-type",
-        help="Switch the machine type of a stopped box; it stays until changed again.",
+        help=(
+            "Switch the machine type of a stopped box; it stays until changed "
+            f"again. Limited by ${config.ENV_ALLOWED_MACHINES}."
+        ),
     )
     p.add_argument(
         "--dash",
@@ -375,6 +395,7 @@ def _add_box_commands(subparsers, parents) -> None:
         ),
     )
     _add_yes(p)
+    _add_take_over(p)
     p.add_argument(
         "--verbose",
         action="store_true",

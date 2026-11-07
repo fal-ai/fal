@@ -94,6 +94,10 @@ class _BoxBase:
     name = "demo"
     account = SimpleNamespace(personal=True, team="troy")
     progress = None
+    known_owner = None
+
+    def owner(self):
+        return None
 
 
 def test_ctrl_c_during_up_cancels_and_says_it_stopped_billing(monkeypatch):
@@ -103,7 +107,7 @@ def test_ctrl_c_during_up_cancels_and_says_it_stopped_billing(monkeypatch):
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait, starship=False):
+        def up(self, timeout, machine_type, on_wait, starship=False, take_over=False):
             on_wait("pending")
             raise KeyboardInterrupt
 
@@ -112,6 +116,7 @@ def test_ctrl_c_during_up_cancels_and_says_it_stopped_billing(monkeypatch):
     console = Console(record=True, width=100, force_terminal=False)
     args = SimpleNamespace(
         starship=False,
+        take_over=False,
         timeout=900,
         machine_type=None,
         dash=False,
@@ -146,7 +151,7 @@ def test_up_says_the_box_is_billing_when_its_details_cannot_be_read(monkeypatch)
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait, starship=False):
+        def up(self, timeout, machine_type, on_wait, starship=False, take_over=False):
             return None
 
     def fail(box):
@@ -158,6 +163,7 @@ def test_up_says_the_box_is_billing_when_its_details_cannot_be_read(monkeypatch)
     console = Console(record=True, width=200, force_terminal=False)
     args = SimpleNamespace(
         starship=False,
+        take_over=False,
         timeout=900,
         machine_type=None,
         dash=False,
@@ -178,7 +184,7 @@ def test_once_the_box_is_up_the_hint_no_longer_promises_to_stop_billing(monkeypa
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait, starship=False):
+        def up(self, timeout, machine_type, on_wait, starship=False, take_over=False):
             on_wait("pending")
             hints.append(self.progress.hint)
 
@@ -192,6 +198,7 @@ def test_once_the_box_is_up_the_hint_no_longer_promises_to_stop_billing(monkeypa
     console = Console(record=True, width=200, force_terminal=False)
     args = SimpleNamespace(
         starship=False,
+        take_over=False,
         timeout=900,
         machine_type=None,
         dash=False,

@@ -400,6 +400,9 @@ class Poller:
                 )
             except Exception as exc:
                 self.update(errors={"state": _short(exc)})
+            # After the state, so a slow lookup never delays it; the view only
+            # draws what is already known.
+            self.box.owner()
             self._next_state = now + STATE_INTERVAL
         runner_id = self.snapshot.runner_id
         if self.snapshot.cost_runner != runner_id:

@@ -25,6 +25,15 @@ ADMIN_KEY_SECRET = "DEVBOX_ADMIN_KEY"
 # Default box name when --name is not given (else your OS username).
 ENV_DEFAULT_NAME = "FAL_DEV_NAME"
 
+# Guardrails for teams sharing one account. The owner is stamped on each deploy
+# as a revision annotation, which the next deployer reads back from the app's
+# metadata. FAL_DEV_OWNER overrides who you are (for CI, or to test the guard).
+OWNER_ANNOTATION = "devbox_owner"
+ENV_OWNER = "FAL_DEV_OWNER"
+# Client-side limits on deploy: a comma list of machine types, and a GPU count.
+ENV_ALLOWED_MACHINES = "FAL_DEV_ALLOWED_MACHINES"
+ENV_MAX_GPUS = "FAL_DEV_MAX_GPUS"
+
 # Written by the box at start; `fal dev ssh-proxy` runs `sshd -i` with it.
 SSHD_CONFIG = "/tmp/devbox-ssh/sshd_config"
 
@@ -107,7 +116,8 @@ PROBE_END = "__fal_dev_dash_end__"
 # What the dashboard's probe command prints when probe.py is not installed.
 PROBE_MISSING = "__fal_dev_probe_missing__"
 
-NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+NAME_MAX = 40
+NAME_PATTERN = re.compile(rf"^[a-z0-9][a-z0-9-]{{0,{NAME_MAX - 1}}}$")
 
 
 def app_name(name: str) -> str:
