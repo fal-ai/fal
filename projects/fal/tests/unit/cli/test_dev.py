@@ -109,6 +109,37 @@ def test_dev_hot_subcommands_take_only_their_flags(monkeypatch):
 
 
 @pytest.mark.parametrize(
+    "flags",
+    [["--prompt", "a fox"], ["-p", "a=1"], ["-o", "x.png"], ["--watch", "-p", "a=1"]],
+)
+def test_dev_hot_sync_rejects_request_flags_without_watch_run(flags, capsys):
+    from fal.dev.cli import hot as hot_commands
+
+    args = parse_args(["dev", "hot", "sync", "./proj", *flags])
+    with pytest.raises(FalParserExit):
+        hot_commands.cmd_sync(args)
+    assert "only apply with --watch --run" in capsys.readouterr().err
+
+
+def test_dev_hot_sync_rejects_run_without_watch(capsys):
+    from fal.dev.cli import hot as hot_commands
+
+    args = parse_args(["dev", "hot", "sync", "./proj", "--run"])
+    with pytest.raises(FalParserExit):
+        hot_commands.cmd_sync(args)
+    assert "--run needs --watch" in capsys.readouterr().err
+
+
+def test_dev_exec_help_explains_shell_syntax_and_background_jobs(capsys):
+    with pytest.raises(FalParserExit):
+        parse_args(["dev", "exec", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "exec -- bash -c 'df -h /work && nvidia-smi'" in out
+    assert "not buffered" in out
+    assert "nohup python train.py" in out
+
+
+@pytest.mark.parametrize(
     "action", ["start", "sync", "run", "status", "logs", "restart", "stop"]
 )
 def test_dev_hot_actions_run_their_handlers(monkeypatch, action):

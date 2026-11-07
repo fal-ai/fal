@@ -211,6 +211,17 @@ def test_persisted_dotfile_links_do_not_dangle(monkeypatch, tmp_path):
     assert link.is_symlink() and link.resolve().exists()
 
 
+def _env_block(**values):
+    module = runpy.run_path(str(BOX_APP))
+    return module["_fill"](
+        (REMOTE / "scripts" / "bashrc_env.sh").read_text(),
+        WORKSPACE="/data/devboxes/demo",
+        WORK="/work",
+        CLAUDE_DIR="/data/c",
+        **values,
+    )
+
+
 def _bashrc(**values):
     module = runpy.run_path(str(BOX_APP))
     return module["_fill"](
@@ -271,37 +282,150 @@ def test_bashrc_prompt_skips_gpu_without_nvidia_smi(tmp_path):
         text=True,
         check=False,
     )
-    plain = re.sub(r"\x1b\[[0-9;]*m", "", done.stdout)
+    # The login notice comes first; the prompt is the last line.
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", done.stdout).splitlines()[-1]
     assert plain.startswith("demo ")
     assert "RTX" not in plain and "H100" not in plain
 
 
-def test_bashrc_warns_about_environments_on_the_data_volume(tmp_path):
+def _uv_notes(tmp_path, cases):
+    """Run each `(cwd, command)` with fake uv and python; the stderr notes it got."""
     import subprocess
 
-    fake_uv = tmp_path / "uv"
-    fake_uv.write_text('#!/bin/sh\necho "ran uv $*"\nexit 3\n')
-    fake_uv.chmod(0o755)
+    for tool in ("uv", "python3", "python"):
+        fake = tmp_path / tool
+        fake.write_text(f'#!/bin/sh\necho "ran {tool} $*"\nexit 3\n')
+        fake.chmod(0o755)
     rc = tmp_path / "rc"
-    rc.write_text(_bashrc().replace("/tmp/devbox-gpu-short", str(tmp_path / "gpu")))
-    script = (
-        f'PATH="{tmp_path}:/usr/bin:/bin"; PS1=x; . {rc}; '
-        "PWD=/data/voice uv venv; echo $?; PWD=/data/voice uv run x; "
-        "PWD=/work/voice uv venv"
-    )
-    done = subprocess.run(
-        ["bash", "-c", script], capture_output=True, text=True, check=False
-    )
-    # The real uv runs unchanged and its exit status comes back.
-    assert done.stdout.splitlines() == [
-        "ran uv venv",
-        "3",
-        "ran uv run x",
-        "ran uv venv",
+    rc.write_text(_env_block())
+    results = []
+    for cwd, command in cases:
+        done = subprocess.run(
+            [
+                "bash",
+                "-c",
+                f'PATH="{tmp_path}:/usr/bin:/bin"; unset VIRTUAL_ENV; . {rc}; PWD={cwd}; {command}',
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        results.append(
+            (done.returncode, done.stdout.strip(), "network volume" in done.stderr)
+        )
+    return results
+
+
+def test_bashrc_warns_about_environments_on_the_data_volume(tmp_path):
+    cases = [
+        ("/data/voice", "uv venv"),
+        ("/data/voice", "uv run x"),
+        ("/data/voice", "uv sync"),
+        ("/data/voice", "uv pip install x"),
+        ("/work/voice", "uv venv"),
+        ("/work/voice", "uv venv /data/x"),
+        ("/data/voice", "uv venv /work/x"),
+        ("/data/voice", "uv venv --python 3.12"),
+        ("/work", "UV_PROJECT_ENVIRONMENT=/data/e uv sync"),
+        ("/work", "uv venv /data/x --python 3.12"),
+        ("/work", "uv venv -p 3.12 /data/x"),
+        ("/work", "python3 -m venv /data/x"),
+        ("/data/voice", "python -m venv v"),
+        ("/work", "python3 -m venv /work/x"),
     ]
-    # Only the environment-building command under /data gets the note.
-    assert done.stderr.count("network volume") == 1
-    assert "Keep them in /work (local disk" in done.stderr
+    noted = [r[2] for r in _uv_notes(tmp_path, cases)]
+    assert noted == [
+        True,
+        True,
+        True,
+        True,
+        False,
+        True,
+        False,
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+        False,
+    ]
+
+
+def test_bashrc_data_warning_skips_read_only_and_help_commands(tmp_path):
+    cases = [
+        ("/data/v", "uv pip list"),
+        ("/data/v", "uv pip show x"),
+        ("/data/v", "uv pip freeze"),
+        ("/data/v", "uv sync --help"),
+        ("/data/v", "uv venv -h"),
+        ("/data/v", "python3 -m venv --help"),
+        ("/data/v", "python3 script.py"),
+    ]
+    results = _uv_notes(tmp_path, cases)
+    assert [r[2] for r in results] == [False] * 7
+    # The real command still runs and its exit status comes back.
+    assert results[0][:2] == (3, "ran uv pip list")
+
+
+def test_box_environment_reaches_non_interactive_shells(tmp_path):
+    import subprocess
+
+    text = _env_block()
+    # Variables and functions only: output would break scp and rsync.
+    assert "PS1" not in text and "cat " not in text
+    rc = tmp_path / "rc"
+    rc.write_text(text)
+    done = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f". {rc}; echo $HISTFILE $DEVBOX_WORKSPACE $DEVBOX_WORK $CLAUDE_CONFIG_DIR; "
+            "type -t uv",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.stdout.splitlines() == [
+        "/data/devboxes/demo/.bash_history /data/devboxes/demo /work /data/c",
+        "function",
+    ]
+    assert done.stderr == ""
+    # The interactive block no longer carries them; it sits after the env block.
+    assert "HISTFILE" not in _bashrc()
+
+
+def test_login_notice_points_at_devboxrc_and_warns_about_cold_data():
+    text = _bashrc()
+    assert "~/.devboxrc" in text
+    assert "cold after a restart" in text
+
+
+def test_prepare_home_links_devboxrc_and_puts_env_first(monkeypatch, tmp_path):
+    module = runpy.run_path(str(BOX_APP))
+    glb = module["_prepare_home"].__globals__
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".bashrc").write_text('# stock\n[ -z "$PS1" ] && return\n')
+    monkeypatch.setattr(module["Path"], "home", staticmethod(lambda: home))
+    for name, value in (
+        ("WORKSPACE", tmp_path / "ws"),
+        ("CLAUDE_CONFIG_DIR", tmp_path / "ws" / "c"),
+        ("STARSHIP_TOML", None),
+    ):
+        monkeypatch.setitem(glb, name, value)
+
+    module["_prepare_home"]()
+    module["_prepare_home"]()
+
+    text = (home / ".bashrc").read_text()
+    assert text.count("# >>> devbox-env >>>") == 1
+    assert text.count("# >>> devbox >>>") == 1
+    # The early return of a stock .bashrc must not hide the env from ssh commands.
+    assert text.index("# >>> devbox-env >>>") < text.index("return")
+    assert (home / ".devboxrc").readlink() == tmp_path / "ws" / ".devboxrc"
+    assert (home / ".devboxrc").exists()
 
 
 def test_starship_off_by_default_and_failed_install_keeps_default(
@@ -377,6 +501,6 @@ def test_bashrc_uses_starship_only_when_installed_with_its_config(tmp_path):
     (home / ".config").mkdir(parents=True)
     assert "demo" in prompt(home, path)
     (home / ".config" / "starship.toml").write_text("")
-    assert prompt(home, path).strip() == "STARSHIP"
+    assert prompt(home, path).strip().splitlines()[-1] == "STARSHIP"
     # Config copied but the install failed: the default prompt stays.
     assert "demo" in prompt(home, "/usr/bin:/bin")

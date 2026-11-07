@@ -62,6 +62,24 @@ START_DESCRIPTION = (
     "should not see. Key, credential and .env files are never synced."
 )
 
+EXEC_DESCRIPTION = """\
+Run one command on the box: fal dev exec -- nvidia-smi
+
+The words after -- run as one program, not through a shell. A single quoted string
+is taken as the program's name, so pipes, && and ; need a shell:
+
+  fal dev exec -- bash -c 'df -h /work && nvidia-smi'
+
+Output is passed through as it arrives, not buffered until the end (a program
+that buffers its own stdout, such as python, still prints in chunks: use python
+-u). exec returns when the command does, so start a background job with its output
+redirected and read the log later (for a job that must outlive the call, run it in
+tmux instead):
+
+  fal dev exec -- bash -c 'nohup python train.py > /work/train.log 2>&1 &'
+  fal dev exec -- tail -n 20 /work/train.log
+"""
+
 HOT_DESCRIPTION = (
     "A project folder holds load.py (load() -> state, run once) and infer.py "
     "(infer(state, **params), reloaded on every save). Saving load.py or "
@@ -338,9 +356,21 @@ def _add_box_commands(subparsers, parents) -> None:
     p = add_box("down", f"Save {config.LOCAL_WORK}, then stop the box. /data is kept.")
     p.add_argument("--no-save", action="store_true", help=no_save_help)
     add_box("status", "Show whether the box is running.")
-    add_box("shell", "Open an interactive shell on the box.")
+    add_box(
+        "shell",
+        "Open an interactive shell on the box.",
+        description="Open an interactive shell on the box. Your own shell setup "
+        f"goes in ~/.devboxrc on the box (kept at {config.WORKSPACE_ROOT}/<name>/"
+        ".devboxrc, so it survives restarts). ssh sessions get HISTFILE, DEVBOX_* "
+        "and the uv warning too.",
+    )
 
-    p = add_box("exec", "Run one command on the box: fal dev exec -- nvidia-smi")
+    p = add_box(
+        "exec",
+        "Run one command on the box: fal dev exec -- nvidia-smi",
+        description=EXEC_DESCRIPTION,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p.add_argument(
         "command", nargs=argparse.REMAINDER, help="The command to run, after --."
     )

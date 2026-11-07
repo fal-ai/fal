@@ -71,6 +71,23 @@ def cmd_start(args):
 
 
 def cmd_sync(args):
+    if not args.watch and args.run:
+        args.parser.error("--run needs --watch")
+    if not (args.watch and args.run):
+        ignored = [
+            flag
+            for flag, value in (
+                ("--prompt", args.prompt),
+                ("-p/--param", args.param),
+                ("-o/--output", args.output),
+            )
+            if value
+        ]
+        if ignored:
+            args.parser.error(
+                f"{', '.join(ignored)} only apply with --watch --run (sync alone "
+                "sends no request; use `fal dev hot run` to send one)"
+            )
     hot_box = hot.HotBox(get_box(args))
     hot_box.on_image = preview.HotPreview(args)
     local, remote = _project(args)
