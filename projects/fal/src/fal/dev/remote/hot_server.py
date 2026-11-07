@@ -48,6 +48,23 @@ def log(message: str) -> None:
     print(line, flush=True)
 
 
+def innermost(exc: BaseException) -> str:
+    """The deepest exception in a chain, as "Type: message", for a log's last line.
+
+    Libraries wrap the real error ("Could not import module 'PreTrainedModel'"
+    around "operator torchvision::nms does not exist"); the user needs the root.
+    """
+    seen = set()
+    while id(exc) not in seen:
+        seen.add(id(exc))
+        inner = exc.__cause__ or (None if exc.__suppress_context__ else exc.__context__)
+        if inner is None:
+            break
+        exc = inner
+    message = " ".join(str(exc).split()) or "(no message)"
+    return f"{type(exc).__name__}: {message[:300]}"
+
+
 def scan(root: Path) -> dict[str, float]:
     """Modification time of every watched file under root, by relative path."""
     found = {}
@@ -309,10 +326,10 @@ def main() -> None:
 
     try:
         project.load()
-    except Exception:
+    except Exception as exc:
         log(f"load() raised:\n{traceback.format_exc()}")
         # Last, so it stays in the log tail the CLI reads however long the traceback.
-        log("load.load() failed; fix load.py and save to retry")
+        log(f"load.load() failed: {innermost(exc)}; fix load.py and save to retry")
         # Wait for a fix instead of exiting into a tight restart loop.
         while scan(project.root) == project.files:
             time.sleep(POLL_SECONDS)

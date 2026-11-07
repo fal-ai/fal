@@ -62,12 +62,46 @@ START_DESCRIPTION = (
     "should not see. Key, credential and .env files are never synced."
 )
 
+HOT_PROJECT = """\
+A project is a folder with:
+
+  load.py          def load() -> state
+                   Runs once per server process; load weights here. Whatever it
+                   returns is passed to infer(). Saving it restarts the server
+                   and reloads the weights.
+  infer.py         def infer(state, **params)
+                   Runs per request with the keys of --prompt / -p key=value
+                   (JSON values). Reloaded on every save, weights stay loaded.
+                   Return a PIL image (sent as a PNG and saved), bytes, or any
+                   JSON-serializable value. An error comes back with its
+                   traceback and the server keeps running.
+  requirements.txt (optional) extra packages, see below.
+
+Preinstalled on the stock box image (the Python you deployed from, CUDA 12.8): torch 2.8.0
+and torchvision 0.23.0 (cu128), transformers 4.56.1, diffusers 0.35.1,
+accelerate 1.10.1, safetensors 0.6.2, huggingface_hub 0.34.4, and uv. A custom
+image (`fal dev deploy --dockerfile`) has what its Dockerfile installs.
+
+requirements.txt is installed with uv into <project>/.venv, which sees the
+preinstalled packages and only adds what is missing or newer. The torch stack
+(torch, torchvision, torchaudio, triton, nvidia-*) is pinned to the base image's
+versions, so listing diffusers never swaps torch and breaks torchvision; a
+requirement that needs a different torch fails with the resolver's message.
+Anything already preinstalled at a compatible version is not downloaded again.
+Saving requirements.txt reinstalls and restarts the server; the .venv is rebuilt
+whenever the file changes, and removed when the file is emptied or deleted.
+"""
+
 HOT_DESCRIPTION = (
-    "A project folder holds load.py (load() -> state, run once) and infer.py "
-    "(infer(state, **params), reloaded on every save). Saving load.py or "
-    "requirements.txt restarts the server, which reloads the weights. Example: "
-    "fal dev hot start ./my-model, then "
+    "Keep a model loaded on the box and reload your inference code on save.\n\n"
+    + HOT_PROJECT
+    + "\nExample: fal dev hot start ./my-model, then "
     "fal dev hot sync --watch --run --prompt 'a red fox'"
+)
+
+HOT_START_DESCRIPTION = (
+    "Push the project folder, start the hot server and wait for load() to finish. "
+    "If load() fails, the log ends with the innermost exception.\n\n" + HOT_PROJECT
 )
 
 DASH_DESCRIPTION = (
@@ -383,6 +417,7 @@ def _add_box_commands(subparsers, parents) -> None:
         "on save.",
         parents,
         description=HOT_DESCRIPTION,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     add_hot = functools.partial(add, hot, "hot", [*parents, box])
     project = argparse.ArgumentParser(add_help=False)
@@ -419,6 +454,8 @@ def _add_box_commands(subparsers, parents) -> None:
         "start",
         "Start the hot server and wait for the model to load.",
         extra_parents=(project,),
+        description=HOT_START_DESCRIPTION,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p = add_hot(
         "sync",
