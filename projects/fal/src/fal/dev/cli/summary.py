@@ -78,6 +78,20 @@ def _idle(snap: Snapshot, now: float, *, short: bool = False) -> Text:
     return text
 
 
+def _hold(snap: Snapshot, now: float, *, short: bool = False) -> Text | None:
+    """'hold until 14:05 (1h 20m left)' while `fal dev hold` is in effect."""
+    activity = snap.probe["activity"] if snap.probe else None
+    if not activity or not activity["held"]:
+        return None
+    until = activity["hold_until"]
+    left = duration(until - _box_now(snap, now))
+    clock = time.strftime("%H:%M", time.localtime(until))
+    text = f"held until {clock} ({left} left)"
+    if not short:
+        text += "; clear with: fal dev hold --off"
+    return Text(text, style="cyan")
+
+
 def _cost(snap: Snapshot, *, short: bool = False) -> Text | None:
     cost = snap.cost
     if not cost or snap.cost_hidden:
@@ -131,6 +145,7 @@ def status_line(snap: Snapshot, box: Box, now: float | None = None) -> Text:
         for extra in (
             _cost(snap, short=True),
             _idle(snap, now, short=True),
+            _hold(snap, now, short=True),
             _hot(snap),
         ):
             if extra is not None:
@@ -159,6 +174,8 @@ def ready_card(
     if cost := _cost(snap):
         facts.add_row("cost", cost)
     facts.add_row("idle", _idle(snap, now))
+    if hold := _hold(snap, now):
+        facts.add_row("hold", hold)
     if hot := _hot(snap):
         facts.add_row("hot", hot)
 

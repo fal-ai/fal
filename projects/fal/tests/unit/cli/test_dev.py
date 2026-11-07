@@ -58,6 +58,9 @@ def test_dev_box_commands_run_their_handlers(monkeypatch):
     proxy = _run(monkeypatch, "box", "ssh_proxy", ["dev", "ssh-proxy", "--name", "k"])
     assert proxy.name == "k"
     assert _run(monkeypatch, "box", "hold", ["dev", "hold", "2.5"]).hours == 2.5
+    assert _run(monkeypatch, "box", "hold", ["dev", "hold", "--off"]).off
+    assert _run(monkeypatch, "box", "hold", ["dev", "hold", "0"]).hours == 0
+    assert _run(monkeypatch, "box", "down", ["dev", "down", "--yes"]).yes
 
 
 def test_dev_gpu_flag_is_gone():
@@ -495,3 +498,17 @@ def test_ssh_proxy_leaves_dev_errors_to_the_error_panel(monkeypatch):
 
     with pytest.raises(DevError, match="did not start"):
         box_commands.cmd_ssh_proxy(parse_args(["dev", "ssh-proxy", "--name", "k"]))
+
+
+def test_dev_hold_off_rejects_hours(monkeypatch):
+    args = parse_args(["dev", "hold", "--off", "2"])
+    monkeypatch.setattr(box_commands, "get_box", lambda a: pytest.fail("no box"))
+    with pytest.raises(FalParserExit):
+        box_commands.cmd_hold(args)
+
+
+def test_dev_hold_without_hours_or_off_is_a_usage_error(monkeypatch):
+    args = parse_args(["dev", "hold"])
+    monkeypatch.setattr(box_commands, "get_box", lambda a: pytest.fail("no box"))
+    with pytest.raises(FalParserExit):
+        box_commands.cmd_hold(args)

@@ -790,6 +790,29 @@ class Box:
             self.scale(1)
         return code == 0
 
+    def clear_hold(self) -> bool:
+        """Drop an active hold so idle shutdown applies again; False if none was set."""
+        live = newest_live(self.runners())
+        if not live:
+            raise DevError(
+                f"{self.app} is not running",
+                title="the box is not running",
+                fixes=[("fal dev up", "start it")],
+            )
+        # Exits HOLD_KEPT_EXIT when no hold was in effect (missing or expired file).
+        script = (
+            'old=$(cat "$0" 2>/dev/null || echo 0); rm -f "$0"; '
+            f'[ "${{old%.*}}" -gt "$(date +%s)" ] 2>/dev/null || exit {config.HOLD_KEPT_EXIT}'
+        )
+        code, output = self.run(
+            live[0].runner_id, ["sh", "-c", script, config.HOLD_FILE]
+        )
+        if code not in (0, config.HOLD_KEPT_EXIT):
+            raise DevError(
+                f"could not clear the hold: {output.strip() or f'exit {code}'}"
+            )
+        return code == 0
+
     def ssh_proxy(self, timeout: int) -> int:
         """SSH ProxyCommand: carry the SSH connection over runner exec.
 

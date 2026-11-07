@@ -636,3 +636,19 @@ def test_deploy_reads_the_starship_config_before_stopping_the_box(
 
     with pytest.raises(DevError, match="starship"):
         box.deploy(starship=True)
+
+
+def test_clear_hold_reports_whether_one_was_set():
+    box = make_box([make_runner("r1")])
+    box.run = MagicMock(return_value=(0, ""))
+    assert box.clear_hold() is True
+    command = box.run.call_args.args[1]
+    assert command[-1] == config.HOLD_FILE
+    assert "rm -f" in command[2] and "date +%s" in command[2]
+    box.run.return_value = (config.HOLD_KEPT_EXIT, "")
+    assert box.clear_hold() is False
+    box.run.return_value = (2, "sh: boom")
+    with pytest.raises(DevError, match="boom"):
+        box.clear_hold()
+    with pytest.raises(DevError, match="not running"):
+        make_box([]).clear_hold()

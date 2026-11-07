@@ -389,6 +389,14 @@ def _add_box_commands(subparsers, parents) -> None:
 
     p = add_box("down", f"Save {config.LOCAL_WORK}, then stop the box. /data is kept.")
     p.add_argument("--no-save", action="store_true", help=no_save_help)
+    p.add_argument(
+        "--yes",
+        action="store_true",
+        help=(
+            "Stop without asking when the GPU is busy or a job is running "
+            "(needed when there is no terminal to ask on)."
+        ),
+    )
     add_box("status", "Show whether the box is running.")
     add_box(
         "shell",
@@ -418,10 +426,19 @@ def _add_box_commands(subparsers, parents) -> None:
 
     p = add_box(
         "hold",
-        f"Suspend idle shutdown for N hours (at most {config.MAX_HOLD_HOURS}).",
+        f"Suspend idle shutdown for N hours (at most {config.MAX_HOLD_HOURS}); "
+        "--off (or 0) clears the hold.",
     )
     p.add_argument(
-        "hours", type=float, help="How long to keep the box up regardless of activity."
+        "hours",
+        type=float,
+        nargs="?",
+        help="How long to keep the box up regardless of activity; 0 clears the hold.",
+    )
+    p.add_argument(
+        "--off",
+        action="store_true",
+        help="Clear the hold so idle shutdown applies again. The box keeps running.",
     )
 
     add_box(

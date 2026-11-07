@@ -10,11 +10,14 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from rich.console import Console
+from rich.prompt import Confirm
+
 from fal.cli.runners import LogPrinter, print_logs, shell_session
 from fal.cli.runners import _get_runner_info as get_runner_info
 from fal.dev import config, execute
 from fal.dev import copy as file_copy
-from fal.dev.box import FINAL_STATES, newest_first, ssh_config
+from fal.dev.box import FINAL_STATES, newest_first, newest_live, ssh_config
 from fal.dev.cli.common import get_box, note_new_box, remember_name, resolve_name
 from fal.dev.errors import DevError
 from fal.dev.loading import STATES, runner_phase
@@ -166,8 +169,73 @@ def cmd_up(args):
     return None
 
 
+# Seconds the busy check may take; a wedged box must not delay its own stop.
+DOWN_PROBE_TIMEOUT = 10
+SHELLS = frozenset({"sh", "bash", "zsh", "fish", "dash", "sshd", "tmux", "login"})
+
+
+def busy_reasons(probe: dict) -> list[str]:
+    """Why stopping the box now would cut work short; empty when it looks idle."""
+    reasons = []
+    gpus = probe["gpus"]
+    busy = [g for g in gpus if (g["util_pct"] or 0) >= config.GPU_BUSY_PCT]
+    if busy:
+        peak = max(g["util_pct"] for g in busy)
+        reasons.append(f"the GPU is busy ({peak:g}% utilization)")
+    # The probe tags GPU memory only on its busiest processes by CPU, so a job
+    # that is idle on the CPU can be missed; the utilization check above is the
+    # backstop for those.
+    jobs = [
+        p
+        for p in (probe.get("system") or {}).get("processes") or []
+        if p.get("gpu_mib") and p["name"] not in SHELLS
+    ]
+    if jobs:
+        shown = ", ".join(f"{p['name']} (pid {p['pid']})" for p in jobs[:3])
+        more = f" and {len(jobs) - 3} more" if len(jobs) > 3 else ""
+        reasons.append(f"{shown}{more} is using the GPU")
+    return reasons
+
+
+def _down_warnings(box) -> list[str]:
+    """What is running on a live box; best effort, never blocks a stop."""
+    from fal.dev.dash.model import parse_probe, probe_command
+
+    try:
+        live = newest_live(box.runners())
+        if not live:
+            return []
+        _, output = box.run(
+            live[0].runner_id,
+            probe_command(box, False),
+            timeout=DOWN_PROBE_TIMEOUT,
+            until=config.PROBE_END.encode(),
+        )
+        return busy_reasons(parse_probe(output))
+    except Exception:
+        return []
+
+
+def _confirm_down(box, args) -> None:
+    if args.yes:
+        return
+    reasons = _down_warnings(box)
+    if not reasons:
+        return
+    message = "; ".join(reasons)
+    if not sys.stdin.isatty():
+        raise DevError(f"{message}. Pass --yes to stop it anyway")
+    print(f"warning: {message}.", file=sys.stderr)
+    if not Confirm.ask(
+        "Stop the box anyway?", default=False, console=Console(stderr=True)
+    ):
+        raise DevError("cancelled")
+
+
 def cmd_down(args):
-    get_box(args).down(args.no_save)
+    box = get_box(args)
+    _confirm_down(box, args)
+    box.down(args.no_save)
     args.console.print("stopped. Your files on /data are kept.")
 
 
@@ -271,6 +339,16 @@ def cmd_logs(args):
 
 
 def cmd_hold(args):
+    if args.off or args.hours == 0:
+        if args.off and args.hours is not None:
+            args.parser.error("--off takes no hours")
+        if get_box(args).clear_hold():
+            args.console.print("hold cleared; idle shutdown applies again")
+        else:
+            args.console.print("no hold was set")
+        return
+    if args.hours is None:
+        args.parser.error("usage: fal dev hold <hours> | --off")
     if get_box(args).hold(args.hours):
         args.console.print(
             f"idle shutdown suspended for {args.hours:g}h (until the box next stops)"
