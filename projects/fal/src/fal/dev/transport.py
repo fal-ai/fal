@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import threading
 import time
+import urllib.parse
 from typing import Callable, TypeVar
-from urllib.parse import urlsplit
 
 import httpx
 
@@ -47,7 +47,7 @@ def client() -> httpx.Client:
 
 
 def host_of(url: str) -> str:
-    return urlsplit(url).hostname or url
+    return urllib.parse.urlsplit(url).hostname or url
 
 
 def retry_connect(
