@@ -31,6 +31,10 @@ SESSIONS_DIR = STATE_DIR / "apps"
 NAME_PREFIX = "dev-"
 
 
+class NoSession(DevError):
+    """No dev app session exists (yet): a waiting state for the dash."""
+
+
 @dataclasses.dataclass
 class Session:
     name: str
@@ -79,6 +83,9 @@ class Session:
 
     def delete(self) -> None:
         self.path.unlink(missing_ok=True)
+        # The phase and sync notes of a box that is gone (see app/live.py).
+        for kind in ("phase", "sync"):
+            self.path.with_suffix(f".{kind}").unlink(missing_ok=True)
 
 
 def slug(value: str) -> str:
@@ -93,12 +100,24 @@ def session_name(name: str | None, app_name: str) -> str:
     return name[:60].strip("-")
 
 
-def load_sessions() -> list[Session]:
-    sessions = []
+# Old session files already announced, so a dash polling every second says it once.
+_WARNED: set[Path] = set()
+
+
+def _load() -> tuple[list[Session], list[Path]]:
+    """(sessions, files that could not be read as one)."""
+    known = {f.name for f in dataclasses.fields(Session)}
+    sessions, ignored = [], []
     for path in sorted(SESSIONS_DIR.glob("*.json")):
         try:
-            sessions.append(Session(**json.loads(path.read_text())))
-        except TypeError:
+            data = json.loads(path.read_text())
+            # Fields a newer `fal dev` added are dropped, not fatal.
+            sessions.append(Session(**{k: v for k, v in data.items() if k in known}))
+        except (TypeError, AttributeError):
+            ignored.append(path)
+            if path in _WARNED:
+                continue
+            _WARNED.add(path)
             print(
                 f"Ignoring {path}: written by an older `fal dev`. Delete it, and "
                 f"stop its box with `fal apps delete {path.stem}`.",
@@ -106,18 +125,30 @@ def load_sessions() -> list[Session]:
             )
         except ValueError:
             continue
-    return sessions
+    return sessions, ignored
+
+
+def load_sessions() -> list[Session]:
+    return _load()[0]
 
 
 def find_session(name: str | None) -> Session:
-    """The named session, or the only one, or the one whose root holds the cwd."""
-    sessions = load_sessions()
+    """The named session, or the only one, or the one whose root holds the cwd.
+
+    Sessions are kept per user (SESSIONS_DIR), not per folder: any folder finds
+    the only box.
+    """
+    sessions, ignored = _load()
+    where = f"in {SESSIONS_DIR}"
+    if ignored:
+        names = ", ".join(p.name for p in ignored)
+        where += f" (unreadable, from another `fal dev` version: {names})"
     if name:
         wanted = {name, session_name(name, "")}
         for session in sessions:
             if session.name in wanted:
                 return session
-        raise DevError(f"No dev app session named {name!r}.")
+        raise NoSession(f"No dev app session named {name!r} {where}.")
     if len(sessions) == 1:
         return sessions[0]
     cwd = Path.cwd().resolve()
@@ -125,7 +156,9 @@ def find_session(name: str | None) -> Session:
     if len(matching) == 1:
         return matching[0]
     if not sessions:
-        raise DevError("No dev app session. Start one with `fal dev app start`.")
+        raise NoSession(
+            f"No dev app session {where}. Start one with `fal dev app start`."
+        )
     names = ", ".join(s.name for s in sessions)
     raise DevError(f"Several sessions ({names}); pick one with --name.")
 

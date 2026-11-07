@@ -527,6 +527,23 @@ def _add_app_commands(subparsers, parents) -> None:
         help="Seconds between refreshes (default: %(default)s).",
     )
     p.add_argument("--once", action="store_true", help="Print one frame and exit.")
+    p.add_argument(
+        "--wait",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="With no box yet, show one waiting frame (refreshed in place) and "
+        "attach when a box appears, also after the box is stopped. Default: on "
+        "when stdout is a terminal, so it can be started before the box.",
+    )
+
+    p = add_app(
+        "split",
+        "Open the dash and the sync watcher in panes next to this one.",
+        description="Split the current terminal: the live dash on the right and "
+        "`sync --watch` under it, both waiting for a box if none exists yet, so "
+        "an agent in this pane can start one. Uses tmux when $TMUX is set, "
+        "iTerm via AppleScript in iTerm, otherwise prints the two commands.",
+    )
 
     p = add_app(
         "proxy",

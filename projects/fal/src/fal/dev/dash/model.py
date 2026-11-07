@@ -283,7 +283,12 @@ def waits(snapshot: Snapshot) -> set[str]:
     probe = snapshot.probe
     # A probe that stopped answering is stale: do not animate its last answer.
     fresh = "probe" not in snapshot.errors
-    if snapshot.runner_id and probe and fresh and probe["hot"].get("restarting"):
+    if (
+        snapshot.runner_id
+        and probe
+        and fresh
+        and (probe.get("hot") or {}).get("restarting")
+    ):
         found.add("hot-restart")
     return found
 

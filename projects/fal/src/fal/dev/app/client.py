@@ -16,7 +16,7 @@ from rich.markup import escape
 
 from fal.console import console
 from fal.dev.account import Account
-from fal.dev.app import sync
+from fal.dev.app import live, sync
 from fal.dev.app.session import Session, call
 from fal.dev.errors import DevError
 from fal.dev.remote.protocol import (
@@ -271,6 +271,14 @@ def _sdk_payload() -> dict[str, Any]:
 
 def boot(session: Session) -> dict[str, Any]:
     """Send the whole source tree and the SDK, then run setup() on the box."""
+    live.set_phase(session.name, live.PROVISIONING)
+    try:
+        return _boot(session)
+    finally:
+        live.clear_phase(session.name)
+
+
+def _boot(session: Session) -> dict[str, Any]:
     started = time.perf_counter()
     result = sync_files(session, full=True, reload=False)
     elapsed = time.perf_counter() - started
@@ -283,6 +291,7 @@ def boot(session: Session) -> dict[str, Any]:
     console.print(f"Source: {uploaded} file(s) uploaded{copied} ({elapsed:.1f}s).")
     replay_overlay(session)
     after = log_position(session)
+    live.set_phase(session.name, live.SETUP)
     call(
         session,
         "start",

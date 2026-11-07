@@ -13,9 +13,10 @@ from rich.markup import escape
 
 from fal.api.client import SyncServerlessClient
 from fal.console import console
-from fal.dev.app import bench, client, deploy
+from fal.dev.app import bench, client, deploy, live
 from fal.dev.app.session import Session, find_session, session_name, slug
 from fal.dev.box import log
+from fal.dev.dash import waiting
 from fal.dev.errors import DevError
 from fal.dev.media import preview
 from fal.dev.remote.protocol import BODY_TAIL_CHARS, check_session_env, redact
@@ -111,7 +112,8 @@ def cmd_start(args):
     )
     console.print(f"Deploying dev box [bold]{escape(name)}[/] ...")
     started = time.perf_counter()
-    with client.explain_index_refusal(account):
+    live.set_phase(name, live.DEPLOYING)
+    with client.explain_index_refusal(account), live.clearing_on_error(name):
         session = deploy.start_box(
             file,
             class_name,
@@ -127,6 +129,7 @@ def cmd_start(args):
             environment=args.env,
             session_env=session_env,
         )
+        live.clear_sync(session.name)
         deployed = time.perf_counter() - started
         console.print(
             f"Waiting for a runner, then uploading {escape(session.root)} ..."
@@ -184,6 +187,15 @@ def _sync_once(session: Session, args, *, full: bool = False) -> None:
     result = client.sync_files(session, full=full)
     _report_sync(result, started)
     action = result.reload.get("action")
+    if result.changed or result.deleted:
+        # For the dash's hot reload row.
+        live.record_sync(
+            session.name,
+            files=len(result.changed) + len(result.deleted),
+            action=action,
+            ms=result.reload.get("ms"),
+            seconds=time.perf_counter() - started,
+        )
     if action in ("restart", "pending"):
         client.wait_ready(session)
     if args.request is not None and action in ("reload", "restart", "pending"):
@@ -197,12 +209,29 @@ def _sync_once(session: Session, args, *, full: bool = False) -> None:
 
 def cmd_sync(args):
     preview.configure(args)
+    if args.watch:
+        found, error = waiting.find(args.name, settled=True)
+        if error and not sys.stdout.isatty():
+            raise DevError(error)
+        if not found and not sys.stdout.isatty():
+            # Scripts and agents fail fast, as they always did.
+            raise DevError(
+                "A start is still booting it."
+                if live.starting()
+                else "No dev app session. Start one with `fal dev app start`."
+            )
+        if not found:
+            # An ambiguous or broken session shows in the waiting frame.
+            # In a split pane before the box exists: wait for it, and for a
+            # `start` to finish booting it.
+            waiting.wait_for_session(args.name, console, settled=True)
     session = _booted(args)
     _sync_once(session, args, full=args.full)
     if not args.watch:
         return
     console.print(f"Watching {escape(session.root)} (Ctrl+C to stop) ...")
     signature = client.tree_signature(session)
+    live.set_watching(session.name, True)
     try:
         while True:
             time.sleep(0.3)
@@ -218,6 +247,8 @@ def cmd_sync(args):
                 console.print(f"[red]{escape(str(exc))}[/]")
     except KeyboardInterrupt:
         pass
+    finally:
+        live.set_watching(session.name, False)
 
 
 def _request(
@@ -547,12 +578,46 @@ def cmd_dash(args):
     from fal.dev.dash import app as app_dash
     from fal.dev.dash.tui import print_once, run_dashboard
 
-    box = app_dash.AppBox(_session(args))
-    controls = app_dash.controls(box)
+    wait = args.wait
+    if wait is None:
+        wait = sys.stdout.isatty() and not args.once
     if args.once:
-        print_once(box, console, controls)
+        # One frame: attach if a box exists; with --wait, wait for one first.
+        session = (
+            waiting.wait_for_session(args.name, console) if wait else _session(args)
+        )
+        box = app_dash.AppBox(session)
+        print_once(box, console, app_dash.controls(box))
+        return
+    while True:
+        session = (
+            waiting.wait_for_session(args.name, console) if wait else _session(args)
+        )
+        box = app_dash.AppBox(session)
+        gone = run_dashboard(
+            box,
+            interval=args.interval,
+            console=console,
+            controls=app_dash.controls(box),
+        )
+        # A box stopped from elsewhere is a waiting state, not an error.
+        if not (wait and gone):
+            return
+
+
+def cmd_split(args):
+    from fal.dev.app import split
+
+    root = str(Path.cwd())
+    how = split.run(args.name, root)
+    if how == "print":
+        console.print("Run these in two panes (each waits for a box):")
+        for command in split.commands(args.name):
+            console.print(
+                f"  {escape(' '.join(command))}", markup=True, highlight=False
+            )
     else:
-        run_dashboard(box, interval=args.interval, console=console, controls=controls)
+        console.print(f"Opened the dash and the sync watcher ({how}).")
 
 
 def cmd_proxy(args):
