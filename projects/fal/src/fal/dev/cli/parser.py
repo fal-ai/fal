@@ -149,6 +149,17 @@ def positive_int(value: str) -> int:
     return number
 
 
+NETWORK_NOTE = (
+    "Corporate networks: set HTTPS_PROXY as an http:// URL (and NO_PROXY) and fal "
+    "dev uses it for API, REST and box calls; either letter case works. For a "
+    "custom CA set SSL_CERT_FILE (REST, auth) and "
+    "GRPC_DEFAULT_SSL_ROOTS_FILE_PATH (deploys). "
+    "Allow these hosts: api.alpha.fal.ai, rest.alpha.fal.ai, fal.run, and, for "
+    "the box image build, download.pytorch.org and claude.ai. Raise "
+    "FAL_DEV_CONNECT_TIMEOUT (seconds, default 3) if a slow proxy times out."
+)
+
+
 def bounded(low: int, high: int) -> Callable[[str], int]:
     def parse(value: str) -> int:
         try:
@@ -177,15 +188,46 @@ def _command(module: str, handler: str) -> Callable[[argparse.Namespace], object
         try:
             return getattr(implementation, f"cmd_{handler}")(args)
         except DevError as exc:
-            from rich.console import Console
-
-            from fal.dev.cli import error_panel
-
-            error_panel.show(exc, Console(stderr=True))
+            _show(exc)
+            return 1
+        except Exception as exc:
+            unreachable = _unreachable(exc)
+            if unreachable is None:
+                raise
+            unreachable.__cause__ = exc
+            _show(unreachable)
             return 1
 
     run.__name__ = f"{module}.{handler}"
     return run
+
+
+def _show(exc: DevError) -> None:
+    from rich.console import Console
+
+    from fal.dev.cli import error_panel
+
+    error_panel.show(exc, Console(stderr=True))
+
+
+def _unreachable(exc: Exception) -> DevError | None:
+    """A connect failure that no `fal dev` call wrapped, with host and proxy."""
+    import httpx
+
+    from fal._proxy import https_proxy_for, unreachable_message
+
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ProxyError)):
+        try:
+            host = exc.request.url.host
+        except RuntimeError:
+            host = "fal"
+    else:
+        return None
+    proxied = https_proxy_for(host) is not None
+    return DevError(
+        unreachable_message(host, exc),
+        title="the proxy is not reachable" if proxied else "the network is unreachable",
+    )
 
 
 def _add_yes(parser: argparse.ArgumentParser) -> None:
@@ -886,8 +928,9 @@ def add_parser(main_subparsers, parents) -> None:
     parser = main_subparsers.add_parser(
         "dev",
         description=f"{dev_help} Waits animate on a terminal; set "
-        "FAL_DEV_NO_ANIMATION=1 for plain status lines.",
+        "FAL_DEV_NO_ANIMATION=1 for plain status lines.\n\n" + NETWORK_NOTE,
         help=dev_help,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=parents,
     )
     subparsers = parser.add_subparsers(
