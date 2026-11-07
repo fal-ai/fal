@@ -43,3 +43,12 @@ def test_state_update_skips_unchanged_writes(monkeypatch, tmp_path):
     state.update(tmp_path, None, name="demo")
 
     assert path.stat().st_mtime_ns == before
+
+
+def test_box_state_is_readable_by_its_owner_only(monkeypatch, tmp_path):
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
+
+    state.update_box("devbox-demo", None, env={"A": "1"})
+
+    (path,) = (tmp_path / "state" / "boxes").glob("*.json")
+    assert path.stat().st_mode & 0o777 == 0o600

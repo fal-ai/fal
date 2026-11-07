@@ -115,6 +115,12 @@ def _hot(snap: Snapshot) -> Text | None:
     return Text(f"{version} loading", style="yellow")
 
 
+def _secrets(snap: Snapshot) -> Text | None:
+    """The fal secrets the box was given, by name only."""
+    names = ((snap.probe or {}).get("user_env") or {}).get("secrets")
+    return Text(f"secrets: {', '.join(names)}", style=MUTED) if names else None
+
+
 def status_line(snap: Snapshot, box: Box, now: float | None = None) -> Text:
     """`fal dev status`: the box in one line."""
     now = time.time() if now is None else now
@@ -147,6 +153,7 @@ def status_line(snap: Snapshot, box: Box, now: float | None = None) -> Text:
             _idle(snap, now, short=True),
             _hold(snap, now, short=True),
             _hot(snap),
+            _secrets(snap),
         ):
             if extra is not None:
                 parts.append(extra)
@@ -178,6 +185,8 @@ def ready_card(
         facts.add_row("hold", hold)
     if hot := _hot(snap):
         facts.add_row("hot", hot)
+    if secrets := _secrets(snap):
+        facts.add_row("secrets", Text(secrets.plain.removeprefix("secrets: ")))
 
     commands = Table.grid(padding=(0, 2))
     commands.add_column(style=MUTED, no_wrap=True)

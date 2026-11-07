@@ -103,7 +103,7 @@ def test_ctrl_c_during_up_cancels_and_says_it_stopped_billing(monkeypatch):
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait, starship=False):
+        def up(self, timeout, machine_type, on_wait, starship=False, **kwargs):
             on_wait("pending")
             raise KeyboardInterrupt
 
@@ -112,6 +112,8 @@ def test_ctrl_c_during_up_cancels_and_says_it_stopped_billing(monkeypatch):
     console = Console(record=True, width=100, force_terminal=False)
     args = SimpleNamespace(
         starship=False,
+        secret=[],
+        set_env=[],
         timeout=900,
         machine_type=None,
         dash=False,
@@ -146,7 +148,7 @@ def test_up_says_the_box_is_billing_when_its_details_cannot_be_read(monkeypatch)
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait, starship=False):
+        def up(self, timeout, machine_type, on_wait, starship=False, **kwargs):
             return None
 
     def fail(box):
@@ -158,6 +160,8 @@ def test_up_says_the_box_is_billing_when_its_details_cannot_be_read(monkeypatch)
     console = Console(record=True, width=200, force_terminal=False)
     args = SimpleNamespace(
         starship=False,
+        secret=[],
+        set_env=[],
         timeout=900,
         machine_type=None,
         dash=False,
@@ -178,7 +182,7 @@ def test_once_the_box_is_up_the_hint_no_longer_promises_to_stop_billing(monkeypa
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait, starship=False):
+        def up(self, timeout, machine_type, on_wait, starship=False, **kwargs):
             on_wait("pending")
             hints.append(self.progress.hint)
 
@@ -192,6 +196,8 @@ def test_once_the_box_is_up_the_hint_no_longer_promises_to_stop_billing(monkeypa
     console = Console(record=True, width=200, force_terminal=False)
     args = SimpleNamespace(
         starship=False,
+        secret=[],
+        set_env=[],
         timeout=900,
         machine_type=None,
         dash=False,
@@ -314,3 +320,29 @@ def test_hold_off_and_zero_clear_the_hold(monkeypatch):
     args.off = True
     box_cli.cmd_hold(args)
     assert "no hold was set" in out.getvalue()
+
+
+def test_status_and_ready_card_show_secret_names_only():
+    snap = _snapshot(
+        _probe(user_env={"secrets": ["HF_TOKEN", "REGISTRY_TOKEN"], "env": ["FOO"]})
+    )
+
+    line = summary.status_line(snap, FakeDashBox(), now=NOW).plain
+    card = _text(summary.ready_card(snap, FakeDashBox(), 98))
+
+    assert "secrets: HF_TOKEN, REGISTRY_TOKEN" in line
+    assert "HF_TOKEN, REGISTRY_TOKEN" in card
+    assert "FOO" not in line
+
+
+def test_status_without_secrets_or_from_an_older_probe_shows_none():
+    assert (
+        "secrets"
+        not in summary.status_line(_snapshot(_probe()), FakeDashBox(), now=NOW).plain
+    )
+    older = _probe()
+    older.pop("user_env", None)
+    assert (
+        "secrets"
+        not in summary.status_line(_snapshot(older), FakeDashBox(), now=NOW).plain
+    )

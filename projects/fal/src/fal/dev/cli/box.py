@@ -56,6 +56,10 @@ def cmd_deploy(args):
         no_save=args.no_save,
         dockerfile=args.dockerfile,
         team_data=args.team_data,
+        secrets=args.secret,
+        set_env=dict(args.set_env),
+        unset_secrets=args.unset_secret,
+        unset_env=args.unset_env,
     )
     remember_name(args, box.name)
     print(message)
@@ -106,7 +110,14 @@ def cmd_up(args):
         steps.print_log(args.console)
 
     try:
-        box.up(args.timeout, args.machine_type, on_wait, starship=args.starship)
+        box.up(
+            args.timeout,
+            args.machine_type,
+            on_wait,
+            starship=args.starship,
+            secrets=args.secret,
+            set_env=dict(args.set_env),
+        )
     except KeyboardInterrupt:
         steps.fail("cancelled")
         if box.start_cancelled:

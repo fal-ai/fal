@@ -149,6 +149,85 @@ def positive_int(value: str) -> int:
     return number
 
 
+def env_name(value: str) -> str:
+    # Never echo the argument: `--secret NAME=value` is an easy slip, and the
+    # value would land in terminals and CI logs.
+    if not config.ENV_VAR_PATTERN.fullmatch(value):
+        raise argparse.ArgumentTypeError(
+            "expected a NAME of letters, digits and underscores (no '=' or value)"
+        )
+    try:
+        return config.check_env_name(value, "name")
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+
+
+def env_pair(value: str) -> tuple[str, str]:
+    name, sep, text = value.partition("=")
+    if not sep:
+        raise argparse.ArgumentTypeError("expected KEY=VALUE")
+    return env_name(name), text
+
+
+def add_user_env_arguments(p: argparse.ArgumentParser, *, removable: bool) -> None:
+    """--secret and --set-env (and, on deploy, their --unset-* counterparts)."""
+    p.add_argument(
+        "--secret",
+        action="append",
+        default=[],
+        metavar="NAME",
+        type=env_name,
+        help=(
+            "Give the box a fal secret, by name (repeatable), e.g. HF_TOKEN. Secrets "
+            "are team-level: create them with `fal secrets set NAME=value`; the box "
+            "sees only the names you list, as environment variables in shells, "
+            "`fal dev exec`, ssh, `hot` and Claude sessions. `fal dev status` shows "
+            "the names, never the values. "
+            + (
+                "Remembered on this machine for later deploys; remove one with "
+                "--unset-secret."
+                if removable
+                else "Applies when the box is first created; later use "
+                "`fal dev deploy --secret`."
+            )
+        ),
+    )
+    p.add_argument(
+        "--set-env",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        type=env_pair,
+        help=(
+            "Set an environment variable on the box (repeatable). Not for secrets: "
+            "the value is stored in the box's settings; use --secret for those. "
+            + (
+                "Remembered on this machine for later deploys; remove one with "
+                "--unset-env."
+                if removable
+                else "Applies when the box is first created; later use "
+                "`fal dev deploy --set-env`."
+            )
+        ),
+    )
+    if not removable:
+        return
+    p.add_argument(
+        "--unset-secret",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="Stop giving the box this secret (repeatable). The secret itself stays.",
+    )
+    p.add_argument(
+        "--unset-env",
+        action="append",
+        default=[],
+        metavar="KEY",
+        help="Stop setting this environment variable on the box (repeatable).",
+    )
+
+
 def bounded(low: int, high: int) -> Callable[[str], int]:
     def parse(value: str) -> int:
         try:
@@ -338,6 +417,7 @@ def _add_box_commands(subparsers, parents) -> None:
         "--dockerfile",
         help="Your own image, based on the default (see fal/dev/remote/Dockerfile).",
     )
+    add_user_env_arguments(p, removable=True)
     _add_yes(p)
     p.add_argument(
         "--team-data",
@@ -374,6 +454,7 @@ def _add_box_commands(subparsers, parents) -> None:
             "later use `fal dev deploy --starship`)."
         ),
     )
+    add_user_env_arguments(p, removable=False)
     _add_yes(p)
     p.add_argument(
         "--verbose",
