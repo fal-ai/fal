@@ -102,6 +102,8 @@ def get_ellipsis_icon(target_console: Console | None = None) -> str:
 # Drawn only on UTF-8 streams (terminal image previews, `fal dev` loading states).
 UPPER_HALF_BLOCK = "\u2580"
 BRAILLE_SPINNER = "\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f"
+# Dust squares, smallest to largest: middle dot, small square, square.
+DUST_SQUARES = "\u00b7\u25aa\u25a0"
 
 
 _ICON_GETTERS = {

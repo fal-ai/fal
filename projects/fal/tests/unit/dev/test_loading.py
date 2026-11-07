@@ -4,6 +4,7 @@ import sys
 
 from rich.console import Console
 
+from fal.console.icons import DUST_SQUARES
 from fal.dev import loading
 from fal.dev.loading import Loading
 
@@ -38,20 +39,54 @@ def test_frames_are_deterministic():
     assert a != _text(loading.dust_panel_body(13.5, "model load", expected=35))
 
 
-def test_dust_is_braille_and_fits_the_width():
-    rows = loading.dust_rows(3.0, 40, 2, 0.5)
-    assert len(rows) == 2
-    for row in rows:
-        assert len(row.plain) == 40
-        assert all(0x2800 <= ord(ch) <= 0x28FF for ch in row.plain)
+def test_dust_is_squares_on_a_grid_and_fits_the_width():
+    for width in (40, 41):
+        rows = loading.dust_rows(3.0, width, 4, 0.5)
+        assert len(rows) == 4
+        for row in rows:
+            assert len(row.plain) == width
+            assert set(row.plain) <= set(DUST_SQUARES + " ")
+            # One square per two columns, the second always a gap.
+            assert not row.plain[1::2].strip()
+    assert any(ch in DUST_SQUARES for row in rows for ch in row.plain)
 
 
-def test_dust_gets_denser_behind_the_front():
-    def dots(progress):
-        row = loading.dust_rows(5.0, 60, 2, progress)
-        return sum(bin(ord(ch) - 0x2800).count("1") for r in row for ch in r.plain)
+def test_dust_has_big_squares_in_its_clusters():
+    frames = [loading.dust_rows(t / 4, 80, 4, 0.8) for t in range(40)]
+    assert any(DUST_SQUARES[2] in row.plain for rows in frames for row in rows)
 
-    assert dots(0.9) > dots(0.1) * 2
+
+def test_a_jumping_row_moves_its_squares_sideways_and_keeps_its_width():
+    # Bursts start on multiples of 3.1 s; find one that fires.
+    t = next(
+        3.1 * i + 0.05
+        for i in range(50)
+        if loading._burst(3.1 * i + 0.05, 3.1, 0.2, 0.7, 31)[0]
+    )
+    width = 41
+    jumped = [row.plain for row in loading.dust_rows(t, width, 4, 0.8)]
+    _, g = loading._burst(t, 3.1, 0.2, 0.7, 31)
+    y = int(loading._rand(g, 32) * 4)
+    still = [
+        loading._square(x, y, t, loading._clusters(t, 20, 4, 0.8), DUST_SQUARES)
+        for x in range(20)
+    ]
+    plain = "".join((cell[0] if cell else " ") + " " for cell in still)
+    assert len(jumped[y]) == width
+    doubled = plain + plain
+    assert jumped[y][:40] in doubled
+
+
+def test_more_clusters_burn_as_progress_grows():
+    def squares(progress):
+        return sum(
+            ch != " "
+            for t in range(40)
+            for row in loading.dust_rows(t / 4, 120, 4, progress)
+            for ch in row.plain
+        )
+
+    assert squares(0.9) > squares(0.1) * 1.5
 
 
 def test_panel_body_shows_status_elapsed_and_typical_time():
@@ -168,7 +203,7 @@ def test_without_animation_the_body_is_text_only():
     )
     text = _text(body)
     assert text.splitlines() == ["restarting", "model load  9s  typically ~35s"]
-    assert all(ord(ch) < 0x2800 for ch in text)
+    assert all(ord(ch) < 0x2800 and ch not in DUST_SQUARES for ch in text)
 
 
 def test_plain_start_line_says_how_long_it_usually_takes():

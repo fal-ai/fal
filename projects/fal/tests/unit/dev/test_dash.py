@@ -13,6 +13,7 @@ import pytest
 from rich.console import Console
 
 from fal import flags
+from fal.console.icons import DUST_SQUARES
 from fal.dev import config
 from fal.dev.account import Account
 from fal.dev.box import BoxState
@@ -734,12 +735,12 @@ def test_a_stale_probe_does_not_keep_animating():
 def test_dash_waits_draw_dust_only_when_animating():
     snapshot = Snapshot(state=_state("starting"), state_at=NOW)
 
-    def braille(animate):
+    def dust(animate):
         frame = _text(render(snapshot, FakeDashBox(), now=NOW, animate=animate))
-        return any(0x2800 <= ord(ch) <= 0x28FF for ch in frame)
+        return any(ch in DUST_SQUARES for ch in frame)
 
-    assert braille(True)
-    assert not braille(False)
+    assert dust(True)
+    assert not dust(False)
 
 
 def test_dashboard_decides_on_animation_before_live_replaces_stdout(monkeypatch):

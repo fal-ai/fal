@@ -1,10 +1,10 @@
 """Glitch-dust loading states for `fal dev` waits and the dash.
 
-A sparse braille dust field fills a panel while something slow happens, with
-the real status, the elapsed time and the typical duration under it. The dust
-gets denser behind a front that follows the progress (a time-based guess
-unless the caller knows better); now and then a row shifts with red and cyan
-fringes. The status text itself is never scrambled.
+Chunky clusters of square pixels grow, flicker and fade in a panel while
+something slow happens, with the real status, the elapsed time and the typical
+duration under it. More clusters burn as the progress (a time-based guess
+unless the caller knows better) moves on; now and then a cluster's row jumps
+sideways. The status text itself is never scrambled.
 
 `Loading` runs a wait in a terminal (`fal dev up`, `hot start`, `hot restart`);
 the dash calls `dust_panel_body` from its own render loop. Without a TTY, with
@@ -35,7 +35,7 @@ NO_ANIMATION_ENV = "FAL_DEV_NO_ANIMATION"
 # Narrower or shorter terminals get one line instead of the panel.
 MIN_PANEL_WIDTH = 60
 MIN_PANEL_HEIGHT = 12
-DUST_ROWS = 2
+DUST_ROWS = 4
 
 # Waits of `fal dev`: label and typical seconds, from real runs.
 STATES: dict[str, tuple[str, int]] = {
@@ -66,17 +66,18 @@ ERROR = "red"
 MUTED = "dim"
 TITLE = "bold default"
 
-# Dot (dx, dy) of a 2x4 braille cell -> its bit in U+2800 + bits.
-_BRAILLE_BITS = {
-    (0, 0): 0x01,
-    (0, 1): 0x02,
-    (0, 2): 0x04,
-    (1, 0): 0x08,
-    (1, 1): 0x10,
-    (1, 2): 0x20,
-    (0, 3): 0x40,
-    (1, 3): 0x80,
-}
+# One square per two columns, so the grid is about square in a terminal cell.
+CELL_COLUMNS = 2
+# Flickers per second of the squares inside a cluster.
+FLICKER = 8
+# Square colors and their odds, as in the fal glitch dust: blue, light blue,
+# ink and a few grey.
+DUST_COLORS = (
+    ("blue", 0.42),
+    ("bright_blue", 0.34),
+    ("bold default", 0.12),
+    ("bright_black", 0.12),
+)
 
 
 def _rand(*keys: int) -> float:
@@ -88,11 +89,6 @@ def _rand(*keys: int) -> float:
     h = (h * 0x5BD1E995) & 0xFFFFFFFF
     h ^= h >> 15
     return h / 2**32
-
-
-def _smooth(x: float) -> float:
-    x = min(1.0, max(0.0, x))
-    return x * x * (3 - 2 * x)
 
 
 def format_elapsed(seconds: float) -> str:
@@ -116,39 +112,75 @@ def _burst(t: float, period: float, length: float, chance: float, salt: int):
     return active, index
 
 
-def _cell(x: int, y: int, t: float, density: float, seed: int) -> str:
-    bits = 0
-    for (dx, dy), bit in _BRAILLE_BITS.items():
-        sx, sy = x * 2 + dx, y * 4 + dy
-        if _rand(sx, sy + int(t * (3 + (sx % 3) * 2)), seed) < density:
-            bits |= bit
-    return chr(0x2800 + bits)
+def _clusters(
+    t: float, cols: int, rows: int, progress: float
+) -> list[tuple[float, float, float, float]]:
+    """(x, y, radius, strength) of each cluster burning at `t`, in grid cells.
+
+    Each slot grows a cluster at a random spot, holds it and fades it out, then
+    starts over somewhere else. More slots burn as `progress` (0..1) grows.
+    """
+    slots = max(1, cols // 8)
+    burning = max(1, round(slots * (0.25 + 0.75 * progress)))
+    out = []
+    for i in range(burning):
+        period = 2.4 + 1.6 * _rand(i, 41)
+        cycle = t / period + _rand(i, 42)
+        n = int(cycle)
+        # Grow fast, hold, fade: a flattened sine.
+        strength = min(1.0, 1.6 * math.sin(math.pi * (cycle - n)))
+        radius = (2.5 + 3.5 * _rand(i, n, 45)) * (0.4 + 0.6 * strength)
+        out.append((_rand(i, n, 43) * cols, _rand(i, n, 44) * rows, radius, strength))
+    return out
+
+
+def _square(x: int, y: int, t: float, clusters, squares: str) -> tuple[str, str] | None:
+    """The square at grid cell (x, y): (glyph, style), or None for empty."""
+    tick = int(t * FLICKER)
+    heat = 0.0
+    for cx, cy, radius, strength in clusters:
+        if radius > 0:
+            heat = max(heat, strength * (1 - math.hypot(x - cx, y - cy) / radius))
+    # Ragged edges and a flicker inside, rather than round blobs.
+    heat *= 0.7 + 0.6 * _rand(x, y, tick, 6)
+    if heat > 0.1 and _rand(x, y, tick, 7) < 0.45 + heat:
+        size = 2 if heat > 0.45 else 1 if heat > 0.2 else 0
+        pick, style = _rand(x, y, int(t * 3), 8), DUST_COLORS[-1][0]
+        for color, odds in DUST_COLORS:
+            if pick < odds:
+                style = color
+                break
+            pick -= odds
+        return squares[size], style
+    if _rand(x, y, tick // 4, 9) < 0.006:
+        return squares[0], "bright_black"
+    return None
 
 
 def dust_rows(t: float, width: int, rows: int, progress: float) -> list[Text]:
-    """Braille dust, dense behind a front at `progress` (0..1)."""
+    """Clusters of square pixels, more of them as `progress` (0..1) grows."""
     from rich.text import Text
 
-    front = progress * width
-    active, g = _burst(t, 3.1, 0.2, 0.7, 31)
-    glitch_row = int(_rand(g, 32) * rows)
+    from fal.console.icons import DUST_SQUARES
+
+    cols = width // CELL_COLUMNS
+    clusters = _clusters(t, cols, rows, progress)
+    jump, g = _burst(t, 3.1, 0.2, 0.7, 31)
+    jump_row = int(_rand(g, 32) * rows)
     out = []
     for y in range(rows):
-        cells = []
-        for x in range(width):
-            density = 0.04 + 0.34 * _smooth((front - x) / 8 + 0.5)
-            style = ACCENT if x <= front + 3 else f"default {MUTED}"
-            cells.append((_cell(x, y, t, density, 3), style))
-        if active and y == glitch_row:
-            dx = int((_rand(g, 33) - 0.5) * 8) or 2
+        cells = [_square(x, y, t, clusters, DUST_SQUARES) for x in range(cols)]
+        if jump and y == jump_row and cols > 1:
+            dx = (int((_rand(g, 33) - 0.5) * 6) or 2) % cols
             cells = cells[-dx:] + cells[:-dx]
-            cells = [
-                (ch, ERROR if i % 3 == 0 else ACCENT if i % 3 == 1 else style)
-                for i, (ch, style) in enumerate(cells)
-            ]
         row = Text(no_wrap=True, overflow="crop")
-        for ch, style in cells:
-            row.append(ch, style=style)
+        for cell in cells:
+            if cell is None:
+                row.append(" " * CELL_COLUMNS)
+            else:
+                row.append(cell[0], style=cell[1])
+                row.append(" " * (CELL_COLUMNS - 1))
+        row.append(" " * (width - cols * CELL_COLUMNS))
         out.append(row)
     return out
 
