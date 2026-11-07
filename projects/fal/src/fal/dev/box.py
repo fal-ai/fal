@@ -13,6 +13,7 @@ import io
 import os
 import posixpath
 import shlex
+import socket
 import sys
 import time
 from dataclasses import dataclass
@@ -21,12 +22,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Callable, Iterator
 
 import grpc
+import httpx
 
 from fal.api.client import SyncServerlessClient
 from fal.cli.runners import recent_logs, shell_session
 from fal.dev import config
 from fal.dev.account import Account
 from fal.dev.errors import DevError
+from fal.dev.transport import CONNECT_TIMEOUT, host_of, retry_connect
 from fal.sdk import AliasInfo, RunnerInfo, RunnerState
 
 if TYPE_CHECKING:
@@ -47,6 +50,27 @@ RUN_TIMEOUT_SECONDS = 60
 SAVE_TIMEOUT_SECONDS = 1800
 # Credentials are rebuilt this often; building them can cost an API call.
 AUTH_TTL_SECONDS = 300
+
+
+def is_network_error(exc: BaseException) -> bool:
+    """A failure to reach fal at all. Only for idempotent reads, like polling."""
+    if isinstance(exc, grpc.RpcError):
+        code = getattr(exc, "code", None)
+        return callable(code) and code() in (
+            grpc.StatusCode.UNAVAILABLE,
+            grpc.StatusCode.DEADLINE_EXCEEDED,
+        )
+    return isinstance(
+        exc,
+        (
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            httpx.RemoteProtocolError,
+            ConnectionError,
+            TimeoutError,
+            socket.gaierror,
+        ),
+    )
 
 
 def log(message: str) -> None:
@@ -188,6 +212,9 @@ class Box:
         # go to it instead of stderr.
         self.progress: Steps | None = None
         self.volume_created = False
+        # Readiness polls that could not connect, and the last such error.
+        self.poll_failures = 0
+        self.poll_error: BaseException | None = None
         self._stub = None
         self._auth: dict[str, str] = {}
         self._auth_at = 0.0
@@ -552,7 +579,13 @@ class Box:
 
         volume = config.volume_name(self.name)
         try:
-            self.client.volumes.create(volume)
+            retry_connect(
+                lambda: self.client.volumes.create(
+                    volume, connect_timeout=CONNECT_TIMEOUT
+                ),
+                host=host_of(str(self.client._rest_url)),
+                step="creating the volume",
+            )
         except VolumeAlreadyExistsError:
             return volume
         except VolumeAccountNotEligibleError as exc:
@@ -578,7 +611,18 @@ class Box:
         deadline = time.time() + timeout
         last_state = None
         while time.time() < deadline:
-            runners = self.poll_runners()
+            try:
+                runners = self.poll_runners()
+            except Exception as exc:
+                # The deploy is done and the runner is coming up: a poll that
+                # cannot connect is skipped, not a reason to give up the box.
+                if not is_network_error(exc):
+                    raise
+                self.poll_failures += 1
+                self.poll_error = exc
+                time.sleep(POLL_SECONDS)
+                continue
+            self.poll_error = None
             ready = newest_live(runners)
             if ready:
                 return ready[0]
@@ -617,10 +661,14 @@ class Box:
         # After a start that did not come up: True if it was scaled back to 0,
         # False if that failed, None if the box was already up (left running).
         self.start_cancelled = None
+        self.poll_failures = 0
+        self.poll_error = None
         runner = None
+        timed_out = False
         try:
             self.scale(1, machine_type)
             runner = self.wait_until_ready(timeout, on_wait)
+            timed_out = runner is None
         finally:
             # Any way out without a ready box (timeout, failed start, Ctrl-C) cancels
             # the start.
@@ -633,6 +681,11 @@ class Box:
                 self.start_cancelled = bool(stopped)
                 if not stopped:
                     self._say("the box may still be starting; run: fal dev down")
+                elif timed_out and self.poll_error is not None:
+                    self._say(
+                        f"stopped box {self.app}: could not reach it after "
+                        f"{self.poll_failures} failed polls"
+                    )
         if runner is not None:
             self._finish("runner")
         if runner is None:
@@ -648,8 +701,14 @@ class Box:
             else:
                 outcome = "the box may still be starting, and billing"
                 fixes.insert(0, ("fal dev down", "make sure it stops"))
+            unreachable = (
+                f"; the last readiness poll could not connect ({self.poll_error}), "
+                f"{self.poll_failures} failed in all"
+                if self.poll_error is not None
+                else ""
+            )
             raise DevError(
-                f"no machine became ready within {timeout}s; {outcome}",
+                f"no machine became ready within {timeout}s{unreachable}; {outcome}",
                 title="no GPU came free",
                 fixes=fixes,
             )

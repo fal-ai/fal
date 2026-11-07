@@ -272,7 +272,7 @@ class HotBox:
                 network_errors += 1
                 if network_errors > 5:
                     raise DevError(
-                        f"no answer from the box for 30s: {info.get('error')}",
+                        f"no answer from the box: {info.get('error')}",
                         title="lost contact with the box",
                         fixes=[
                             ("fal dev status", "is the box still up?"),
