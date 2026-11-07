@@ -440,3 +440,15 @@ def test_up_says_when_it_creates_a_box_from_a_remembered_name(monkeypatch, capsy
     err = capsys.readouterr().err
     assert "no box named typo exists yet (remembered for this folder)" in err
     box.up.assert_called_once()
+
+
+def test_ssh_proxy_reports_the_failure_reason_on_stderr(monkeypatch, capsys):
+    box = MagicMock()
+    box.ssh_proxy.side_effect = RuntimeError("fal API unreachable")
+    monkeypatch.setattr(box_commands, "get_box", lambda *a, **k: box)
+    monkeypatch.setattr(box_commands, "_cleanup_on_hangup", lambda: None)
+
+    code = box_commands.cmd_ssh_proxy(parse_args(["dev", "ssh-proxy", "--name", "k"]))
+
+    assert code == 1
+    assert "ssh-proxy failed: fal API unreachable" in capsys.readouterr().err

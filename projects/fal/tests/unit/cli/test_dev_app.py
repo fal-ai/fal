@@ -63,6 +63,27 @@ def test_dash_without_wait_still_errors_when_no_box(monkeypatch, tmp_path):
         dev_app.cmd_dash(parse_args(["dev", "app", "dash", "--no-wait"]))
 
 
+@pytest.mark.parametrize("extra", [[], ["--wait"]])
+def test_dash_once_without_a_box_prints_the_waiting_frame_and_returns(
+    monkeypatch, tmp_path, capsys, extra
+):
+    from fal.dev.app import session as app_session
+    from fal.dev.cli import app as dev_app
+    from fal.dev.dash import waiting
+
+    monkeypatch.setattr(app_session, "SESSIONS_DIR", tmp_path)
+    monkeypatch.setattr(
+        waiting,
+        "wait_for_session",
+        lambda *a, **k: pytest.fail("--once must not wait"),
+    )
+
+    result = dev_app.cmd_dash(parse_args(["dev", "app", "dash", "--once", *extra]))
+
+    assert not result
+    assert waiting.WAITING_TEXT in capsys.readouterr().out
+
+
 def test_dash_waits_then_attaches_and_waits_again_when_the_box_is_gone(
     monkeypatch,
 ):

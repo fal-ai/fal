@@ -450,6 +450,30 @@ def test_ssh_proxy_retries_the_runner_and_arming_lookups_together(monkeypatch):
     assert box.ssh_proxy(timeout=1) == 0
 
 
+def test_ssh_proxy_says_on_stderr_that_it_is_starting_a_stopped_box(capsys):
+    box = make_box([])
+    box.start = MagicMock(side_effect=DevError("no capacity"))
+
+    with pytest.raises(DevError):
+        box.ssh_proxy(timeout=1)
+
+    err = capsys.readouterr().err
+    assert f"starting box {box.app} (about {box_module.COLD_START_MINUTES} min)" in err
+
+
+def test_ssh_proxy_stays_quiet_on_a_running_box(monkeypatch, capsys):
+    monkeypatch.setattr(
+        box_module,
+        "shell_session",
+        lambda *a, **k: k["stdout"].write(box_module.SSH_READY_MARKER) or 0,
+    )
+    monkeypatch.setattr(box_module.sys, "stdout", MagicMock())
+
+    make_box([make_runner("r1")]).ssh_proxy(timeout=1)
+
+    assert capsys.readouterr().err == ""
+
+
 def test_save_work_failure_says_the_save_may_still_run():
     box = make_box([make_runner("r1")])
     box.run = MagicMock(side_effect=DevError("timed out"))

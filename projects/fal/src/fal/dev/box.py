@@ -49,6 +49,10 @@ SAVE_TIMEOUT_SECONDS = 1800
 AUTH_TTL_SECONDS = 300
 
 
+# What ssh-proxy tells an editor while a stopped box wakes (a cold start is ~4 min).
+COLD_START_MINUTES = 4
+
+
 def log(message: str) -> None:
     # stderr: under ssh-proxy, stdout is the SSH connection.
     print(message, file=sys.stderr, flush=True)
@@ -752,7 +756,7 @@ class Box:
                 # Re-arm a box that is shutting down; its runner is still there.
                 self.scale(1)
         else:
-            log(f"{self.app} is stopped, starting it ...")
+            log(f"fal dev: starting box {self.app} (about {COLD_START_MINUTES} min)")
             runner_id = self.start(timeout).runner_id
         sshd_log = posixpath.join(posixpath.dirname(config.SSHD_CONFIG), "sshd.log")
         # Authorize this laptop's keys on every connect: nothing else installs them,
