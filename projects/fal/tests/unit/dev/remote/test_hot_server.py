@@ -22,3 +22,18 @@ def test_a_resync_of_unchanged_files_never_restarts_the_hot_server(tmp_path):
     sources["load.py"] = "def load(): return 1"
     box_app["_hot_write_files"]({"dir": str(project), "files": sources})
     assert running.check() == "load.py changed"
+
+
+def test_load_failure_names_the_innermost_exception():
+    server = runpy.run_path(str(REMOTE / "hot_server.py"))
+    try:
+        try:
+            raise RuntimeError("operator torchvision::nms does not exist")
+        except RuntimeError as inner:
+            raise ModuleNotFoundError(
+                "Could not import module 'PreTrainedModel'"
+            ) from inner
+    except ModuleNotFoundError as exc:
+        text = server["innermost"](exc)
+
+    assert text == "RuntimeError: operator torchvision::nms does not exist"
