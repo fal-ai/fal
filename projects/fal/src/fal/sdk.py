@@ -912,13 +912,20 @@ class FalServerlessConnection:
         if self._stub:
             return self._stub
 
+        from fal._proxy import grpc_proxy_options  # noqa: PLC0415
+
         options = self.credentials.server_credentials.base_options
+        proxy_options = (
+            grpc_proxy_options(self.hostname)
+            if isinstance(self.credentials.server_credentials, RemoteCredentials)
+            else []
+        )
         channel_creds = self.credentials.to_grpc()
         channel = self._stack.enter_context(
             grpc.secure_channel(
                 target=self.hostname,
                 credentials=channel_creds,
-                options=list(options.items()),
+                options=[*options.items(), *proxy_options],
             )
         )
         channel = grpc.intercept_channel(channel, TraceContextInterceptor())

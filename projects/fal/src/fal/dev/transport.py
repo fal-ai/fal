@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 import urllib.parse
@@ -9,6 +10,7 @@ from typing import Callable, TypeVar
 
 import httpx
 
+from fal._proxy import PROXY_HINT, https_proxy_for, redact
 from fal.dev.errors import DevError
 
 T = TypeVar("T")
@@ -16,7 +18,18 @@ T = TypeVar("T")
 # Connecting to fal's edge fails now and then (dropped SYNs). A failed connect
 # means the request never reached the server, so it is safe to send again.
 CONNECT_TRIES = 4
-CONNECT_TIMEOUT = 3.0
+
+
+def _connect_timeout() -> float:
+    try:
+        seconds = float(os.environ.get("FAL_DEV_CONNECT_TIMEOUT", ""))
+    except ValueError:
+        return 3.0
+    return seconds if 0 < seconds < float("inf") else 3.0
+
+
+# Seconds per connect; slow proxies may need FAL_DEV_CONNECT_TIMEOUT raised.
+CONNECT_TIMEOUT = _connect_timeout()
 # Sleeps between tries: about 18 s in all with the connect timeouts.
 CONNECT_BACKOFF = (1.0, 2.0, 3.0)
 CONNECT_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout)
@@ -68,10 +81,15 @@ def retry_connect(
             return call()
         except CONNECT_ERRORS as exc:
             if attempt == tries:
+                proxy = https_proxy_for(host)
+                via = f" through proxy {redact(proxy)}" if proxy else ""
+                reason = str(exc) or type(exc).__name__
                 raise ConnectFailed(
-                    f"could not reach {host} while {step} after {tries} tries: "
-                    f"{str(exc) or type(exc).__name__}",
-                    title="the network is flaky",
+                    f"could not reach {host}{via} while {step} after {tries} tries: "
+                    f"{reason}" + (f"\nhint: {PROXY_HINT}" if proxy else ""),
+                    title="the proxy is not reachable"
+                    if proxy
+                    else "the network is flaky",
                 ) from exc
             time.sleep(backoff[min(attempt - 1, len(backoff) - 1)])
     raise AssertionError("unreachable")
