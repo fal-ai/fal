@@ -26,6 +26,15 @@ if [ -n "$PS1" ]; then
   __DEVBOX_GPU=$(__devbox_gpu)
   PROMPT_DIRTRIM=3
   PS1='\[\e[1;35m\]$BOX_NAME\[\e[0m\]${__DEVBOX_GPU:+ \[\e[32m\]$__DEVBOX_GPU\[\e[0m\]} \[\e[34m\]\w\[\e[0m\]\[\e[33m\]$(__devbox_git)\[\e[0m\] \$ '
+  # /data is a network volume: a venv there copies every file over the network.
+  uv() {
+    case "$PWD/:$1" in
+      /data/*:venv | /data/*:sync | /data/*:pip)
+        printf '\e[33mnote:\e[0m %s is on the /data network volume, so environments there are slow.\n      Keep them in %s (local disk, saved with the box) and put models and data on /data.\n' "$PWD" "$WORK" >&2
+        ;;
+    esac
+    command uv "$@"
+  }
   # --starship: setup() copied the local config here and installed starship.
   if [ -f "$HOME/.config/starship.toml" ] && command -v starship >/dev/null 2>&1; then
     eval "$(starship init bash)"

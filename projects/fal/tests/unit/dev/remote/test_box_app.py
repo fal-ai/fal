@@ -253,6 +253,34 @@ def test_bashrc_prompt_skips_gpu_without_nvidia_smi(tmp_path):
     assert "RTX" not in plain and "H100" not in plain
 
 
+def test_bashrc_warns_about_environments_on_the_data_volume(tmp_path):
+    import subprocess
+
+    fake_uv = tmp_path / "uv"
+    fake_uv.write_text('#!/bin/sh\necho "ran uv $*"\nexit 3\n')
+    fake_uv.chmod(0o755)
+    rc = tmp_path / "rc"
+    rc.write_text(_bashrc().replace("/tmp/devbox-gpu-short", str(tmp_path / "gpu")))
+    script = (
+        f'PATH="{tmp_path}:/usr/bin:/bin"; PS1=x; . {rc}; '
+        "PWD=/data/voice uv venv; echo $?; PWD=/data/voice uv run x; "
+        "PWD=/work/voice uv venv"
+    )
+    done = subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, check=False
+    )
+    # The real uv runs unchanged and its exit status comes back.
+    assert done.stdout.splitlines() == [
+        "ran uv venv",
+        "3",
+        "ran uv run x",
+        "ran uv venv",
+    ]
+    # Only the environment-building command under /data gets the note.
+    assert done.stderr.count("network volume") == 1
+    assert "Keep them in /work (local disk" in done.stderr
+
+
 def test_starship_off_by_default_and_failed_install_keeps_default(
     monkeypatch, tmp_path
 ):
