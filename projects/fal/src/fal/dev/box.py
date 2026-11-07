@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import BinaryIO, Callable, Iterator
+from typing import TYPE_CHECKING, BinaryIO, Callable, Iterator
 
 import grpc
 
@@ -28,6 +28,9 @@ from fal.dev import config
 from fal.dev.account import Account
 from fal.dev.errors import DevError
 from fal.sdk import AliasInfo, RunnerInfo, RunnerState
+
+if TYPE_CHECKING:
+    from fal.dev.steps import Steps
 
 REMOTE = Path(__file__).parent / "remote"
 BOX_APP = REMOTE / "box_app.py"
@@ -49,6 +52,17 @@ AUTH_TTL_SECONDS = 300
 def log(message: str) -> None:
     # stderr: under ssh-proxy, stdout is the SSH connection.
     print(message, file=sys.stderr, flush=True)
+
+
+def local_starship_config() -> str:
+    """Your starship.toml, the only file `--starship` sends to the box."""
+    path = Path(os.environ.get("STARSHIP_CONFIG") or "~/.config/starship.toml")
+    path = path.expanduser()
+    if not path.is_file():
+        raise DevError(
+            f"no starship config at {path}; create one or set $STARSHIP_CONFIG"
+        )
+    return path.read_text()
 
 
 def fal_spec(version: str) -> str:
@@ -170,9 +184,51 @@ class Box:
         self.account = account
         self.client = SyncServerlessClient(host=host, team=account.fal_team)
         self.start_cancelled: bool | None = None
+        # `fal dev up` sets this to show its steps: messages and deploy logs then
+        # go to it instead of stderr.
+        self.progress: Steps | None = None
+        self.volume_created = False
         self._stub = None
         self._auth: dict[str, str] = {}
         self._auth_at = 0.0
+
+    def _say(self, message: str) -> None:
+        if self.progress is not None:
+            self.progress.say(message)
+        else:
+            log(message)
+
+    def _begin(self, key: str, detail: str = "") -> None:
+        if self.progress is not None:
+            self.progress.begin(key, detail)
+
+    def _finish(self, key: str, detail: str | None = None) -> None:
+        if self.progress is not None:
+            self.progress.finish(key, detail)
+
+    def _deploy_handlers(self) -> dict:
+        """Result handlers that turn the deploy's logs into step changes."""
+        progress = self.progress
+        if progress is None:
+            return {}
+        from fal.api.api import ResultHandler
+
+        class Build(ResultHandler):
+            def on_log(self, entry) -> None:
+                progress.begin("build")
+                progress.capture(entry.message)
+
+        class Register(ResultHandler):
+            def __call__(self, partial_result) -> None:
+                # The build is over once the platform starts registering.
+                progress.finish("build")
+                progress.begin("deploy")
+                super().__call__(partial_result)
+
+            def on_log(self, entry) -> None:
+                progress.capture(entry.message)
+
+        return {"build_result_handler": Build(), "result_handler": Register()}
 
     def auth_headers(self) -> dict[str, str]:
         """Headers that sign calls to the platform as you, rebuilt now and then."""
@@ -358,13 +414,13 @@ class Box:
             return  # a warning must never block the command
         entry = next((s for s in secrets if s.name == config.ADMIN_KEY_SECRET), None)
         if entry is None:
-            log(
+            self._say(
                 f"warning: the {config.ADMIN_KEY_SECRET} secret is not set, "
                 "so this box will not shut itself down when idle. "
                 "Remember to run: fal dev down"
             )
         elif entry.default_exposed is not False:
-            log(
+            self._say(
                 f"warning: {config.ADMIN_KEY_SECRET} is exposed to every app on the "
                 "team. Set it again with: fal secrets set --not-exposed-by-default "
                 f"{config.ADMIN_KEY_SECRET}=<admin key>"
@@ -377,6 +433,7 @@ class Box:
         num_gpus: int = config.DEFAULT_NUM_GPUS,
         idle_minutes: int = config.DEFAULT_IDLE_MINUTES,
         claude: bool = False,
+        starship: bool = False,
         no_save: bool = False,
         dockerfile: str | None = None,
         team_data: bool = False,
@@ -394,7 +451,15 @@ class Box:
             )
         if dockerfile and not Path(dockerfile).is_file():
             raise DevError(f"no such Dockerfile: {dockerfile}")
-        volume = None if team_data else self.ensure_volume()
+        # Read first: a missing config must not fail after the box was stopped.
+        starship_toml = local_starship_config() if starship else ""
+        volume = None
+        if not team_data:
+            self._begin("volume")
+            volume = self.ensure_volume()
+            self._finish(
+                "volume", "created, starts empty" if self.volume_created else "exists"
+            )
         app = self.app_info()
         was_stopped = not (app and app.min_concurrency)
         if not was_stopped:
@@ -405,7 +470,7 @@ class Box:
             try:
                 stopped = self.stop()
             except BaseException:
-                log("the box may be stopping; start it again with: fal dev up")
+                self._say("the box may be stopping; start it again with: fal dev up")
                 raise
             if not stopped:
                 raise DevError(
@@ -433,8 +498,10 @@ class Box:
             config.ENV_PYTHON_VERSION: f"{sys.version_info[0]}.{sys.version_info[1]}",
             config.ENV_FAL_SPEC: fal_spec(__version__),
             config.ENV_VOLUME: volume or "",
+            config.ENV_STARSHIP: starship_toml,
         }
         # box_app.py reads these when the deploy loads it.
+        self._begin("build")
         try:
             with _environ(settings):
                 self.client.deploy(
@@ -444,21 +511,26 @@ class Box:
                     # Without this the app's termination grace period, which gives
                     # teardown() time to save /work, is never set.
                     reset_scale=True,
+                    **self._deploy_handlers(),
                 )
             if not was_stopped:
                 # reset_scale applies the app's min_concurrency of 0; start it again.
                 self.scale(1)
         except BaseException:
             if not was_stopped:
-                log("the box was stopped for the deploy; start it with: fal dev up")
+                self._say(
+                    "the box was stopped for the deploy; start it with: fal dev up"
+                )
             raise
         if was_stopped and not self.stop():
             # The deploy starts a runner to check the new image; a stopped box should
             # not keep it.
-            log(
+            self._say(
                 "the deploy's check runner is still shutting down; "
                 "if it lingers, run: fal dev down"
             )
+        self._finish("build")  # a deploy that logged nothing still built
+        self._finish("deploy")
         next_step = (
             "Start it with: fal dev up"
             if was_stopped
@@ -488,9 +560,11 @@ class Box:
                 f"this team cannot use volumes ({exc}); deploy with --team-data to "
                 "keep the box on the team-shared /data"
             ) from exc
-        log(
-            f"created volume {volume} for the box's /data. It starts empty: to keep "
-            "an existing box's files on the team /data, deploy with --team-data"
+        self.volume_created = True
+        self._say(
+            f"created volume {volume} for the box's /data. It starts empty: to "
+            "keep an existing box's files on the team /data, deploy with "
+            "--team-data"
         )
         return volume
 
@@ -539,6 +613,7 @@ class Box:
         """Scale to 1 and wait for a ready runner; cancel the start if none comes up."""
         # Only cancel a start this call made: never stop a box that was already up.
         was_live = bool(newest_live(self.runners()))
+        self._begin("runner")
         # After a start that did not come up: True if it was scaled back to 0,
         # False if that failed, None if the box was already up (left running).
         self.start_cancelled = None
@@ -557,7 +632,9 @@ class Box:
                     stopped = False
                 self.start_cancelled = bool(stopped)
                 if not stopped:
-                    log("the box may still be starting; run: fal dev down")
+                    self._say("the box may still be starting; run: fal dev down")
+        if runner is not None:
+            self._finish("runner")
         if runner is None:
             fixes = [(f"fal dev up --timeout {timeout * 2}", "wait longer")]
             if machine_type and machine_type != "GPU-RTXPRO6000":
@@ -583,13 +660,24 @@ class Box:
         timeout: int,
         machine_type: str | None = None,
         on_wait: Callable[[str], None] | None = None,
+        starship: bool = False,
     ) -> RunnerInfo:
-        if self.app_info() is None:
-            log(
-                f"{self.app} does not exist yet; "
-                "deploying it with the default image ..."
+        exists = self.app_info() is not None
+        if starship and exists:
+            self._say(
+                "the box already exists; use `fal dev deploy --starship` to change it"
             )
-            log(self.deploy(machine_type=machine_type, hint=False))
+        if not exists:
+            if self.progress is None:
+                log(
+                    f"{self.app} does not exist yet; "
+                    "deploying it with the default image ..."
+                )
+            summary = self.deploy(
+                machine_type=machine_type, starship=starship, hint=False
+            )
+            if self.progress is None:
+                log(summary)
         live = newest_live(self.runners())
         if live and machine_type and live[0].machine_type != machine_type:
             raise DevError(

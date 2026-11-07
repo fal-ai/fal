@@ -10,11 +10,12 @@ from pathlib import Path
 
 from fal.cli.runners import LogPrinter, print_logs, shell_session
 from fal.cli.runners import _get_runner_info as get_runner_info
-from fal.dev import execute
+from fal.dev import config, execute
 from fal.dev.box import FINAL_STATES, newest_first, ssh_config
 from fal.dev.cli.common import get_box, note_new_box, remember_name, resolve_name
 from fal.dev.errors import DevError
-from fal.dev.loading import STATES, Loading, runner_phase
+from fal.dev.loading import STATES, runner_phase
+from fal.dev.steps import Steps
 from fal.dev.team import confirm_deploy
 
 
@@ -45,6 +46,7 @@ def cmd_deploy(args):
         num_gpus=args.num_gpus,
         idle_minutes=args.idle_minutes,
         claude=args.claude,
+        starship=args.starship,
         no_save=args.no_save,
         dockerfile=args.dockerfile,
         team_data=args.team_data,
@@ -53,32 +55,57 @@ def cmd_deploy(args):
     print(message)
 
 
+def _up_steps(box, args, first_deploy: bool, info) -> Steps:
+    """The checklist for this run: only the steps that apply."""
+    specs: list[tuple] = []
+    if first_deploy:
+        specs += [
+            ("volume", "create volume"),
+            ("build", "build environment"),
+            ("deploy", "deploy"),
+        ]
+    specs += [
+        ("runner", "start runner", STATES["gpu-runner"][1]),
+        ("ready", "ready"),
+    ]
+    types = getattr(info, "machine_types", None)
+    machine = args.machine_type or (types[0] if types else None) or config.DEFAULT_GPU
+    account = box.account
+    team = "personal" if account.personal else str(account.team or "unnamed")
+    return Steps(
+        specs,
+        title=box.name,
+        team=team,
+        machine=machine,
+        hint="Ctrl-C cancels the start and stops billing",
+        verbose=getattr(args, "verbose", False),
+    )
+
+
 def cmd_up(args):
     _cleanup_on_hangup()
     box = get_box(args, creates=True)
-    if box.app_info() is None:
+    info = box.app_info()
+    if info is None:
         note_new_box(args, box)
         _confirm_deploy(box, args)
-    label, expected = STATES["gpu-runner"]
-    wait = Loading(
-        label,
-        title="GPU",
-        subtitle="runner pending",
-        expected=expected,
-        hint="Ctrl-C cancels the start and stops billing",
-    )
+    steps = _up_steps(box, args, info is None, info)
+    box.progress = steps
+    steps.open()
 
     def on_wait(state: str) -> None:
-        wait.update(f"{label}: {runner_phase(state)}")
-        wait.start()  # only once the runner wait begins, after any deploy
+        steps.update("runner", runner_phase(state))
+
+    def show_log() -> None:
+        steps.print_log(args.console)
 
     try:
-        box.up(args.timeout, args.machine_type, on_wait)
+        box.up(args.timeout, args.machine_type, on_wait, starship=args.starship)
     except KeyboardInterrupt:
-        wait.close()
+        steps.fail("cancelled")
         if box.start_cancelled:
             args.console.print("cancelled the start: the box scaled back to 0")
-        elif box.start_cancelled is None and wait.started:
+        elif box.start_cancelled is None and steps.started("runner"):
             args.console.print(
                 "stopped waiting; the box was already up and keeps running"
             )
@@ -87,44 +114,51 @@ def cmd_up(args):
                 "cancelled; check with: fal dev status, stop with: fal dev down"
             )
         return 130
-    except BaseException:
-        wait.close()
+    except BaseException as exc:
+        steps.fail(str(exc).splitlines()[0] if str(exc) else None)
+        show_log()
         raise
     finally:
         # A box that was created but did not come up is still the folder's box.
         with contextlib.suppress(Exception):
             if box.app_info() is not None:
                 remember_name(args, box.name)
-    waited = wait.elapsed if wait.started else None
+    waited = steps.elapsed("runner")
     if args.dash:
-        wait.done()
+        steps.finish("ready")
+        steps.done()
+        if steps.verbose:
+            show_log()
         from fal.dev.cli.dash import show
 
         show(box, args.console)
         return None
     from fal.dev.cli import summary
 
-    wait.update("the runner is up: reading the box")
-    wait.hint = "the box is up and billing; Ctrl-C stops waiting, not the box"
+    steps.hint = "the box is up and billing; Ctrl-C stops waiting, not the box"
+    steps.begin("ready", "reading the box")
     try:
         snap = summary.snapshot(box)
         card = summary.ready_card(snap, box, waited)
     except KeyboardInterrupt:
-        wait.close()
+        steps.fail("cancelled")
         args.console.print("the box is up and billing; stop it with: fal dev down")
         return 130
     except Exception as exc:
         # The box is up: say so, and do not fail `fal dev up && fal dev shell`.
-        wait.close()
+        steps.fail("could not read the box")
+        if steps.verbose:
+            show_log()
         args.console.print(
             f"the box is up and billing (could not read its details: {exc}); "
             "stop it with: fal dev down",
             markup=False,
         )
         return None
-    finally:
-        wait.close()
-    wait.done()
+    steps.finish("ready")
+    steps.done()
+    if steps.verbose:
+        show_log()
     args.console.print(card)
     return None
 

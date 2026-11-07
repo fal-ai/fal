@@ -273,6 +273,16 @@ def _add_box_commands(subparsers, parents) -> None:
         ),
     )
     p.add_argument(
+        "--starship",
+        action="store_true",
+        help=(
+            "Use your local starship prompt on the box: copies only your "
+            "starship.toml ($STARSHIP_CONFIG or ~/.config/starship.toml, stored in "
+            "the box's settings: keep secrets out of it) and "
+            "installs starship there (not remembered)."
+        ),
+    )
+    p.add_argument(
         "--dockerfile",
         help="Your own image, based on the default (see fal/dev/remote/Dockerfile).",
     )
@@ -301,7 +311,23 @@ def _add_box_commands(subparsers, parents) -> None:
         action="store_true",
         help="Open the live dashboard (fal dev dash) once the box is ready.",
     )
+    p.add_argument(
+        "--starship",
+        action="store_true",
+        help=(
+            "Use your local starship prompt on the box: copies only your "
+            "starship.toml ($STARSHIP_CONFIG or ~/.config/starship.toml, stored in "
+            "the box's settings: keep secrets out of it) and "
+            "installs starship there (applies when the box is first created; "
+            "later use `fal dev deploy --starship`)."
+        ),
+    )
     _add_yes(p)
+    p.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show the whole deploy log after the run, not its last lines on failure.",
+    )
     p.add_argument(
         "--timeout",
         type=positive_int,

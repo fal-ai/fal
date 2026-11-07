@@ -45,6 +45,8 @@ IDLE_MINUTES = int(os.environ.get(config.ENV_IDLE_MINUTES, config.DEFAULT_IDLE_M
 CLAUDE_ENABLED = os.environ.get(config.ENV_CLAUDE) == "1"
 # The box's volume, mounted at /data; None for the team-shared /data.
 VOLUME = os.environ.get(config.ENV_VOLUME) or None
+# Your starship.toml, when deployed with --starship.
+STARSHIP_TOML = os.environ.get(config.ENV_STARSHIP) or None
 
 APP_NAME = config.app_name(BOX_NAME)
 WORKSPACE = Path(config.WORKSPACE_ROOT) / BOX_NAME
@@ -576,8 +578,37 @@ def _prepare_home() -> None:
             WORK=LOCAL_WORK,
             CLAUDE_DIR=CLAUDE_CONFIG_DIR,
             WARNING_FILE=WARNING_FILE,
+            BOX_NAME=BOX_NAME,
         )
         bashrc.write_text(f"{existing}\n{block}")
+    if STARSHIP_TOML:
+        # Off the startup path: a slow download must not delay the box. Shells that
+        # open before it finishes get the default prompt.
+        threading.Thread(
+            target=_setup_starship, args=(home, STARSHIP_TOML), daemon=True
+        ).start()
+
+
+def _setup_starship(home: Path, toml: str) -> None:
+    """Install starship and your config; the default prompt stays if that fails."""
+    try:
+        subprocess.run(
+            [
+                "sh",
+                "-c",
+                "command -v starship >/dev/null 2>&1 || "
+                f"curl -fsSL {config.STARSHIP_INSTALL_URL} | sh -s -- -y",
+            ],
+            check=True,
+            capture_output=True,
+            # Not the watchdog's ADMIN key; the installer is an unpinned script.
+            env=_user_env(),
+            timeout=config.STARSHIP_INSTALL_TIMEOUT_SECONDS,
+        )
+        (home / ".config").mkdir(parents=True, exist_ok=True)
+        _write_atomic(home / ".config" / "starship.toml", toml)
+    except Exception as exc:
+        _warn(f"starship is unavailable, using the default prompt ({exc})")
 
 
 def _sshd_config(host_key: Path) -> str:

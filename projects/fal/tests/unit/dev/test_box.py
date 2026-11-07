@@ -107,9 +107,9 @@ def test_run_reuses_its_connection_and_rebuilds_it_once_after_expiry(monkeypatch
 
     box = make_box()
     stubs = []
-    box.client._create_host.side_effect = lambda: stubs.append(
-        MagicMock()
-    ) or MagicMock(_connection=MagicMock(stub=stubs[-1]))
+    box.client._create_host.side_effect = lambda: (
+        stubs.append(MagicMock()) or MagicMock(_connection=MagicMock(stub=stubs[-1]))
+    )
     used = []
 
     def session(client, runner_id, command, **kwargs):
@@ -599,3 +599,15 @@ def test_state_of_a_box_never_deployed_does_not_list_runners():
     box.client.apps.runners.side_effect = AssertionError("listed runners")
     state = box.state()
     assert state.code == "stopped" and state.app is None
+
+
+def test_deploy_reads_the_starship_config_before_stopping_the_box(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("STARSHIP_CONFIG", str(tmp_path / "missing.toml"))
+    box = make_box()
+    box.ensure_volume = lambda: pytest.fail("touched the box before reading the config")
+    box.stop = lambda: pytest.fail("stopped the box before reading the config")
+
+    with pytest.raises(DevError, match="starship"):
+        box.deploy(starship=True)

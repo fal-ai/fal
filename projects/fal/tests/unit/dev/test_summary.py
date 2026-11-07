@@ -87,14 +87,20 @@ def test_a_long_wait_rings_the_bell_and_a_short_one_does_not():
         assert ("\a" in out.getvalue()) is bell
 
 
+class _BoxBase:
+    name = "demo"
+    account = SimpleNamespace(personal=True, team="troy")
+    progress = None
+
+
 def test_ctrl_c_during_up_cancels_and_says_it_stopped_billing(monkeypatch):
-    class Box:
+    class Box(_BoxBase):
         start_cancelled = True
 
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait):
+        def up(self, timeout, machine_type, on_wait, starship=False):
             on_wait("pending")
             raise KeyboardInterrupt
 
@@ -102,7 +108,12 @@ def test_ctrl_c_during_up_cancels_and_says_it_stopped_billing(monkeypatch):
     monkeypatch.setattr(box_cli, "_cleanup_on_hangup", lambda: None)
     console = Console(record=True, width=100, force_terminal=False)
     args = SimpleNamespace(
-        timeout=900, machine_type=None, dash=False, console=console, yes=True
+        starship=False,
+        timeout=900,
+        machine_type=None,
+        dash=False,
+        console=console,
+        yes=True,
     )
     assert box_cli.cmd_up(args) == 130
     assert "cancelled the start" in console.export_text()
@@ -130,13 +141,13 @@ def test_status_fails_loudly_when_the_platform_does_not_answer(monkeypatch):
 def test_up_says_the_box_is_billing_when_its_details_cannot_be_read(monkeypatch):
     from fal.dev.errors import DevError
 
-    class Box:
+    class Box(_BoxBase):
         start_cancelled = None
 
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait):
+        def up(self, timeout, machine_type, on_wait, starship=False):
             return None
 
     def fail(box):
@@ -147,7 +158,12 @@ def test_up_says_the_box_is_billing_when_its_details_cannot_be_read(monkeypatch)
     monkeypatch.setattr(summary, "snapshot", fail)
     console = Console(record=True, width=200, force_terminal=False)
     args = SimpleNamespace(
-        timeout=900, machine_type=None, dash=False, console=console, yes=True
+        starship=False,
+        timeout=900,
+        machine_type=None,
+        dash=False,
+        console=console,
+        yes=True,
     )
     assert box_cli.cmd_up(args) is None
     text = console.export_text()
@@ -157,38 +173,31 @@ def test_up_says_the_box_is_billing_when_its_details_cannot_be_read(monkeypatch)
 def test_once_the_box_is_up_the_hint_no_longer_promises_to_stop_billing(monkeypatch):
     hints = []
 
-    class Box:
+    class Box(_BoxBase):
         start_cancelled = None
 
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait):
+        def up(self, timeout, machine_type, on_wait, starship=False):
             on_wait("pending")
-
-    real = box_cli.Loading
-
-    class Spy(real):
-        def update(self, status):
-            super().update(status)
-            hints.append(self.hint)
+            hints.append(self.progress.hint)
 
     def read(box):
-        hints.append(spy_holder[0].hint)
+        hints.append(box.progress.hint)
         raise KeyboardInterrupt
 
-    spy_holder = []
-    monkeypatch.setattr(
-        box_cli,
-        "Loading",
-        lambda *a, **k: spy_holder.append(Spy(*a, **k)) or spy_holder[0],
-    )
     monkeypatch.setattr(box_cli, "get_box", lambda args, **kwargs: Box())
     monkeypatch.setattr(box_cli, "_cleanup_on_hangup", lambda: None)
     monkeypatch.setattr(summary, "snapshot", read)
     console = Console(record=True, width=200, force_terminal=False)
     args = SimpleNamespace(
-        timeout=900, machine_type=None, dash=False, console=console, yes=True
+        starship=False,
+        timeout=900,
+        machine_type=None,
+        dash=False,
+        console=console,
+        yes=True,
     )
     assert box_cli.cmd_up(args) == 130
     assert "stops billing" in hints[0]
