@@ -355,6 +355,8 @@ def test_a_confirmation_is_remembered_for_the_box_and_team(monkeypatch):
 def _fake_box(deployed):
     box = MagicMock(app="devbox-demo", host="api.example", account=RED)
     box.name = "demo"
+    box.known_owner = None
+    box.owner.return_value = None
     box.app_info.return_value = object() if deployed else None
     return box
 

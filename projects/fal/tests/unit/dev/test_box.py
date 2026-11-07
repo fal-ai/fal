@@ -248,6 +248,7 @@ def test_deploy_stops_a_running_box_first_and_restarts_it(monkeypatch):
     assert kwargs == {
         "app_name": "devbox-demo",
         "auth": "private",
+        "annotations": {config.OWNER_ANNOTATION: "me"},
         "reset_scale": True,
     }
     box.client.apps.scale.assert_called_once_with(

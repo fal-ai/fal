@@ -22,4 +22,7 @@ def make_box(runners=(), min_concurrency=1, deployed=True):
     app = MagicMock(alias="devbox-demo", min_concurrency=min_concurrency)
     app.machine_types = ["GPU-H100"]
     box.client.apps.list.return_value = [app] if deployed else []
+    # Owner lookups go over REST; tests of the guard set these themselves.
+    box.owner_identity = lambda: "me"
+    box.stored_owner = lambda attempts=3: None
     return box

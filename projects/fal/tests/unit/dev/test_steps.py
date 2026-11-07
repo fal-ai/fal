@@ -304,11 +304,15 @@ def test_a_failed_up_marks_the_step_and_prints_the_log_tail():
         name = "voice"
         account = SimpleNamespace(personal=True, team="t")
         progress = None
+        known_owner = None
+
+        def owner(self):
+            return None
 
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait, starship=False):
+        def up(self, timeout, machine_type, on_wait, starship=False, take_over=False):
             self.progress.begin("runner")
             self.progress.capture("image pull failed")
             raise DevError("setup() failed")
@@ -335,6 +339,7 @@ def test_a_failed_up_marks_the_step_and_prints_the_log_tail():
             console=console,
             yes=True,
             starship=False,
+            take_over=False,
         )
         with pytest.raises(DevError):
             box_cli.cmd_up(args)
@@ -366,6 +371,9 @@ def test_box_deploy_walks_the_steps_in_order(monkeypatch):
 
     box.client = Client()
     box.app_info = lambda: None
+    box.account = SimpleNamespace(team="t")
+    box.stored_owner = lambda: None
+    box.owner_identity = lambda: "me"
     box.ensure_volume = lambda: "devbox-voice"
     box.stop = lambda: True
     box.wait_until_stopped = lambda timeout: True
@@ -384,11 +392,15 @@ def test_plain_ready_line_carries_the_billing_hint_not_the_cancel_hint(monkeypat
         name = "voice"
         account = SimpleNamespace(personal=True, team="t")
         progress = None
+        known_owner = None
+
+        def owner(self):
+            return None
 
         def app_info(self):
             return object()
 
-        def up(self, timeout, machine_type, on_wait, starship=False):
+        def up(self, timeout, machine_type, on_wait, starship=False, take_over=False):
             self.progress.begin("runner")
             self.progress.finish("runner")
 
@@ -407,6 +419,7 @@ def test_plain_ready_line_carries_the_billing_hint_not_the_cancel_hint(monkeypat
         console=Console(file=io.StringIO()),
         yes=True,
         starship=False,
+        take_over=False,
     )
     assert box_cli.cmd_up(args) == 130
     out = err.getvalue()

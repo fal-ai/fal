@@ -20,6 +20,7 @@ from fal.dev import copy as file_copy
 from fal.dev.box import FINAL_STATES, newest_first, newest_live, ssh_config
 from fal.dev.cli.common import get_box, note_new_box, remember_name, resolve_name
 from fal.dev.errors import DevError
+from fal.dev.guard import warn_if_foreign
 from fal.dev.loading import STATES, runner_phase
 from fal.dev.steps import Steps
 from fal.dev.team import confirm_deploy
@@ -56,6 +57,7 @@ def cmd_deploy(args):
         no_save=args.no_save,
         dockerfile=args.dockerfile,
         team_data=args.team_data,
+        take_over=args.take_over,
     )
     remember_name(args, box.name)
     print(message)
@@ -95,6 +97,8 @@ def cmd_up(args):
     if info is None:
         note_new_box(args, box)
         _confirm_deploy(box, args)
+    else:
+        warn_if_foreign(box, args)
     steps = _up_steps(box, args, info is None, info)
     box.progress = steps
     steps.open()
@@ -106,7 +110,13 @@ def cmd_up(args):
         steps.print_log(args.console)
 
     try:
-        box.up(args.timeout, args.machine_type, on_wait, starship=args.starship)
+        box.up(
+            args.timeout,
+            args.machine_type,
+            on_wait,
+            starship=args.starship,
+            take_over=args.take_over,
+        )
     except KeyboardInterrupt:
         steps.fail("cancelled")
         if box.start_cancelled:
@@ -248,6 +258,7 @@ def cmd_status(args):
 
 def cmd_shell(args):
     box = get_box(args)
+    warn_if_foreign(box, args)
     return shell_session(
         box.client,
         box.require_runner(),
@@ -263,6 +274,7 @@ def cmd_exec(args):
     if not command:
         args.parser.error("usage: fal dev exec -- <command>")
     box = get_box(args)
+    warn_if_foreign(box, args)
     return execute.run(box.client, box.require_runner(), command, args.console)
 
 
@@ -425,7 +437,9 @@ def cmd_ssh_proxy(args):
     # Editors show stderr on every connect, so the account is not announced.
     # No name lookup here: editors start the proxy on every connect.
     try:
-        return get_box(args, quiet=True, remember=False).ssh_proxy(args.timeout)
+        box = get_box(args, quiet=True, remember=False)
+        warn_if_foreign(box, args)
+        return box.ssh_proxy(args.timeout)
     except DevError:
         # The CLI's error panel prints these with their fix hints.
         raise

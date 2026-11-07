@@ -83,6 +83,10 @@ class FakeDashBox:
     app = "devbox-demo"
     account = Account(None, False, via_key=True)
     host = None
+    known_owner = None
+
+    def owner(self):
+        return None
 
     def __init__(self, probe=None, code="running"):
         self.probe = probe or _probe()

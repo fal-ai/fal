@@ -124,6 +124,8 @@ def status_line(snap: Snapshot, box: Box, now: float | None = None) -> Text:
         Text(box.app, style="bold"),
         Text(code.upper(), style=f"bold {STATE_STYLES.get(code, '')}"),
     ]
+    if owner := box.owner():
+        parts.append(Text(f"owner {owner}", style=MUTED))
     if code == "starting":
         runner = state.runner if state else None
         phase = runner_phase(runner.state.value.lower()) if runner else ""
@@ -171,6 +173,8 @@ def ready_card(
     if runner:
         gpu.append(f"{sep}runner {runner.runner_id}", style=MUTED)
     facts.add_row("gpu", gpu)
+    if owner := box.owner():
+        facts.add_row("owner", Text(owner))
     if cost := _cost(snap):
         facts.add_row("cost", cost)
     facts.add_row("idle", _idle(snap, now))
