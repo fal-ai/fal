@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator
 
 from fal.dev.media.common import (
+    ENV_PROTOCOL,
     OFF,
     VIDEO_SUFFIXES,
     clean,
@@ -338,4 +339,12 @@ def view(args) -> int:
     except Exception as exc:
         print(f"preview failed: {clean(str(exc))}", file=sys.stderr)
         return 1
+    opted_out = getattr(args, "preview", None) is False or os.environ.get(ENV_PROTOCOL)
+    if paths and term.protocol == OFF and not opted_out:
+        print(
+            "no preview: this is not a terminal that can show images. Set "
+            f"{ENV_PROTOCOL}=blocks for a text preview, or copy the file to your "
+            "machine and run `fal dev view` there.",
+            file=sys.stderr,
+        )
     return 1 if failed else 0

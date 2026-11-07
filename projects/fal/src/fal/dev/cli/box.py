@@ -346,4 +346,13 @@ def cmd_ssh_proxy(args):
     _cleanup_on_hangup()
     # Editors show stderr on every connect, so the account is not announced.
     # No name lookup here: editors start the proxy on every connect.
-    return get_box(args, quiet=True, remember=False).ssh_proxy(args.timeout)
+    try:
+        return get_box(args, quiet=True, remember=False).ssh_proxy(args.timeout)
+    except DevError:
+        # The CLI's error panel prints these with their fix hints.
+        raise
+    except Exception as exc:
+        # Editors show only stderr; ssh itself reports a bare "Connection closed".
+        reason = str(exc).strip() or type(exc).__name__
+        print(f"fal dev ssh-proxy failed: {reason}", file=sys.stderr, flush=True)
+        return 1

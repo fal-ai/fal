@@ -618,7 +618,9 @@ def _add_app_commands(subparsers, parents) -> None:
         default=None,
         help="With no box yet, show one waiting frame (refreshed in place) and "
         "attach when a box appears, also after the box is stopped. Default: on "
-        "when stdout is a terminal, so it can be started before the box.",
+        "when stdout is a terminal, so it can be started before the box. "
+        "Ignored with --once, which prints one frame (the waiting text if there "
+        "is no box) and exits.",
     )
 
     p = add_app(
@@ -822,6 +824,11 @@ def _add_view_command(subparsers, parents) -> None:
         team_help=argparse.SUPPRESS,
     )
     p.add_argument("files", nargs="+", help="Image or video files, or URLs.")
+    p.add_argument(
+        "--name",
+        help="Accepted for consistency with the other commands; view is local "
+        "and ignores it.",
+    )
 
 
 def add_parser(main_subparsers, parents) -> None:

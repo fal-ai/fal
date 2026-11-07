@@ -947,3 +947,21 @@ def test_glue_imports_no_pillow():
         "assert 'PIL' not in sys.modules, 'PIL imported'"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_view_accepts_name_and_explains_a_missing_preview(
+    monkeypatch, tmp_path, capsys
+):
+    from fal.cli.main import parse_args
+
+    monkeypatch.delenv("FAL_DEV_PREVIEW", raising=False)
+    monkeypatch.setattr(term_media, "terminal_for", lambda args: _detect({}, tty=False))
+    image = tmp_path / "a.png"
+    image.write_bytes(b"x")
+    args = parse_args(["dev", "view", "--name", "box1", str(image)])
+
+    assert args.name == "box1"
+    assert preview.view(args) == 0
+
+    err = capsys.readouterr().err
+    assert "no preview" in err and "FAL_DEV_PREVIEW=blocks" in err

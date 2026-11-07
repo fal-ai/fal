@@ -635,11 +635,16 @@ def cmd_dash(args):
     if wait is None:
         wait = sys.stdout.isatty() and not args.once
     if args.once:
-        # One frame: attach if a box exists; with --wait, wait for one first.
-        session = (
-            waiting.wait_for_session(args.name, console) if wait else _session(args)
-        )
-        box = app_dash.AppBox(session)
+        # One frame, never a wait: --wait has no effect with --once. With no box
+        # yet, the frame is the waiting text and the exit code is 0.
+        session, error = waiting.find(args.name)
+        if session is None:
+            if error:
+                print(error, file=sys.stderr)
+                return 1
+            console.print(waiting.WAITING_TEXT, markup=False, highlight=False)
+            return 0
+        box = app_dash.AppBox(_session(args))
         print_once(box, console, app_dash.controls(box))
         return
     while True:
