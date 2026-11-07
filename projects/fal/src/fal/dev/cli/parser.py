@@ -366,6 +366,28 @@ def _add_box_commands(subparsers, parents) -> None:
         team_help=SSH_CONFIG_TEAM_HELP,
     )
     p = add_box(
+        "cp",
+        "Copy files between this laptop and the box; ':' marks the box side. "
+        "Starts a stopped box.",
+        epilog=(
+            "examples:\n"
+            "  fal dev cp :/work/out.mp4 .      download a file\n"
+            "  fal dev cp -r ./data :/data/x    upload a folder\n"
+            "Relative box paths start in the box's home folder. Uses scp over the "
+            "ssh-proxy with your default keys in ~/.ssh (your ~/.ssh/config is "
+            "not used); ~/.ssh/known_hosts is not touched."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("src", help="Source: a local path, or :path on the box.")
+    p.add_argument("dst", help="Destination: a local path, or :path on the box.")
+    p.add_argument(
+        "-r",
+        "--recursive",
+        action="store_true",
+        help="Copy a folder and what is in it.",
+    )
+    p = add_box(
         "ssh-proxy",
         "SSH ProxyCommand used by the ssh-config entry; starts a stopped box.",
     )
