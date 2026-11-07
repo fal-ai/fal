@@ -22,10 +22,11 @@ from rich.console import Group, RenderableType
 from rich.text import Text
 
 from fal.console.icons import get_inline_separator_icon
-from fal.dev import config
+from fal.dev import config, loading
+from fal.dev.app import live
 from fal.dev.app.session import Session
 from fal.dev.box import Box
-from fal.dev.dash import view
+from fal.dev.dash import view, waiting
 from fal.dev.dash.model import Poller, Snapshot, clean
 from fal.dev.dash.tui import Controls
 from fal.dev.remote.protocol import (
@@ -195,7 +196,46 @@ def keep_alive_panel(probe: dict, box_now: float) -> RenderableType:
     return view._panel(view._kv(rows), "Keep alive")
 
 
-def app_panel(probe: dict, box_now: float, session: Session) -> RenderableType:
+def sync_row(sync: dict, now: float) -> tuple[str, RenderableType]:
+    """The hot reload row: the last local sync, and whether --watch is running."""
+    last = sync.get("last")
+    watching = sync.get("watching")
+    state = (
+        Text("watching", style=view.SUCCESS)
+        if watching
+        else Text("not watching: `fal dev app sync --watch`", style=view.MUTED)
+    )
+    if not last:
+        return "hot reload", Text.assemble(state, ("  no sync yet", view.MUTED))
+    action = last.get("action")
+    how = {
+        "reload": "reloaded in place",
+        "restart": "process restart",
+        "pending": "saved, reloads when ready",
+    }.get(action, f"not reloaded ({action})" if action else "no reload")
+    count = last.get("files", 0)
+    parts = [f"{count} file{'s' if count != 1 else ''}", how]
+    if last.get("ms") is not None and action == "reload":
+        parts.append(f"{last['ms']:.0f} ms")
+    parts.append(f"synced in {last.get('seconds', 0):.1f}s")
+    detail = Text(", ".join(parts))
+    if action not in ("reload", "restart", "pending"):
+        detail.stylize(view.ERROR)
+    return "hot reload", Text.assemble(
+        state,
+        "\n",
+        detail,
+        (f" ({view.duration(max(0, now - last['at']))} ago)", view.MUTED),
+    )
+
+
+def app_panel(
+    probe: dict,
+    box_now: float,
+    session: Session,
+    sync: dict | None = None,
+    now: float | None = None,
+) -> RenderableType:
     app = probe.get("app")
     process = probe.get("process")
     rows: list[tuple[str, RenderableType | str]] = [
@@ -211,7 +251,8 @@ def app_panel(probe: dict, box_now: float, session: Session) -> RenderableType:
         if app.get("setup_seconds"):
             rows.append(("setup()", f"{app['setup_seconds']:.0f}s"))
         reload = app.get("last_reload") or {}
-        if reload:
+        # Without a local record (another machine synced), the box's own note.
+        if reload and not (sync or {}).get("last"):
             files = ", ".join(reload.get("files") or []) or "-"
             rows.append(
                 (
@@ -229,6 +270,8 @@ def app_panel(probe: dict, box_now: float, session: Session) -> RenderableType:
         )
     else:
         rows.append(("process", Text("not started", style=view.MUTED)))
+    if sync is not None:
+        rows.append(sync_row(sync, time.time() if now is None else now))
     return view._panel(view._kv(rows), "App")
 
 
@@ -281,6 +324,22 @@ def engine_panel(probe: dict) -> RenderableType | None:
     return view._panel(view._kv(rows), title)
 
 
+def _setup_done(snapshot: Snapshot) -> bool:
+    """The probe saw the app ready, so a leftover phase note is stale."""
+    app = (snapshot.probe or {}).get("app")
+    return bool(app and app.get("ready"))
+
+
+def _degraded(draw, title: str) -> RenderableType | None:
+    """One panel; a probe field it needs being absent (a box on another fal
+    version) shows a dash on that panel only, not on all of them."""
+    try:
+        return draw()
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        reason = f"- (probe has no {exc})" if isinstance(exc, KeyError) else "-"
+        return view._panel(Text(reason, style=view.MUTED), title)
+
+
 def body(
     snapshot: Snapshot, box: AppBox, now: float, animate: bool = False
 ) -> RenderableType:
@@ -288,6 +347,18 @@ def body(
     state = snapshot.state
     if state is None:
         return Group(*parts)
+    phase = next((s for s in live.starting() if s["name"] == box.name), None)
+    if phase is not None and not _setup_done(snapshot):
+        text = waiting.PHASE_TEXT[phase["phase"]]
+        elapsed = loading.format_elapsed(now - phase["since"])
+        parts.append(
+            view._panel(
+                Text.assemble(
+                    "starting: ", (text, "bold"), (f" ({elapsed})", view.MUTED)
+                ),
+                "Start",
+            )
+        )
     if not view._live(snapshot):
         hint = NOT_RUNNING_HINTS.get(state.code, "")
         return Group(*parts, view._panel(Text(hint, style=view.MUTED), ""))
@@ -300,11 +371,16 @@ def body(
     else:
         box_now = view._box_clock(snapshot, now)
         panels = [
-            view.gpu_panel(probe),
-            keep_alive_panel(probe, box_now),
-            app_panel(probe, box_now, box.session),
+            _degraded(lambda: view.gpu_panel(probe), "GPU"),
+            _degraded(lambda: keep_alive_panel(probe, box_now), "Keep alive"),
+            _degraded(
+                lambda: app_panel(
+                    probe, box_now, box.session, live.read_sync(box.session.name), now
+                ),
+                "App",
+            ),
         ]
-        if engine := engine_panel(probe):
+        if engine := _degraded(lambda: engine_panel(probe), "Engine"):
             panels.append(engine)
     parts.append(Columns(panels, equal=True))
     parts.append(view.logs_panel(snapshot))
@@ -360,4 +436,6 @@ def controls(box: AppBox) -> Controls:
         down=lambda: stop(session),
         down_prompt="press d again to stop the box and delete its app",
         down_label="stopping the box",
+        gone=lambda: not session.path.exists(),
+        idle_warning=False,
     )

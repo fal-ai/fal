@@ -45,6 +45,12 @@ class Controls:
     down_prompt: str
     down_label: str
     outputs: bool = False
+    # True once the box is gone (stopped from elsewhere): the dash ends and
+    # returns True, so a caller that waits for boxes can wait for the next.
+    gone: Callable[[], bool] | None = None
+    # Whether to ring the bell before the idle watchdog stops the box. An app
+    # box has no watchdog (its probe has no idle section): it scales to zero.
+    idle_warning: bool = True
 
 
 def box_controls(box: Box) -> Controls:
@@ -121,15 +127,16 @@ def run_dashboard(
     interval: float = 3.0,
     console: Console | None = None,
     controls: Controls | None = None,
-) -> None:
-    """Show the dashboard until q or Ctrl-C."""
+) -> bool:
+    """Show the dashboard until q or Ctrl-C; True if it ended because the box
+    is gone (see ``Controls.gone``)."""
     console = console or Console()
     controls = controls or box_controls(box)
     render = controls.render
     # No termios on Windows; no screen to draw on without a terminal.
     if os.name == "nt" or not (sys.stdin.isatty() and sys.stdout.isatty()):
         print_once(box, console, controls)
-        return
+        return False
     poller = controls.poller(box, interval=interval)
     poller.start()
     fd = sys.stdin.fileno()
@@ -137,6 +144,7 @@ def run_dashboard(
     pending_quit = False
     busy = threading.Lock()
     idle_warning = model.IdleWarning()
+    gone = False
 
     def act(label: str, func, *args) -> None:
         """Run a slow action without freezing the screen."""
@@ -175,9 +183,14 @@ def run_dashboard(
                     animating = animate and model.waits(poller.snapshot)
                     key = _read_key(fd, 1 / loading.FPS if animating else 1.0)
                     runner_id = poller.snapshot.runner_id
-                    if warning := idle_warning.check(poller.snapshot, time.time()):
+                    if controls.idle_warning and (
+                        warning := idle_warning.check(poller.snapshot, time.time())
+                    ):
                         console.bell()
                         poller.say(warning, seconds=60)
+                    if controls.gone and controls.gone():
+                        gone = True
+                        break
                     if key == "q":
                         if not busy.locked() or pending_quit:
                             break
@@ -247,6 +260,7 @@ def run_dashboard(
         pass
     finally:
         poller.stop()
+    return gone
 
 
 @contextmanager
