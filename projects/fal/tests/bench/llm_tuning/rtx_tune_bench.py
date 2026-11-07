@@ -20,6 +20,12 @@ identical across runs and tok/s is comparable. The shared agent prefix is byte-i
 every run and a warmup pass precedes the measurement, so every run is scored with a warm
 prefix cache rather than one run getting a cold-cache penalty the next does not.
 
+--natural drops that forcing so a task costs what it actually costs, which is what cost
+per task needs. The floor verdict is still printed for a natural run but means less
+there: decode tok/s is measured per stream over however many tokens that stream happened
+to produce, so a short completion estimates the rate from a handful of inter-token gaps.
+Compare natural runs against natural runs, and read the floor from a forced run.
+
 Two things this does not measure, and you should not read into a row:
 
 - `engine_args` is what the operator says was configured. It is not read back from the
@@ -150,19 +156,34 @@ def config_sha(engine_args: list[str]) -> str:
     return hashlib.sha256(" ".join(engine_args).encode()).hexdigest()[:12]
 
 
-async def one_stream(http, url, model, turn_index, max_tokens, context_lines=0):
+async def one_stream(
+    http,
+    url,
+    model,
+    turn_index,
+    max_tokens,
+    context_lines=0,
+    natural=False,
+    reasoning_effort=None,
+):
     body = {
         "model": model,
         "stream": True,
         "max_tokens": max_tokens,
-        "ignore_eos": True,
+        # Forced to exactly max_tokens so throughput runs are comparable. In
+        # `natural` mode the model stops on its own, which is what cost per task
+        # needs: the question there is how many tokens a task actually costs.
+        "ignore_eos": not natural,
         "stream_options": {"include_usage": True},
         "messages": messages(turn_index, context_lines),
     }
+    if reasoning_effort:
+        body["reasoning_effort"] = reasoning_effort
     start = time.monotonic()
     first = None
     usage = {}
     err = None
+    finish = None
     try:
         async with http.stream("POST", url, json=body, timeout=900.0) as r:
             if r.status_code != 200:
@@ -174,6 +195,8 @@ async def one_stream(http, url, model, turn_index, max_tokens, context_lines=0):
                 if obj.get("usage"):
                     usage = obj["usage"]
                 for ch in obj.get("choices") or []:
+                    if ch.get("finish_reason"):
+                        finish = ch["finish_reason"]
                     d = ch.get("delta") or {}
                     if first is None and (
                         d.get("content")
@@ -198,6 +221,10 @@ async def one_stream(http, url, model, turn_index, max_tokens, context_lines=0):
         err = "produced tokens but no first-token delta was recognised"
     decode_s = end - first if first else None
     return {
+        "finish_reason": finish,
+        "reasoning_tokens": (usage.get("completion_tokens_details") or {}).get(
+            "reasoning_tokens"
+        ),
         "ttft": first - start if first else None,
         "total_s": end - start,
         "prompt_tokens": usage.get("prompt_tokens"),
@@ -229,7 +256,15 @@ def pct(values, fraction):
 
 
 async def run_level(
-    http, url, model, streams, max_tokens, requests=None, context_lines=0
+    http,
+    url,
+    model,
+    streams,
+    max_tokens,
+    requests=None,
+    context_lines=0,
+    natural=False,
+    reasoning_effort=None,
 ):
     """Closed loop: `requests` total, never more than `streams` in flight at once.
 
@@ -241,7 +276,16 @@ async def run_level(
 
     async def guarded(index):
         async with gate:
-            return await one_stream(http, url, model, index, max_tokens, context_lines)
+            return await one_stream(
+                http,
+                url,
+                model,
+                index,
+                max_tokens,
+                context_lines,
+                natural,
+                reasoning_effort,
+            )
 
     started = time.monotonic()
     rows = await asyncio.gather(*(guarded(i) for i in range(total)))
@@ -249,6 +293,17 @@ async def run_level(
     ok = [r for r in rows if not r.get("error")]
     failed = [r for r in rows if r.get("error")]
     out_tokens = sum(r["out_tokens"] for r in ok)
+    # Which streams a per-task cost may be read from. Forced runs always stop on
+    # "length" by construction, so the filter only applies to natural ones,
+    # where "length" means the task was cut off rather than finished.
+    # "length" means cut off at --max-tokens, and a missing finish_reason means
+    # the stream never said it finished. Neither is a completed task, and a
+    # price is better absent than quietly wrong, so both are left out.
+    costed = (
+        [r for r in ok if r["finish_reason"] not in (None, "length")]
+        if natural
+        else list(ok)
+    )
     return {
         "streams": streams,
         "requests": total,
@@ -260,12 +315,56 @@ async def run_level(
         "errors": [r["error"] for r in failed][:3],
         "ttft_p50": pct([r["ttft"] for r in ok], 0.5),
         "ttft_p95": pct([r["ttft"] for r in ok], 0.95),
+        # Throughput is asked of every stream that served, truncated or not,
+        # while the cost fields below are asked only of tasks that finished.
+        # Two populations in one row, on purpose.
         "decode_tok_s_p50": pct([r["tok_s"] for r in ok], 0.5),
         "agg_out_tok_s": round(out_tokens / wall, 1) if wall else None,
         "prompt_tokens": ok[0]["prompt_tokens"] if ok else None,
-        "cached_tokens": ok[0]["cached_tokens"] if ok else None,
+        "cached_tokens": pct([r["cached_tokens"] for r in ok], 0.5),
+        "out_tokens_p50": pct([float(r["out_tokens"]) for r in costed], 0.5),
+        "reasoning_tokens_p50": pct(
+            [
+                float(r["reasoning_tokens"])
+                for r in costed
+                if r["reasoning_tokens"] is not None
+            ],
+            0.5,
+        ),
+        "task_s_p50": pct([r["total_s"] for r in costed], 0.5),
+        # In natural mode these two say whether the per-task numbers mean
+        # anything: a stream cut off at --max-tokens did not finish the task,
+        # so counting it would understate what the task costs.
+        "costed_tasks": len(costed),
+        "truncated_tasks": len(ok) - len(costed),
+        "finish_reasons": sorted(
+            {r["finish_reason"] for r in ok if r["finish_reason"]}
+        ),
         "wall_s": round(wall, 1),
     }
+
+
+def usd_per_task(task_s_p50, streams, gpu_hourly, num_gpus):
+    """What one task costs at this concurrency.
+
+    Cost per 1M output tokens measures serving efficiency. It cannot see a
+    change that makes each task need fewer tokens, which is what capping
+    reasoning effort does, so that question needs its own number.
+
+    A task holds one of `streams` slots on the GPU for its own duration, so its
+    share of the hour is `task_s / streams`. Derived from the median task rather
+    than the level's wall clock on purpose: wall clock only stops when the last
+    straggler does, so one stream timing out at 900 s against a 10 s median
+    turned a healthy $0.00035 into $0.0325, a 93x move with no change in the
+    engine. The median is the same number as the wall-clock form on a healthy
+    level and does not move when one request hangs.
+    """
+    if not task_s_p50 or not streams:
+        return None
+    # 8 places, not the 5 or 6 used for per-million figures: a task costs on the
+    # order of $0.001, so coarser rounding would leave it with one significant
+    # figure and make two configurations look identical.
+    return round(gpu_hourly * num_gpus * (task_s_p50 / streams) / 3600, 8)
 
 
 def usd_per_1m_out(agg_tok_s, gpu_hourly, num_gpus):
@@ -321,6 +420,33 @@ def score(levels):
         "levels_holding_floor": holding,
         "levels_breaking_floor": broken,
     }
+
+
+def gate_level(levels):
+    """The level the floor is defined at, or None if it was not measured."""
+    return next((lv for lv in levels if lv["streams"] == FLOOR_LEVEL), None)
+
+
+def task_price(row):
+    """Per-task cost at the gate, or None if it must not be quoted.
+
+    The gate has to hold the floor first. Ranking on cost alone would let a
+    configuration that misses TTFT or decode at the gate be named the cheapest
+    per task, which is the same mistake `best_level` already guards against on
+    the per-token side.
+    """
+    gate = gate_level(row.get("levels") or [])
+    if gate is None or level_reasons(gate):
+        return None
+    # Recomputed rather than read, for the same reason best_level recomputes the
+    # per-token price: the log is append-only, so a row written under an older
+    # formula must not keep being ranked on a number this tool has moved on from.
+    return usd_per_task(
+        gate.get("task_s_p50"),
+        gate.get("streams"),
+        row.get("gpu_hourly_usd"),
+        row.get("num_gpus"),
+    )
 
 
 def best_level(levels, gpu_hourly=None, num_gpus=None):
@@ -380,21 +506,42 @@ async def cmd_bench(args):
         "config_sha": config_sha(args.engine_args),
         "max_tokens": args.max_tokens,
         "context_lines": args.context_lines,
+        "natural": args.natural,
+        "reasoning_effort": args.reasoning_effort,
     }
     limits = httpx.Limits(max_connections=max(levels_wanted) + 8)
     async with httpx.AsyncClient(limits=limits) as http:
-        warm = await one_stream(http, url, args.model, 0, 16, args.context_lines)
+        warm = await one_stream(
+            http,
+            url,
+            args.model,
+            0,
+            16,
+            args.context_lines,
+            False,
+            args.reasoning_effort,
+        )
         print("warmup", json.dumps(warm), flush=True)
         if warm.get("error"):
             raise SystemExit(f"warmup failed: {warm['error']}")
         row["levels"] = []
         for streams in levels_wanted:
             level = await run_level(
-                http, url, args.model, streams, args.max_tokens,
-                args.requests_per_level, args.context_lines,
+                http,
+                url,
+                args.model,
+                streams,
+                args.max_tokens,
+                args.requests_per_level,
+                args.context_lines,
+                args.natural,
+                args.reasoning_effort,
             )
             level["usd_per_1m_out"] = usd_per_1m_out(
                 level["agg_out_tok_s"], args.gpu_hourly, args.num_gpus
+            )
+            level["usd_per_task"] = usd_per_task(
+                level["task_s_p50"], streams, args.gpu_hourly, args.num_gpus
             )
             print(json.dumps(level), flush=True)
             row["levels"].append(level)
@@ -411,6 +558,17 @@ async def cmd_bench(args):
     else:
         price = "no level holds the floor, so no price is quoted"
     print(f"\n{verdict} floor at {FLOOR_LEVEL} | {row['label']} | {price}")
+    if args.natural:
+        truncated = sum(lv.get("truncated_tasks") or 0 for lv in row["levels"])
+        print(
+            "  natural run: decode tok/s is not length-normalised, so the floor "
+            "verdict is weaker than a forced run's"
+        )
+        if truncated:
+            print(
+                f"  {truncated} task(s) hit --max-tokens rather than finishing, "
+                "and are excluded from the per-task numbers"
+            )
     if row["reasons"]:
         print("  gate: " + "; ".join(row["reasons"]))
     if row.get("levels_breaking_floor"):
@@ -445,6 +603,8 @@ def workload_key(row):
         row.get("machine"),
         row.get("num_gpus"),
         row.get("gpu_hourly_usd"),
+        row.get("natural", False),
+        row.get("reasoning_effort"),
     )
 
 
@@ -470,14 +630,22 @@ def cmd_compare(_args):
             ),
             "?",
         )
+        natural, effort = key[6], key[7]
+        kind = "natural" if natural else "forced length"
+        if effort:
+            kind += f", reasoning_effort {effort}"
         print(
             f"\nworkload: {prompt} prompt tokens, {max_tokens} output, "
-            f"{model} on {machine}"
+            f"{model} on {machine} ({kind})"
         )
+        # A natural run exists to answer what a task costs, so rank it on that
+        # and not on the per-token figure, which is blind to a task needing
+        # fewer tokens in the first place.
+        rank_by_task = bool(natural)
         header = (
             f"{'label':<22}{'floor':<7}"
             f"{f'ttft95@{FLOOR_LEVEL}':>9}{f'tok/s@{FLOOR_LEVEL}':>9}"
-            f"{'agg@max':>9}{'$/1M':>8}{'  at':>5}"
+            f"{'agg@max':>9}{'$/1M':>8}{'$/task':>10}{'  at':>5}"
         )
         print(header)
         print("-" * len(header))
@@ -492,6 +660,8 @@ def cmd_compare(_args):
                 row["levels"], row.get("gpu_hourly_usd"), row.get("num_gpus")
             )
             holds = not level_reasons(gate)
+            per_task = task_price(row)
+            task_cell = "-" if per_task is None else str(per_task)
             print(
                 f"{row['label']:<22}"
                 f"{('pass' if holds else 'FAIL'):<7}"
@@ -499,6 +669,7 @@ def cmd_compare(_args):
                 f"{str(gate.get('decode_tok_s_p50')):>9}"
                 f"{str(top.get('agg_out_tok_s')):>9}"
                 f"{str(best['usd_per_1m_out']) if best else '-':>8}"
+                f"{task_cell:>10}"
                 f"{str(best['streams']) if best else '-':>5}"
             )
         scored = [
@@ -509,12 +680,35 @@ def cmd_compare(_args):
         if not passing:
             print("  no run holds the floor on this workload yet")
             continue
-        best_row, best_lv = min(passing, key=lambda rb: rb[1]["usd_per_1m_out"])
-        print(
-            f"  best: {best_row['label']} at "
-            f"${best_lv['usd_per_1m_out']}/1M output tokens, "
-            f"{best_lv['streams']} streams"
-        )
+        if rank_by_task:
+            # Rank on the gate level's per-task cost: the floor is defined
+            # there, and a task's cost is only meaningful at a fixed concurrency.
+            priced = [(r, b) for r, b in passing if task_price(r) is not None]
+            if not priced:
+                print(
+                    "  no run on this workload holds the floor at the gate with a "
+                    "per-task cost"
+                )
+                continue
+            best_row, best_lv = min(priced, key=lambda rb: task_price(rb[0]))
+            gate_lv = gate_level(best_row["levels"])
+            print(
+                f"  best: {best_row['label']} at "
+                f"${gate_lv['usd_per_task']} per task at {FLOOR_LEVEL} streams, "
+                f"{gate_lv.get('out_tokens_p50')} output tokens median"
+            )
+            if gate_lv.get("truncated_tasks"):
+                print(
+                    f"  warning: {gate_lv['truncated_tasks']} task(s) hit "
+                    "--max-tokens rather than finishing, so this understates cost"
+                )
+        else:
+            best_row, best_lv = min(passing, key=lambda rb: rb[1]["usd_per_1m_out"])
+            print(
+                f"  best: {best_row['label']} at "
+                f"${best_lv['usd_per_1m_out']}/1M output tokens, "
+                f"{best_lv['streams']} streams"
+            )
         print(f"  engine_args: {' '.join(best_row['engine_args'])}")
         if group[-1]["label"] != best_row["label"]:
             print(f"  last run {group[-1]['label']}: revert, it does not beat the best")
@@ -536,6 +730,16 @@ def main():
     bench.add_argument("--gpu-hourly", type=float, default=GPU_HOURLY_USD)
     bench.add_argument("--levels", default="1,8,32")
     bench.add_argument("--max-tokens", type=int, default=512)
+    bench.add_argument(
+        "--natural",
+        action="store_true",
+        help="let the model stop on its own, for cost per task rather than per token",
+    )
+    bench.add_argument(
+        "--reasoning-effort",
+        default=None,
+        help="send reasoning_effort (e.g. low) with every request",
+    )
     bench.add_argument(
         "--context-lines",
         type=int,
