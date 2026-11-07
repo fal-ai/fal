@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import urllib.parse
-import urllib.request
 
 
 def https_proxy_for(url_or_host: str) -> str | None:
@@ -13,6 +12,9 @@ def https_proxy_for(url_or_host: str) -> str | None:
     Reads HTTPS_PROXY / https_proxy and honors NO_PROXY / no_proxy, the same
     way httpx and urllib do.
     """
+    # Loaded on first use: importing fal.sdk should not pull in urllib.request.
+    import urllib.request  # noqa: PLC0415
+
     host = urllib.parse.urlsplit(url_or_host).hostname or url_or_host.partition(":")[0]
     proxy = urllib.request.getproxies_environment().get("https")
     if not proxy or urllib.request.proxy_bypass_environment(host):
@@ -27,6 +29,8 @@ def grpc_proxy_options(target: str) -> list[tuple[str, str | int]]:
     proxy is passed as the `grpc.http_proxy` option, which also covers an
     uppercase HTTPS_PROXY. An explicit grpc_proxy variable keeps precedence.
     """
+    import urllib.request  # noqa: PLC0415
+
     host = urllib.parse.urlsplit(target).hostname or target.partition(":")[0]
     if urllib.request.getproxies_environment().get(
         "https"

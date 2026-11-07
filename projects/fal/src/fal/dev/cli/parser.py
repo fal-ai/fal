@@ -302,20 +302,42 @@ def _show(exc: DevError) -> None:
 
 def _unreachable(exc: Exception) -> DevError | None:
     """A connect failure that no `fal dev` call wrapped, with host and proxy."""
+    from urllib.error import HTTPError, URLError
+    from urllib.parse import urlsplit
+
+    import grpc
     import httpx
 
+    from fal import flags
     from fal._proxy import https_proxy_for, unreachable_message
+    from fal.exceptions import FalServerlessException
 
     if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ProxyError)):
         try:
             host = exc.request.url.host
         except RuntimeError:
             host = "fal"
+        message = unreachable_message(host, exc)
+    elif isinstance(exc, grpc.RpcError) and exc.code() == grpc.StatusCode.UNAVAILABLE:
+        host = flags.GRPC_HOST.partition(":")[0]
+        if https_proxy_for(host) is None:
+            # Not proxied: `fal`'s own handler already explains UNAVAILABLE.
+            return None
+        message = unreachable_message(host, exc.details())
+    elif (
+        isinstance(exc, FalServerlessException)
+        and isinstance(exc.__context__, URLError)
+        and not isinstance(exc.__context__, HTTPError)
+    ):
+        # The account lookup could not connect and already wrote the message
+        # (fal.auth); an HTTP error answer is not a network problem.
+        host = urlsplit(flags.REST_URL).hostname or flags.REST_URL
+        message = str(exc)
     else:
         return None
     proxied = https_proxy_for(host) is not None
     return DevError(
-        unreachable_message(host, exc),
+        message,
         title="the proxy is not reachable" if proxied else "the network is unreachable",
     )
 

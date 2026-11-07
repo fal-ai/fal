@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import sys
+import types
+from urllib.error import HTTPError, URLError
+
+import grpc
 import httpx
 import pytest
 
-from fal import _proxy
+from fal import _proxy, auth, sdk
 from fal.dev import transport
 from fal.dev.cli import parser as dev_parser
+from fal.exceptions import FalServerlessException
 
 PROXY_VARS = (
     "HTTPS_PROXY",
@@ -116,3 +122,83 @@ def test_unreachable_wraps_httpx_connect_error(monkeypatch):
     assert err is not None
     assert "rest.alpha.fal.ai through proxy http://127.0.0.1:1" in str(err)
     assert dev_parser._unreachable(httpx.ReadTimeout("slow", request=request)) is None
+
+
+class _Unavailable(grpc.RpcError):
+    def __init__(self, code=grpc.StatusCode.UNAVAILABLE):
+        self._code = code
+
+    def code(self):
+        return self._code
+
+    def details(self):
+        return "failed to connect to all addresses"
+
+
+def test_unreachable_names_the_proxy_for_grpc(monkeypatch):
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:1")
+    err = dev_parser._unreachable(_Unavailable())
+    assert err is not None
+    assert err.title == "the proxy is not reachable"
+    assert "through proxy http://127.0.0.1:1" in str(err)
+    assert dev_parser._unreachable(_Unavailable(grpc.StatusCode.INTERNAL)) is None
+
+
+def test_unreachable_leaves_unproxied_grpc_to_fal():
+    assert dev_parser._unreachable(_Unavailable()) is None
+
+
+def _account_lookup_failure() -> FalServerlessException:
+    try:
+        try:
+            raise URLError(ConnectionRefusedError("refused"))
+        except URLError:
+            raise FalServerlessException("could not reach rest.alpha.fal.ai") from None
+    except FalServerlessException as exc:
+        return exc
+
+
+def test_unreachable_wraps_the_account_lookup(monkeypatch):
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:1")
+    err = dev_parser._unreachable(_account_lookup_failure())
+    assert err is not None
+    assert err.title == "the proxy is not reachable"
+    assert "could not reach rest.alpha.fal.ai" in str(err)
+    assert dev_parser._unreachable(FalServerlessException("other")) is None
+
+
+def test_unreachable_leaves_http_errors_from_the_account_lookup_alone():
+    try:
+        try:
+            raise HTTPError("https://rest.alpha.fal.ai", 401, "nope", None, None)
+        except HTTPError as http_error:
+            raise FalServerlessException("Failed to fetch teams") from http_error
+    except FalServerlessException as exc:
+        assert dev_parser._unreachable(exc) is None
+
+
+def test_unreachable_errors_stay_off_stdout(monkeypatch, capsys):
+    # `--json` callers read stdout, so the error panel must go to stderr.
+    module = types.ModuleType("fal.dev.cli._fake")
+
+    def cmd_fail(args):
+        raise _account_lookup_failure()
+
+    module.cmd_fail = cmd_fail
+    monkeypatch.setitem(sys.modules, "fal.dev.cli._fake", module)
+    assert dev_parser._command("_fake", "fail")(None) == 1
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert "could not reach rest.alpha.fal.ai" in err
+
+
+def test_proxy_helpers_are_imported_at_module_level():
+    # fal ships to dev boxes by value; an import inside a function would run
+    # against the box's installed fal, which may predate fal._proxy.
+    functions = [
+        sdk.FalServerlessConnection.stub.fget,
+        auth._fetch_teams,
+        auth.current_user_info,
+    ]
+    for function in functions:
+        assert "fal._proxy" not in function.__code__.co_names, function.__name__

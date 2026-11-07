@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import Optional
 
+# At the top, not in the functions below: see the note in fal/sdk.py.
+from fal._proxy import unreachable_message
 from fal.auth import auth0, local
 from fal.config import Config
 from fal.exceptions import FalServerlessException
@@ -171,7 +173,6 @@ def _fetch_teams(bearer_token: str) -> list[dict]:
     from urllib.parse import urlsplit  # noqa: PLC0415
     from urllib.request import Request, urlopen  # noqa: PLC0415
 
-    from fal._proxy import unreachable_message  # noqa: PLC0415
     from fal.exceptions import FalServerlessException  # noqa: PLC0415
     from fal.flags import REST_URL  # noqa: PLC0415
 
@@ -197,7 +198,6 @@ def current_user_info(headers: dict[str, str]) -> dict:
     from urllib.parse import urlsplit  # noqa: PLC0415
     from urllib.request import Request, urlopen  # noqa: PLC0415
 
-    from fal._proxy import unreachable_message  # noqa: PLC0415
     from fal.exceptions import FalServerlessException  # noqa: PLC0415
     from fal.flags import REST_URL  # noqa: PLC0415
 

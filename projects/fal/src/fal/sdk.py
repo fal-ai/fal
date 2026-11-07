@@ -25,6 +25,11 @@ import isolate_proto
 from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 
 from fal import flags
+
+# Imported here, not in the function: fal ships by value, but an import inside a
+# function runs against the fal installed where it is unpickled, which may be an
+# older release without this module.
+from fal._proxy import grpc_proxy_options
 from fal._serialization import patch_pickle
 from fal.auth import UserAccess, current_user_info, key_credentials
 from fal.console import console
@@ -911,8 +916,6 @@ class FalServerlessConnection:
     def stub(self) -> isolate_proto.IsolateControllerStub:
         if self._stub:
             return self._stub
-
-        from fal._proxy import grpc_proxy_options  # noqa: PLC0415
 
         options = self.credentials.server_credentials.base_options
         proxy_options = (
