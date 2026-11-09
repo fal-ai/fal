@@ -572,6 +572,7 @@ class KeyPreset(enum.Enum):
 class DeploymentStrategy(enum.Enum):
     RECREATE = "recreate"
     ROLLING = "rolling"
+    ROLLING_IN_PLACE = "rolling_in_place"
 
     @staticmethod
     def from_proto(
@@ -584,6 +585,8 @@ class DeploymentStrategy(enum.Enum):
             return DeploymentStrategy.RECREATE
         elif proto is isolate_proto.DeploymentStrategy.ROLLING:
             return DeploymentStrategy.ROLLING
+        elif proto is isolate_proto.DeploymentStrategy.ROLLING_IN_PLACE:
+            return DeploymentStrategy.ROLLING_IN_PLACE
         else:
             raise ValueError(f"Unknown DeploymentStrategy: {proto}")
 
@@ -592,6 +595,8 @@ class DeploymentStrategy(enum.Enum):
             return isolate_proto.DeploymentStrategy.RECREATE
         elif self is DeploymentStrategy.ROLLING:
             return isolate_proto.DeploymentStrategy.ROLLING
+        elif self is DeploymentStrategy.ROLLING_IN_PLACE:
+            return isolate_proto.DeploymentStrategy.ROLLING_IN_PLACE
         else:
             raise ValueError(f"Unknown DeploymentStrategy: {self}")
 
@@ -1052,6 +1057,7 @@ class FalServerlessConnection:
         entrypoint: str | None = None,
         build_environment: bool | None = None,
         attach_to_deployment: bool | None = None,
+        in_place: bool = False,
     ) -> Iterator[RegisterApplicationResult]:
         if (
             function is None
@@ -1108,9 +1114,10 @@ class FalServerlessConnection:
             struct_metadata = isolate_proto.Struct()
             struct_metadata.update(metadata)
 
-        deployment_strategy_proto = DeploymentStrategy[
-            deployment_strategy.upper()
-        ].to_proto()
+        strategy = DeploymentStrategy[deployment_strategy.upper()]
+        if in_place:
+            strategy = DeploymentStrategy.ROLLING_IN_PLACE
+        deployment_strategy_proto = strategy.to_proto()
 
         wrapped_health_check_config = (
             _health_check_config_to_proto(health_check_config)

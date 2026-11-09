@@ -430,7 +430,13 @@ def test_execute_prepared_deployment_without_message_or_annotations():
     assert "annotations" not in register_kwargs["metadata"]
 
 
-def test_execute_prepared_deployment_rejects_attach_with_recreate_strategy():
+@pytest.mark.parametrize(
+    "rolling_option",
+    [{"attach_to_deployment": True}, {"in_place": True}],
+)
+def test_execute_prepared_deployment_rejects_rolling_options_with_recreate(
+    rolling_option,
+):
     from fal.api import FalServerlessError
     from fal.api.deploy import PreparedDeployment, execute_prepared_deployment
 
@@ -446,10 +452,7 @@ def test_execute_prepared_deployment_rejects_attach_with_recreate_strategy():
             app_auth="public",
             source_code=None,
         ),
-        app_data=AppData(
-            deployment_strategy="recreate",
-            attach_to_deployment=True,
-        ),
+        app_data=AppData(deployment_strategy="recreate", **rolling_option),
         display_name="MyApp",
     )
 
@@ -651,6 +654,7 @@ def mock_args(
     args.check = False
     args.yes = False
     args.attach_to_deployment = None
+    args.in_place = False
     args.host = "my-host"
     args.message = message
     args.annotation = annotation

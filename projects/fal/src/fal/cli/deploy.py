@@ -85,6 +85,7 @@ def _deploy(args):
             strategy=args.strategy,
             reset_scale=args.app_scale_settings,
             attach_to_deployment=args.attach_to_deployment,
+            in_place=args.in_place,
             force_env_build=no_cache,
             environment_name=args.env,
             message=args.message,
@@ -398,6 +399,15 @@ def add_parser(main_subparsers, parents):
         ),
     )
     parser.set_defaults(attach_to_deployment=None)
+    rolling_group.add_argument(
+        "--in-place",
+        action="store_true",
+        help=(
+            "If the new revision can't get a machine, stop an old runner and give "
+            "its machine to the new revision. The app runs one runner short during "
+            "the rollout. Only applies when --strategy is rolling (the default)."
+        ),
+    )
     parser.add_argument(
         "--no-scale",
         action="store_false",
