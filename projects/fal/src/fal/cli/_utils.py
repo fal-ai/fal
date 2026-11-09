@@ -35,6 +35,7 @@ class AppData:
     deployment_strategy: Optional[DeploymentStrategyLiteral] = None
     reset_scale: bool = False
     attach_to_deployment: bool | None = None
+    in_place: bool = False
     team: Optional[str] = None
     name: Optional[str] = None
     options: Options = field(default_factory=Options)

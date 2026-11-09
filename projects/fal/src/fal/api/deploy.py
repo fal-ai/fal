@@ -173,6 +173,7 @@ def _resolve_deployment_reference(
     strategy: DeploymentStrategyLiteral = "rolling",
     reset_scale: bool = False,
     attach_to_deployment: bool | None = None,
+    in_place: bool = False,
     message: str | None = None,
     annotations: dict[str, str] | None = None,
 ) -> tuple[tuple[str | None, str | None], AppData]:
@@ -194,6 +195,7 @@ def _resolve_deployment_reference(
         deployment_strategy=cast(DeploymentStrategyLiteral, strategy),
         reset_scale=cast(bool, reset_scale),
         attach_to_deployment=attach_to_deployment,
+        in_place=in_place,
         name=app_name,
         message=message,
         annotations=annotations,
@@ -212,6 +214,8 @@ def _resolve_deployment_reference(
         app_data = replace(app_data, message=message, annotations=annotations)
         if attach_to_deployment is not None:
             app_data = replace(app_data, attach_to_deployment=attach_to_deployment)
+        if in_place:
+            app_data = replace(app_data, in_place=True)
         if app_data.python_entry_point is not None or app_data.ref is None:
             # python_entry_point is resolved by the loader; ref is None for
             # image-only apps.
@@ -227,14 +231,19 @@ def _resolve_deployment_reference(
     return (file_path, func_name), replace(app_data, ref=ref)
 
 
-def _validate_attach_to_deployment(app_data: AppData) -> None:
+def _validate_rolling_options(app_data: AppData) -> None:
     from fal.api import FalServerlessError
 
     strategy = app_data.deployment_strategy or "rolling"
-    if app_data.attach_to_deployment is not None and strategy != "rolling":
+    if app_data.attach_to_deployment is not None and strategy == "recreate":
         raise FalServerlessError(
             "--attach/--detach only applies to rolling deployments. "
             "Use --strategy rolling or remove the attach flag."
+        )
+    if app_data.in_place and strategy == "recreate":
+        raise FalServerlessError(
+            "--in-place only applies to rolling deployments. "
+            "Use --strategy rolling or remove --in-place."
         )
 
 
@@ -328,7 +337,7 @@ def _execute_loaded_deployment(
 ) -> DeploymentResult:
     from fal.api import FalServerlessError
 
-    _validate_attach_to_deployment(app_data)
+    _validate_rolling_options(app_data)
     strategy = app_data.deployment_strategy or "rolling"
     build_result_handler = (
         result_handler if build_result_handler is None else build_result_handler
@@ -373,6 +382,7 @@ def _execute_loaded_deployment(
         deployment_strategy=strategy,
         scale=app_data.reset_scale,
         attach_to_deployment=app_data.attach_to_deployment,
+        in_place=app_data.in_place,
         environment_name=environment_name,
         result_handler=result_handler,
         entrypoint=isolated_function.run_entrypoint,
@@ -421,6 +431,7 @@ def prepare_deployment(
     strategy: DeploymentStrategyLiteral = "rolling",
     reset_scale: bool = False,
     attach_to_deployment: bool | None = None,
+    in_place: bool = False,
     force_env_build: bool = False,
     environment_name: str | None = None,
     message: str | None = None,
@@ -433,6 +444,7 @@ def prepare_deployment(
         strategy=strategy,
         reset_scale=reset_scale,
         attach_to_deployment=attach_to_deployment,
+        in_place=in_place,
         message=message,
         annotations=annotations,
     )
@@ -473,6 +485,7 @@ def deploy(
     strategy: DeploymentStrategyLiteral = "rolling",
     reset_scale: bool = False,
     attach_to_deployment: bool | None = None,
+    in_place: bool = False,
     force_env_build: bool = False,
     environment_name: str | None = None,
     result_handler: ResultHandler | None = None,
@@ -487,6 +500,7 @@ def deploy(
         strategy=strategy,
         reset_scale=reset_scale,
         attach_to_deployment=attach_to_deployment,
+        in_place=in_place,
         message=message,
         annotations=annotations,
     )

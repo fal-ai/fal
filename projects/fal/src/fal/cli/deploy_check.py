@@ -121,7 +121,7 @@ def deploy_with_check(
     """Deploy after the pre-deploy summary. Returns the result and whether this
     was the app's first deployment."""
     from fal.api import deploy as deploy_api
-    from fal.api.deploy import _validate_attach_to_deployment
+    from fal.api.deploy import _validate_rolling_options
 
     prepared = deploy_api.prepare_deployment(
         client,
@@ -131,12 +131,13 @@ def deploy_with_check(
         strategy=args.strategy,
         reset_scale=args.app_scale_settings,
         attach_to_deployment=args.attach_to_deployment,
+        in_place=args.in_place,
         force_env_build=force_env_build,
         environment_name=args.env,
         message=message,
         annotations=annotations,
     )
-    _validate_attach_to_deployment(prepared.app_data)
+    _validate_rolling_options(prepared.app_data)
     production_alias = _get_production_alias(
         client,
         prepared.loaded.app_name,
@@ -467,7 +468,8 @@ def _build_deployment_check_summary(
         current_revision=production_alias.revision if production_alias else None,
         current_auth_mode=production_alias.auth_mode if production_alias else None,
         next_auth_mode=prepared.loaded.app_auth or "private",
-        strategy=prepared.app_data.deployment_strategy or "rolling",
+        strategy=(prepared.app_data.deployment_strategy or "rolling")
+        + (" (in place)" if prepared.app_data.in_place else ""),
         attach_to_deployment=prepared.app_data.attach_to_deployment,
         force_env_build=force_env_build,
         effective_changes=effective_changes,
@@ -584,7 +586,7 @@ def _render_deployment_strategy_line(strategy: str):
 
     line = Text()
     line.append("Deployment strategy: ", style="bold")
-    line.append(strategy, style="green" if strategy == "rolling" else "red")
+    line.append(strategy, style="red" if strategy == "recreate" else "green")
     line.append(" (this deployment only)")
     return line
 
