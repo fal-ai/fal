@@ -23,6 +23,8 @@ VALID_REGIONS = {
     "us-east",
     "eu-north",
     "eu-west",
+    "northamerica",
+    "ap-east",
 }
 VALID_RETRY_CONDITIONS = set(get_args(RetryConditionLiteral))
 
