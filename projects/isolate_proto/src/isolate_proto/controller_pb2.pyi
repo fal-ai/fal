@@ -47,11 +47,13 @@ class _DeploymentStrategyEnumTypeWrapper(google.protobuf.internal.enum_type_wrap
     DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
     RECREATE: _DeploymentStrategy.ValueType  # 0
     ROLLING: _DeploymentStrategy.ValueType  # 1
+    ROLLING_IN_PLACE: _DeploymentStrategy.ValueType  # 2
 
 class DeploymentStrategy(_DeploymentStrategy, metaclass=_DeploymentStrategyEnumTypeWrapper): ...
 
 RECREATE: DeploymentStrategy.ValueType  # 0
 ROLLING: DeploymentStrategy.ValueType  # 1
+ROLLING_IN_PLACE: DeploymentStrategy.ValueType  # 2
 global___DeploymentStrategy = DeploymentStrategy
 
 class _RetryCondition:

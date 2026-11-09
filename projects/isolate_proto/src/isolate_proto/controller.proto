@@ -324,6 +324,7 @@ enum ApplicationAuthMode {
 enum DeploymentStrategy {
     RECREATE = 0;
     ROLLING = 1;
+    ROLLING_IN_PLACE = 2;
 }
 
 message ApplicationHealthCheckConfig {
