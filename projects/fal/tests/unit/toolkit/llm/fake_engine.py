@@ -14,12 +14,21 @@ from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 app = FastAPI()
 ABORT_FILE = os.environ.get("FAKE_ENGINE_ABORT_FILE")
 LAST_BODY_FILE = os.environ.get("FAKE_ENGINE_BODY_FILE")
+PORT = 0
 
 
 def _mark_abort() -> None:
     if ABORT_FILE:
-        with open(ABORT_FILE, "a") as f:
-            f.write("abort\n")
+        # Also one file per port, so tests with several engines can tell
+        # which one saw the abort.
+        for path in (ABORT_FILE, f"{ABORT_FILE}.{PORT}"):
+            with open(path, "a") as f:
+                f.write("abort\n")
+
+
+@app.get("/whoami")
+async def whoami():
+    return {"port": PORT, "gpus": os.environ.get("CUDA_VISIBLE_DEVICES")}
 
 
 @app.get("/health")
@@ -152,4 +161,5 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--port", type=int, required=True)
     args, _ = p.parse_known_args()
+    PORT = args.port
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
