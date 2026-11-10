@@ -15,7 +15,7 @@ from fal.container import ContainerImage
 from fal.toolkit.llm import LLMApp
 
 DOCKERFILE = """
-FROM lmsysorg/sglang:nightly-dev-cu13-20261102
+FROM lmsysorg/sglang:nightly-dev-cu13-20261102-38d9e4a3
 """
 
 

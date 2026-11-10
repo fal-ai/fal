@@ -5,7 +5,9 @@ Run:  FAL_USER=<user> FAL_APP=qwen-vllm FAL_KEY=<key> python examples/llm_client
 This is a plain script, not a fal app. Install the client with
 ``pip install openai``. ``FAL_USER`` is your fal account name and ``FAL_APP``
 is the ``name=`` of the deployed app (for example ``qwen-vllm`` from
-``llm_app.py``). ``X-Fal-Store-IO: 0`` asks fal not to store request payloads.
+``llm_app.py``). Set ``FAL_MODEL`` to the app's ``served_model_name`` when
+it is not ``qwen2.5-7b-instruct``. ``X-Fal-Store-IO: 0`` asks fal not to store
+request payloads.
 """
 
 from __future__ import annotations
