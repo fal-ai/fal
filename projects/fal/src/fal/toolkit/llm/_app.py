@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import hashlib
 import json
 import math
@@ -9,7 +10,7 @@ import sys
 import threading
 import time
 import warnings
-from collections import deque
+from collections import OrderedDict, deque
 from datetime import timezone
 from pathlib import Path
 from typing import (
@@ -99,7 +100,21 @@ _METRIC_PREFIXES = (
     "sglang:cache_hit_rate",
     *_PROGRESS_COUNTERS,
 )
+# Fractions, averaged across engine replicas instead of summed.
+_MEAN_METRICS = frozenset(
+    (
+        "vllm:kv_cache_usage_perc",
+        "vllm:gpu_cache_usage_perc",
+        "sglang:token_usage",
+        "sglang:cache_hit_rate",
+    )
+)
 _METRIC_RE = re.compile(r"^([^\s{]+)(?:\{[^}]*\})?\s+([0-9.eE+-]+|nan|NaN)$")
+# Session ids remembered for replica routing (least recently used dropped).
+_SESSION_ROUTES_MAX = 4096
+# Extra requests in flight a session's replica may hold over the least loaded
+# one before the session moves.
+_STICKY_SLACK = 4
 _STREAM_TAIL_BYTES = 8192
 _ENGINE_CONNECT_TIMEOUT_S = 30.0
 # An engine error body is small; a stalled one must not hold the request.
@@ -376,12 +391,18 @@ class _Stream:
     """An upstream streaming response and its once-only cleanup."""
 
     def __init__(
-        self, app: "LLMApp", upstream: Any, path: str, abort: asyncio.Event
+        self,
+        app: "LLMApp",
+        upstream: Any,
+        path: str,
+        abort: asyncio.Event,
+        replica: Optional["_Replica"] = None,
     ) -> None:
         self.app = app
         self.upstream = upstream
         self.path = path
         self.abort = abort
+        self.replica = replica
         self._recent: Deque[bytes] = deque()
         self._recent_len = 0
         self._settled = False
@@ -413,6 +434,8 @@ class _Stream:
         if not self._settled:
             self._settled = True
             self.app._inflight.discard(self.abort)
+            if self.replica is not None:
+                self.replica.inflight -= 1
             self.app._count_if_cancelled()
             usage = _parse_stream_usage(self.tail)
             try:
@@ -435,6 +458,139 @@ async def _wait_for_disconnect(request: Request) -> None:
         message = await request.receive()
         if message["type"] == "http.disconnect":
             return
+
+
+def _parse_metrics(text: str) -> Dict[str, float]:
+    """Engine metrics LLMApp reports, summed over label sets."""
+    stats: Dict[str, float] = {}
+    for line in text.splitlines():
+        if line.startswith(_METRIC_PREFIXES):
+            m = _METRIC_RE.match(line)
+            if m:
+                stats[m.group(1)] = stats.get(m.group(1), 0.0) + float(m.group(2))
+    return stats
+
+
+def _merge_stats(per_engine: List[Dict[str, float]]) -> Dict[str, float]:
+    """One view of several engines: counts add up, fractions average.
+    Empty unless every engine answered: a partial sum would make the
+    cumulative counters dip."""
+    if not all(per_engine):
+        return {}
+    stats: Dict[str, float] = {}
+    seen: Dict[str, int] = {}
+    for engine_stats in per_engine:
+        for key, value in engine_stats.items():
+            stats[key] = stats.get(key, 0.0) + value
+            seen[key] = seen.get(key, 0) + 1
+    for key in _MEAN_METRICS & stats.keys():
+        stats[key] /= seen[key]
+    if stats.get(_SPEC_DRAFTED) and _SPEC_ACCEPTED in stats:
+        stats["spec_decode_acceptance_rate"] = (
+            stats[_SPEC_ACCEPTED] / stats[_SPEC_DRAFTED]
+        )
+    return stats
+
+
+def _with_port(cmd: List[str], port: int) -> List[str]:
+    """``cmd`` with its ``--port`` value replaced; ValueError if it has none."""
+    out = list(cmd)
+    for i, arg in enumerate(out):
+        if arg == "--port" and i + 1 < len(out):
+            out[i + 1] = str(port)
+            return out
+        if arg.startswith("--port="):
+            out[i] = f"--port={port}"
+            return out
+    raise ValueError("engine_replicas > 1 needs a --port flag in engine_command")
+
+
+def _split_devices(visible: Optional[str], num_gpus: int, replicas: int) -> List[str]:
+    """CUDA_VISIBLE_DEVICES for each replica: consecutive equal slices."""
+    ids = [d.strip() for d in (visible or "").split(",") if d.strip()]
+    if not ids:
+        ids = [str(i) for i in range(num_gpus)]
+    if len(ids) != num_gpus or num_gpus % replicas:
+        raise ValueError(
+            f"cannot split {len(ids)} visible GPUs (num_gpus {num_gpus}) "
+            f"into {replicas} equal engine replicas"
+        )
+    size = num_gpus // replicas
+    return [",".join(ids[i * size : (i + 1) * size]) for i in range(replicas)]
+
+
+class _EngineChecks:
+    """Per-engine stall and error state, and the checks that read it.
+
+    Each _Replica runs them for its engine. LLMApp inherits them too, so a
+    single-engine caller still finds them there, but the health check and
+    error count use the replicas' copies, so they are not override points."""
+
+    engine_stall_timeout_s: Optional[float]
+    # (token counter total, when it last moved); None until a sample with
+    # pending requests, so idle time never counts toward a stall.
+    _progress: Optional[Tuple[float, float]] = None
+    # Inference 5xx replies in a row, and when the last one came.
+    _engine_errors = 0
+    _engine_error_at = 0.0
+
+    def _stalled_for(self, stats: Dict[str, float], now: float) -> Optional[float]:
+        """Seconds the engine has held requests without its token counters
+        moving, once that exceeds ``engine_stall_timeout_s``; else None."""
+        tokens = [stats[k] for k in _PROGRESS_COUNTERS if k in stats]
+        pending = [stats[k] for k in _PENDING_GAUGES if k in stats]
+        if self.engine_stall_timeout_s is None:
+            self._progress = None
+            return None
+        if not tokens or not pending:
+            # A failed /metrics read, or an engine without these metrics: no
+            # judgment, and the last sample stands.
+            return None
+        if sum(pending) <= 0:
+            self._progress = None
+            return None
+        total = sum(tokens)
+        last = self._progress
+        if last is None or total != last[0]:
+            self._progress = (total, now)
+            return None
+        idle = now - last[1]
+        return idle if idle > self.engine_stall_timeout_s else None
+
+    def _recent_engine_errors(self, now: float) -> int:
+        if now - self._engine_error_at > _ENGINE_ERROR_WINDOW_S:
+            return 0
+        return self._engine_errors
+
+    def _count_engine_reply(self, status: int) -> None:
+        if status < 500:
+            self._engine_errors = 0
+            return
+        now = time.monotonic()
+        self._engine_errors = self._recent_engine_errors(now) + 1
+        self._engine_error_at = now
+
+
+class _Replica(_EngineChecks):
+    """One engine process: its port, routing load and health state."""
+
+    def __init__(self, app: "LLMApp", index: int, port: int) -> None:
+        self.app = app
+        self.index = index
+        self.port = port
+        self.url = f"http://127.0.0.1:{port}"
+        self.proc: Optional[subprocess.Popen] = None
+        self.inflight = 0
+        self.requests = 0
+        # Set by each health probe; routing skips a replica that failed one.
+        self.healthy = True
+
+    @property
+    def engine_stall_timeout_s(self) -> Optional[float]:
+        return self.app.engine_stall_timeout_s
+
+    def usable(self) -> bool:
+        return self.healthy and (self.proc is None or self.proc.poll() is None)
 
 
 # Pinned pages cannot be reclaimed, and the engine, /dev/shm and weight staging
@@ -525,7 +681,7 @@ def _kv_offload_config(cpu_bytes: int) -> Dict[str, Any]:
     }
 
 
-class LLMApp(App):
+class LLMApp(_EngineChecks, App):
     """Serve a vLLM or SGLang engine behind OpenAI-compatible routes.
 
     Subclass it, set ``model`` (and usually ``machine_type``, ``num_gpus``,
@@ -632,6 +788,17 @@ class LLMApp(App):
     kv_cpu_offload: ClassVar[Optional[float]] = None
     kv_cpu_offload_gib: ClassVar[Optional[float]] = None
     engine_port: ClassVar[int] = 8000
+    # Engines per runner. With R > 1 the runner's num_gpus are split into R
+    # equal slices (CUDA_VISIBLE_DEVICES), each engine runs on its own slice
+    # with tensor parallel num_gpus / R on port engine_port + i, and each
+    # request goes to one engine: the one that served its session id before
+    # (X-Fal-Runner-Hint, prompt_cache_key or user), else the one with the
+    # fewest requests in flight. On PCIe GPUs (no NVLink) two TP4 engines can
+    # beat one TP8 engine when the model fits on four. The health check fails
+    # when any engine is down; until the runner is replaced, requests avoid
+    # it. The CPU KV tier and max_multiplexing stay per runner: the tier is
+    # split across engines, and each engine may take up to max_multiplexing.
+    engine_replicas: ClassVar[int] = 1
     engine_startup_timeout_s: ClassVar[float] = 3300.0
     # Upstream connection pool to the engine: one connection per in-flight
     # request, so this must exceed the engine's max sequences plus queueing.
@@ -723,20 +890,26 @@ class LLMApp(App):
     _skip_checkpoint: Optional[str] = None
     _abort_fired = False
     _serving_loop: Optional[asyncio.AbstractEventLoop] = None
-    # (token counter total, when it last moved); None until a sample with
-    # pending requests, so idle time never counts toward a stall.
-    _progress: Optional[Tuple[float, float]] = None
-    # Inference 5xx replies in a row, and when the last one came.
-    _engine_errors = 0
-    _engine_error_at = 0.0
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         # Check only the class that sets these, so subclasses do not repeat it.
         sets_config = bool(
-            {"engine_args", "num_gpus", "max_multiplexing"} & set(vars(cls))
+            {"engine_args", "num_gpus", "max_multiplexing", "engine_replicas"}
+            & set(vars(cls))
         )
         user_multiplexing = cls.max_multiplexing
         super().__init_subclass__(**kwargs)
+        replicas = cls.engine_replicas
+        if not isinstance(replicas, int) or replicas < 1:
+            raise ValueError(
+                f"{cls.__name__}: engine_replicas must be a positive integer, "
+                f"got {replicas!r}"
+            )
+        if (cls.num_gpus or 1) % replicas:
+            raise ValueError(
+                f"{cls.__name__}: num_gpus {cls.num_gpus or 1} does not split "
+                f"into {replicas} equal engine replicas"
+            )
         if cls.engine_profile not in PROFILES:
             raise ValueError(
                 f"{cls.__name__}: engine_profile must be one of {PROFILES}, "
@@ -761,7 +934,7 @@ class LLMApp(App):
         # warnings (not print): this runs on the deploying machine and callers
         # can filter or assert on it.
         for message in engine_arg_warnings(
-            cls.engine_args, cls.num_gpus or 1, user_multiplexing
+            cls.engine_args, (cls.num_gpus or 1) // replicas, user_multiplexing
         ):
             warnings.warn(f"{cls.__name__}: {message}", stacklevel=2)
 
@@ -808,9 +981,10 @@ class LLMApp(App):
             else None
         )
         if offload:
+            # The tier is sized for the runner; replicas share its RAM.
             engine_args += [
                 "--kv-transfer-config",
-                json.dumps(_kv_offload_config(offload)),
+                json.dumps(_kv_offload_config(offload // self.engine_replicas)),
             ]
         return [
             *head,
@@ -865,12 +1039,12 @@ class LLMApp(App):
             return None
         ram = _container_ram_bytes()
         if not ram:
-            machine = self._machine()
-            per_gpu = _fal_ram_gib_per_gpu(machine)
-            ram = (per_gpu << 30) * machine.num_gpus
+            per_gpu = _fal_ram_gib_per_gpu(self._machine())
+            num_gpus = self.num_gpus or 1
+            ram = (per_gpu << 30) * num_gpus
             self._warn_once(
                 f"no container memory limit is readable; sizing the CPU KV tier "
-                f"from an assumed {per_gpu} GiB per GPU x {machine.num_gpus} "
+                f"from an assumed {per_gpu} GiB per GPU x {num_gpus} "
                 "(fal's allotment for this GPU). Set kv_cpu_offload_gib to size "
                 "it explicitly."
             )
@@ -908,6 +1082,17 @@ class LLMApp(App):
         self._boot: Dict[str, Any] = {}
         self._usage_totals: Dict[str, int] = {}
         self._inflight: Set[asyncio.Event] = set()
+        self._replicas = [
+            _Replica(self, i, self.engine_port + i) for i in range(self.engine_replicas)
+        ]
+        # Session id digest -> replica index, least recently used first.
+        self._sessions: OrderedDict[bytes, int] = OrderedDict()
+        # The replica the current request was routed to: set in _proxy, read
+        # where the engine call is made (tasks copy the context). Made here,
+        # not at module level: a ContextVar cannot be pickled with the class.
+        self._route_var: contextvars.ContextVar[Optional[_Replica]] = (
+            contextvars.ContextVar("llm_app_route", default=None)
+        )
         self._recent_prefixes: Deque[str] = deque(
             maxlen=min(100, max(1, self.prefix_hint_max))
         )
@@ -977,6 +1162,7 @@ class LLMApp(App):
 
         self._stage = "engine startup"
         self._engine_started = time.monotonic()
+        # The first replica's process, kept as the single-engine handle.
         self._proc = self._start_engine(model_path)
         # The engine spends its first seconds importing and initializing CUDA
         # before it reads weights, so the pre-read runs alongside it.
@@ -984,8 +1170,12 @@ class LLMApp(App):
             threading.Thread(
                 target=self._preread, args=(model_path,), daemon=True
             ).start()
+        # Engine calls use their replica's absolute URL; the base (the first
+        # replica) only serves relative paths, as a subclass might send.
         base_url = f"http://127.0.0.1:{self.engine_port}"
-        self._wait_ready(base_url)
+        self._wait_ready()
+        if self.engine_replicas > 1:
+            self._boot["engine_replicas"] = self.engine_replicas
         self._boot["engine_ready_s"] = time.monotonic() - self._engine_started
         self._boot["total_setup_s"] = time.monotonic() - t0
         self._write_boot_marker()
@@ -1022,7 +1212,8 @@ class LLMApp(App):
                 gpu_type=short_gpu_type(gpu[0]) if gpu else self._gpu_type(),
                 gpu_name=gpu[0] if gpu else None,
                 gpu_memory_mib=gpu[1] if gpu else None,
-                num_gpus=self.num_gpus or 1,
+                # What one engine sees: presets size TP and recipes from it.
+                num_gpus=(self.num_gpus or 1) // self.engine_replicas,
             )
             self._machine_cache = machine
         return machine
@@ -1298,6 +1489,7 @@ class LLMApp(App):
         )
 
     def _start_engine(self, model_path: str) -> subprocess.Popen:
+        """Start every engine replica; returns the first one's process."""
         cmd = self.engine_command(model_path)
         env = {**os.environ, **self.engine_env}
         env.setdefault("VLLM_NO_USAGE_STATS", "1")
@@ -1305,19 +1497,55 @@ class LLMApp(App):
         # parallel boot (kernel JIT and warmup); the startup budget governs.
         remaining = self._deadline - time.monotonic()
         env.setdefault("VLLM_ENGINE_READY_TIMEOUT_S", str(max(int(remaining), 600)))
-        print(f"[llm-app] starting: {' '.join(cmd)}")
-        proc = subprocess.Popen(
-            cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-        )
+        # setup() made the replicas; a direct call (no setup) gets one.
+        replicas = getattr(self, "_replicas", None) or [
+            _Replica(self, 0, self.engine_port)
+        ]
+        if len(replicas) == 1:
+            commands = [(cmd, env)]
+        else:
+            devices = _split_devices(
+                env.get("CUDA_VISIBLE_DEVICES"), self.num_gpus or 1, len(replicas)
+            )
+            commands = [
+                (
+                    _with_port(cmd, r.port),
+                    {**env, "CUDA_VISIBLE_DEVICES": devices[r.index]},
+                )
+                for r in replicas
+            ]
+        for replica, (replica_cmd, replica_env) in zip(replicas, commands):
+            if len(replicas) == 1:
+                print(f"[llm-app] starting: {' '.join(replica_cmd)}")
+            else:
+                print(
+                    f"[llm-app] starting replica {replica.index} on GPUs "
+                    f"{replica_env['CUDA_VISIBLE_DEVICES']}: {' '.join(replica_cmd)}"
+                )
+            # Recorded before the next launch, so a failed one still stops it.
+            replica.proc = subprocess.Popen(
+                replica_cmd,
+                env=replica_env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            threading.Thread(
+                target=self._pump_engine_logs,
+                args=(replica.proc, replica.index),
+                daemon=True,
+            ).start()
+        return replicas[0].proc  # type: ignore[return-value]
 
-        threading.Thread(
-            target=self._pump_engine_logs, args=(proc,), daemon=True
-        ).start()
-        return proc
+    def _engine_label(self, replica: _Replica) -> str:
+        if self.engine_replicas == 1:
+            return self.engine
+        return f"{self.engine} replica {replica.index}"
 
-    def _pump_engine_logs(self, proc: subprocess.Popen) -> None:
+    def _pump_engine_logs(self, proc: subprocess.Popen, replica: int = 0) -> None:
         assert proc.stdout is not None
-        milestones = _BOOT_MILESTONES.get(self.engine, ())
+        # Boot milestones come from the first replica; the others boot alike.
+        milestones = _BOOT_MILESTONES.get(self.engine, ()) if replica == 0 else ()
+        tag = self.engine if self.engine_replicas == 1 else f"{self.engine}:{replica}"
         last_progress = float("-inf")
 
         def handle(raw: bytes, progress: bool) -> None:
@@ -1335,8 +1563,11 @@ class LLMApp(App):
                 if now - last_progress < _PROGRESS_LOG_INTERVAL_S:
                     return
                 last_progress = now
-            self._engine_log_tail.append(line)
-            print(f"[{self.engine}] {line}")
+            # Tagged when several engines share the tail a startup failure quotes.
+            self._engine_log_tail.append(
+                line if self.engine_replicas == 1 else f"[{tag}] {line}"
+            )
+            print(f"[{tag}] {line}")
 
         buf = b""
         for chunk in iter(lambda: proc.stdout.read1(65536), b""):  # type: ignore[union-attr]
@@ -1352,20 +1583,29 @@ class LLMApp(App):
                 buf = b""
         handle(buf, False)
 
-    def _wait_ready(self, base_url: str) -> None:
+    def _wait_ready(self) -> None:
+        """Wait until every replica answers /health; any exit fails setup."""
         import httpx  # noqa: PLC0415
 
+        waiting = list(self._replicas)
         while time.monotonic() < self._deadline:
-            code = self._proc.poll()
-            if code is not None:
-                self._fail(f"{self.engine} exited with code {code}")
-            try:
-                if httpx.get(f"{base_url}/health", timeout=5.0).status_code == 200:
-                    return
-            except httpx.HTTPError:
-                pass
+            for replica in self._replicas:
+                code = replica.proc.poll()  # type: ignore[union-attr]
+                if code is not None:
+                    self._fail(f"{self._engine_label(replica)} exited with code {code}")
+            for replica in list(waiting):
+                try:
+                    resp = httpx.get(f"{replica.url}/health", timeout=5.0)
+                except httpx.HTTPError:
+                    continue
+                if resp.status_code == 200:
+                    waiting.remove(replica)
+            if not waiting:
+                return
             time.sleep(1.0)
-        self._fail(f"{self.engine} not ready within the startup budget")
+        self._fail(
+            f"{self._engine_label(waiting[0])} not ready within the startup budget"
+        )
 
     def _termination_window(self) -> float:
         return float(
@@ -1429,86 +1669,114 @@ class LLMApp(App):
         stop = getattr(self, "_preread_stop", None)
         if stop is not None:
             stop.set()
-        proc = getattr(self, "_proc", None)
-        if proc is not None and proc.poll() is None:
+        # Every replica is signalled first, so their waits overlap.
+        procs = [
+            r.proc
+            for r in getattr(self, "_replicas", ())
+            if r.proc is not None and r.proc.poll() is None
+        ]
+        for proc in procs:
             proc.terminate()
+        end = time.monotonic() + timeout
+        stuck = []
+        for proc in procs:
             try:
-                proc.wait(timeout=timeout)
+                proc.wait(timeout=max(0.0, end - time.monotonic()))
             except subprocess.TimeoutExpired:
                 proc.kill()
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    print(f"[llm-app] {self.engine} still running after kill")
+                stuck.append(proc)
+        for proc in stuck:
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                print(f"[llm-app] {self.engine} still running after kill")
 
-    async def _engine_stats(self, timeout: float = 5.0) -> Dict[str, float]:
-        text = (await self._client.get("/metrics", timeout=timeout)).text
-        stats: Dict[str, float] = {}
-        for line in text.splitlines():
-            if line.startswith(_METRIC_PREFIXES):
-                m = _METRIC_RE.match(line)
-                if m:
-                    stats[m.group(1)] = stats.get(m.group(1), 0.0) + float(m.group(2))
-        if stats.get(_SPEC_DRAFTED) and _SPEC_ACCEPTED in stats:
-            stats["spec_decode_acceptance_rate"] = (
-                stats[_SPEC_ACCEPTED] / stats[_SPEC_DRAFTED]
+    async def _replica_stats(
+        self, replica: _Replica, timeout: float = 5.0
+    ) -> Dict[str, float]:
+        resp = await self._client.get(f"{replica.url}/metrics", timeout=timeout)
+        return _parse_metrics(resp.text)
+
+    async def _engine_stats(self, timeout: float = 5.0) -> List[Dict[str, float]]:
+        """Each replica's metrics; an empty dict for one that did not answer."""
+
+        async def read(replica: _Replica) -> Dict[str, float]:
+            try:
+                return await self._replica_stats(replica, timeout)
+            except Exception:
+                return {}
+
+        return list(await asyncio.gather(*(read(r) for r in self._replicas)))
+
+    async def _check_replica(
+        self, replica: _Replica
+    ) -> Tuple[Dict[str, float], Optional[str]]:
+        """(metrics, why the replica fails the health check or None)."""
+        label = self._engine_label(replica)
+        code = replica.proc.poll()  # type: ignore[union-attr]
+        if code is not None:
+            return {}, f"{label} exited ({code})"
+        try:
+            resp = await self._client.get(
+                f"{replica.url}/health", timeout=_ENGINE_HEALTH_TIMEOUT_S
             )
-        return stats
-
-    async def health(self) -> Dict[str, Any]:  # type: ignore[override]
-        """Engine liveness, never request outcomes: the engine process is up,
-        its own /health answers 200 and, when it holds requests, its token
-        counters keep moving (see ``engine_stall_timeout_s``)."""
-        self._serving_loop = asyncio.get_running_loop()
-        if self._draining:
-            raise HTTPException(503, "runner is shutting down")
-        if self._proc.poll() is not None:
-            raise HTTPException(503, f"{self.engine} exited ({self._proc.returncode})")
-        try:
-            resp = await self._client.get("/health", timeout=_ENGINE_HEALTH_TIMEOUT_S)
         except Exception as exc:
-            raise HTTPException(503, f"{self.engine} unreachable: {exc}") from exc
+            return {}, f"{label} unreachable: {exc}"
         if resp.status_code != 200:
-            raise HTTPException(503, f"{self.engine} unhealthy ({resp.status_code})")
+            return {}, f"{label} unhealthy ({resp.status_code})"
         try:
-            stats = await self._engine_stats(timeout=_ENGINE_METRICS_TIMEOUT_S)
+            stats = await self._replica_stats(replica, _ENGINE_METRICS_TIMEOUT_S)
         except Exception:
             # /health answered, so a slow /metrics alone is not a failure.
             stats = {}
-        errors = self._recent_engine_errors(time.monotonic())
+        errors = replica._recent_engine_errors(time.monotonic())
         if self.engine_error_threshold is not None and (
             errors >= self.engine_error_threshold
         ):
-            raise HTTPException(503, f"{self.engine} failed {errors} requests in a row")
-        stalled = self._stalled_for(stats, time.monotonic())
+            return stats, f"{label} failed {errors} requests in a row"
+        stalled = replica._stalled_for(stats, time.monotonic())
         if stalled is not None:
-            raise HTTPException(
-                503, f"{self.engine} made no progress for {stalled:.0f}s"
-            )
-        return {"status": "ok", "version": self.version, "engine": stats}
+            return stats, f"{label} made no progress for {stalled:.0f}s"
+        return stats, None
 
-    def _stalled_for(self, stats: Dict[str, float], now: float) -> Optional[float]:
-        """Seconds the engine has held requests without its token counters
-        moving, once that exceeds ``engine_stall_timeout_s``; else None."""
-        tokens = [stats[k] for k in _PROGRESS_COUNTERS if k in stats]
-        pending = [stats[k] for k in _PENDING_GAUGES if k in stats]
-        if self.engine_stall_timeout_s is None:
-            self._progress = None
-            return None
-        if not tokens or not pending:
-            # A failed /metrics read, or an engine without these metrics: no
-            # judgment, and the last sample stands.
-            return None
-        if sum(pending) <= 0:
-            self._progress = None
-            return None
-        total = sum(tokens)
-        last = self._progress
-        if last is None or total != last[0]:
-            self._progress = (total, now)
-            return None
-        idle = now - last[1]
-        return idle if idle > self.engine_stall_timeout_s else None
+    async def health(self) -> Dict[str, Any]:  # type: ignore[override]
+        """Engine liveness, never request outcomes: every engine process is
+        up, its own /health answers 200 and, when it holds requests, its token
+        counters keep moving (see ``engine_stall_timeout_s``). With replicas,
+        one failing engine fails the check (the runner is replaced); until
+        then, routing avoids it."""
+        self._serving_loop = asyncio.get_running_loop()
+        if self._draining:
+            raise HTTPException(503, "runner is shutting down")
+        checks = await asyncio.gather(*(self._check_replica(r) for r in self._replicas))
+        for replica, (_, failure) in zip(self._replicas, checks):
+            replica.healthy = failure is None
+        failure = next((f for _, f in checks if f is not None), None)
+        if failure is not None:
+            raise HTTPException(503, failure)
+        body: Dict[str, Any] = {
+            "status": "ok",
+            "version": self.version,
+            "engine": _merge_stats([stats for stats, _ in checks]),
+        }
+        if self.engine_replicas > 1:
+            body["replicas"] = self._replica_report([s for s, _ in checks])
+        return body
+
+    def _replica_report(
+        self, per_replica: List[Dict[str, float]]
+    ) -> List[Dict[str, Any]]:
+        return [
+            {
+                "index": r.index,
+                "port": r.port,
+                "healthy": r.usable(),
+                "inflight": r.inflight,
+                "requests": r.requests,
+                "stats": _merge_stats([stats]),
+            }
+            for r, stats in zip(self._replicas, per_replica)
+        ]
 
     @endpoint(
         "/engine-health",
@@ -1524,19 +1792,6 @@ class LLMApp(App):
         # A draining runner fails the probe, which would end its grace early.
         return {} if self._draining else _HEALTH_CHECK_HEADERS
 
-    def _recent_engine_errors(self, now: float) -> int:
-        if now - self._engine_error_at > _ENGINE_ERROR_WINDOW_S:
-            return 0
-        return self._engine_errors
-
-    def _count_engine_reply(self, status: int) -> None:
-        if status < 500:
-            self._engine_errors = 0
-            return
-        now = time.monotonic()
-        self._engine_errors = self._recent_engine_errors(now) + 1
-        self._engine_error_at = now
-
     def _engine_reply(
         self, content: bytes, status: int, inference: bool = True
     ) -> Response:
@@ -1544,9 +1799,9 @@ class LLMApp(App):
         the health check before acting on the runner: one failed request does
         not mean the engine is down, and replacing the runner drops every
         stream on it. Only inference replies count toward
-        ``engine_error_threshold``."""
+        ``engine_error_threshold``, for the replica that sent them."""
         if inference:
-            self._count_engine_reply(status)
+            self._route()._count_engine_reply(status)
         return Response(
             content=content,
             status_code=status,
@@ -1556,25 +1811,62 @@ class LLMApp(App):
 
     @endpoint("/v1/models")
     async def models(self) -> Response:
-        upstream = await self._client.get("/v1/models")
+        replica = self._pick_replica(None)
+        upstream = await self._client.get(f"{replica.url}/v1/models")
         return self._engine_reply(
             upstream.content, upstream.status_code, inference=False
         )
 
     async def engine_stats(self) -> JSONResponse:
-        try:
-            stats = await self._engine_stats()
-        except Exception:
-            stats = {}
-        return JSONResponse(
-            {
-                "model": self.model,
-                "engine": self.engine,
-                "stats": stats,
-                "usage_totals": self._usage_totals,
-                "boot": dict(self._boot),
-            }
-        )
+        per_replica = await self._engine_stats()
+        body: Dict[str, Any] = {
+            "model": self.model,
+            "engine": self.engine,
+            "stats": _merge_stats(per_replica),
+            "usage_totals": self._usage_totals,
+            "boot": dict(self._boot),
+        }
+        if self.engine_replicas > 1:
+            body["replicas"] = self._replica_report(per_replica)
+        return JSONResponse(body)
+
+    def _route(self) -> _Replica:
+        """The replica the current request was routed to. Outside ``_proxy``
+        (a subclass calling the engine directly) that is the first one."""
+        return self._route_var.get() or self._replicas[0]
+
+    def _pick_replica(self, session: Optional[str]) -> _Replica:
+        """The replica that served ``session`` before, if it is still usable
+        and not far busier than the rest; else the usable one with the fewest
+        requests in flight."""
+        replicas = self._replicas
+        if len(replicas) == 1:
+            return replicas[0]
+        # With none usable the runner is failing its health check; any reply
+        # (likely a 5xx) beats queueing here until it is replaced.
+        usable = [r for r in replicas if r.usable()] or replicas
+        choice = min(usable, key=lambda r: (r.inflight, r.index))
+        key = None
+        if session is not None:
+            # A digest bounds the memory a long id can take.
+            key = hashlib.blake2b(session.encode(), digest_size=16).digest()
+            index = self._sessions.get(key)
+            if index is not None and replicas[index] in usable:
+                sticky = replicas[index]
+                # A hot session id (say a constant ``user``) must not pile
+                # every request onto one engine: past the least load plus the
+                # larger of that load and the slack, it moves and loses its
+                # cached prefix.
+                slack = max(_STICKY_SLACK, choice.inflight)
+                if sticky.inflight <= choice.inflight + slack:
+                    self._sessions.move_to_end(key)
+                    return sticky
+        if key is not None:
+            self._sessions[key] = choice.index
+            self._sessions.move_to_end(key)
+            while len(self._sessions) > _SESSION_ROUTES_MAX:
+                self._sessions.popitem(last=False)
+        return choice
 
     def _add_extra_routes(self, app: Any) -> None:
         super()._add_extra_routes(app)
@@ -1594,10 +1886,9 @@ class LLMApp(App):
     async def responses(self, request: Request) -> Response:
         return await self._proxy(request, "/v1/responses")
 
-    def _note_prefix(self, payload: Dict[str, Any], headers: Any) -> None:
-        if not self._prefix_hints_on():
-            return
-        raw = next(
+    @staticmethod
+    def _session_id(payload: Dict[str, Any], headers: Any) -> Optional[str]:
+        return next(
             (
                 v.strip()
                 for v in (
@@ -1609,6 +1900,11 @@ class LLMApp(App):
             ),
             None,
         )
+
+    def _note_prefix(self, payload: Dict[str, Any], headers: Any) -> None:
+        if not self._prefix_hints_on():
+            return
+        raw = self._session_id(payload, headers)
         # The gateway matches the id literally, so a value the header cannot
         # carry (commas, spaces, non-ASCII, over 64 chars) is not advertised
         # at all; a hash of it could never match what the client sends.
@@ -1676,9 +1972,15 @@ class LLMApp(App):
         deadline = None if budget is None else arrival + budget
         payload["model"] = self._served_name()
         self._note_prefix(payload, request.headers)
+        # Routing is independent of prefix_hints: those only advertise ids to
+        # the gateway, while a replica's prefix cache pays off either way.
+        replica = self._pick_replica(self._session_id(payload, request.headers))
+        self._route_var.set(replica)
 
         abort = asyncio.Event()
         self._inflight.add(abort)
+        replica.inflight += 1
+        replica.requests += 1
         relaying = False
         try:
             if payload.get("stream") is not True:
@@ -1742,8 +2044,8 @@ class LLMApp(App):
                     await upstream.aclose()
                 return self._engine_reply(body, upstream.status_code)
             relaying = True
-            self._engine_errors = 0
-            stream = _Stream(self, upstream, path, abort)
+            replica._engine_errors = 0
+            stream = _Stream(self, upstream, path, abort, replica)
             return _RelayResponse(
                 self._relay(stream, path, payload.get("n") in (None, 1), deadline),
                 stream.close,
@@ -1752,17 +2054,23 @@ class LLMApp(App):
         finally:
             if not relaying:
                 self._inflight.discard(abort)
+                replica.inflight -= 1
 
     async def _open_upstream(self, path: str, payload: Dict[str, Any]) -> Any:
-        """Start a streaming request; the result has the httpx.Response surface
-        the relay uses (status_code, aread, aiter_raw, aclose)."""
+        """Start a streaming request on the routed replica; the result has the
+        httpx.Response surface the relay uses (status_code, aread, aiter_raw,
+        aclose)."""
+        replica = self._route()
         if not self.raw_stream_client:
             return await self._client.send(
-                self._client.build_request("POST", path, json=payload), stream=True
+                self._client.build_request(
+                    "POST", f"{replica.url}{path}", json=payload
+                ),
+                stream=True,
             )
         return await open_stream(
             "127.0.0.1",
-            self.engine_port,
+            replica.port,
             path,
             json.dumps(
                 payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False
@@ -1901,7 +2209,9 @@ class LLMApp(App):
         deadline: Optional[float],
         budget: Optional[float],
     ) -> Response:
-        task = asyncio.ensure_future(self._client.post(path, json=payload))
+        task = asyncio.ensure_future(
+            self._client.post(f"{self._route().url}{path}", json=payload)
+        )
         watcher = asyncio.ensure_future(_wait_for_disconnect(request))
         aborted = asyncio.ensure_future(abort.wait())
         try:
