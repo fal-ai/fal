@@ -1355,6 +1355,24 @@ def test_app_default_app_name_is_generated_from_class_name():
     assert MyCustomApp.app_name == "my-custom-app"
 
 
+def test_app_name_argument_beats_inherited_app_name():
+    class BaseApp(App):
+        pass
+
+    class NamedChild(BaseApp, name="named-child"):
+        pass
+
+    class OwnAttrChild(BaseApp, name="ignored"):
+        app_name = "own-attr"
+
+    class PlainChild(BaseApp):
+        pass
+
+    assert NamedChild.app_name == "named-child"
+    assert OwnAttrChild.app_name == "own-attr"
+    assert PlainChild.app_name == "base-app"
+
+
 # ============================================================================
 # Tests for _to_fal_app_name - the function that converts class names to app names
 # ============================================================================
