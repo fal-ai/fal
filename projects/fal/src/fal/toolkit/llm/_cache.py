@@ -184,8 +184,8 @@ def engine_cache_env(
 ) -> dict[str, str]:
     """Env vars that point engine compile caches at the persistent volume.
 
-    Compiled artifacts (torch Inductor, Triton, DeepGEMM, FlashInfer, TileLang,
-    vLLM, SGLang) land under ``<root>/<namespace>/``, so a new runner reuses
+    Compiled artifacts (torch Inductor and C++ extensions, Triton, DeepGEMM, FlashInfer,
+    TileLang, CuTe DSL, vLLM, SGLang) land under ``<root>/<namespace>/``, so a new runner reuses
     them instead of recompiling. ``namespace`` should change whenever cached
     artifacts could be incompatible (engine version, GPU type). HF caches are
     shared across namespaces, since downloaded weights are not engine specific.
@@ -207,6 +207,8 @@ def engine_cache_env(
         "SGLANG_DG_CACHE_DIR": str(base / "deep_gemm"),
         "FLASHINFER_WORKSPACE_BASE": str(base / "flashinfer"),
         "TILELANG_CACHE_DIR": str(base / "tilelang"),
+        "TORCH_EXTENSIONS_DIR": str(base / "torch_extensions"),
+        "CUTE_DSL_CACHE_DIR": str(base / "cute_dsl"),
         "VLLM_CACHE_ROOT": str(base / "vllm"),
         "SGLANG_CACHE_DIR": str(base / "sglang"),
         "HF_HOME": str(hf),
