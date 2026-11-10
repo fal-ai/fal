@@ -25,6 +25,11 @@ import isolate_proto
 from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 
 from fal import flags
+
+# Imported here, not in the function: fal ships by value, but an import inside a
+# function runs against the fal installed where it is unpickled, which may be an
+# older release without this module.
+from fal._proxy import grpc_proxy_options
 from fal._serialization import patch_pickle
 from fal.auth import UserAccess, current_user_info, key_credentials
 from fal.console import console
@@ -308,7 +313,7 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
         return original_credentials
 
 
-def _is_permission_denied(error: BaseException | None) -> bool:
+def is_permission_denied(error: BaseException | None) -> bool:
     if not isinstance(error, HTTPError) or error.code != 403:
         return False
     try:
@@ -346,7 +351,7 @@ def get_credentials(
                 user_info = current_user_info(credentials.to_headers())
             except FalServerlessException as exc:
                 # The key may lack account:settings:read; it still works.
-                if not _is_permission_denied(exc.__cause__):
+                if not is_permission_denied(exc.__cause__):
                     raise
                 console.print(f"Ignoring explicit team {_team} because key is used.")
             else:
@@ -913,12 +918,17 @@ class FalServerlessConnection:
             return self._stub
 
         options = self.credentials.server_credentials.base_options
+        proxy_options = (
+            grpc_proxy_options(self.hostname)
+            if isinstance(self.credentials.server_credentials, RemoteCredentials)
+            else []
+        )
         channel_creds = self.credentials.to_grpc()
         channel = self._stack.enter_context(
             grpc.secure_channel(
                 target=self.hostname,
                 credentials=channel_creds,
-                options=list(options.items()),
+                options=[*options.items(), *proxy_options],
             )
         )
         channel = grpc.intercept_channel(channel, TraceContextInterceptor())

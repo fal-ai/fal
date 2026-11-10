@@ -62,6 +62,54 @@ def get_workflow_complete_icon(target_console: Console | None = None) -> str:
     return _select_icon("\U0001f389", "+", target_console=target_console)
 
 
+def get_column_separator_icon(target_console: Console | None = None) -> str:
+    return _select_icon("\u2502", "|", target_console=target_console)
+
+
+def get_inline_separator_icon(target_console: Console | None = None) -> str:
+    return _select_icon("\u00b7", "-", target_console=target_console)
+
+
+def get_bar_full_icon(target_console: Console | None = None) -> str:
+    return _select_icon("\u2588", "#", target_console=target_console)
+
+
+def get_bar_empty_icon(target_console: Console | None = None) -> str:
+    return _select_icon("\u2591", ".", target_console=target_console)
+
+
+def get_sparkline_icons(target_console: Console | None = None) -> str:
+    """Eight levels, lowest first."""
+    return _select_icon(
+        "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588",
+        "_.-~=+*#",
+        target_console=target_console,
+    )
+
+
+def get_state_dot_icon(target_console: Console | None = None) -> str:
+    return _select_icon("\u25cf", "*", target_console=target_console)
+
+
+def get_degrees_celsius_icon(target_console: Console | None = None) -> str:
+    return _select_icon("\u00b0C", " C", target_console=target_console)
+
+
+def get_ellipsis_icon(target_console: Console | None = None) -> str:
+    return _select_icon("\u2026", "...", target_console=target_console)
+
+
+# Drawn only on UTF-8 streams (terminal image previews, `fal dev` loading states).
+UPPER_HALF_BLOCK = "\u2580"
+BRAILLE_SPINNER = "\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f"
+# Dust squares, smallest to largest: middle dot, small square, square.
+DUST_SQUARES = "\u00b7\u25aa\u25a0"
+# `fal dev up` step checklist marks: check, ballot x, open circle.
+STEP_DONE = "\u2713"
+STEP_FAILED = "\u2717"
+STEP_PENDING = "\u25cb"
+
+
 _ICON_GETTERS = {
     "CHECK_ICON": get_check_icon,
     "CROSS_ICON": get_cross_icon,

@@ -1,0 +1,279 @@
+"""The interactive loop of `fal dev dash`: a rich Live screen plus single-key commands.
+
+rich has no input handling, so keys are read from stdin in cbreak mode with
+select(); that is all the dashboard needs, without a full TUI framework.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import select
+import sys
+import threading
+import time
+from collections.abc import Callable
+from contextlib import contextmanager
+from dataclasses import dataclass
+from pathlib import Path
+
+from rich.console import Console, RenderableType
+from rich.live import Live
+from rich.text import Text
+
+from fal.dev import loading
+from fal.dev.box import Box
+from fal.dev.dash import model
+from fal.dev.dash.view import render
+
+CONFIRM_SECONDS = 5.0
+
+
+@dataclass
+class Controls:
+    """What one kind of box draws and which keys act on it.
+
+    ``s`` (shell), ``d d`` (down) and ``q`` (quit) are common to every box;
+    ``actions`` maps the other keys to (what is running, func(runner_id)).
+    ``outputs`` adds ``o``: show the newest image `fal dev hot run` saved.
+    """
+
+    poller: Callable[..., model.Poller]
+    render: Callable[..., RenderableType]
+    actions: dict[str, tuple[str, Callable[[str], str]]]
+    down: Callable[[], str]
+    down_prompt: str
+    down_label: str
+    outputs: bool = False
+    # True once the box is gone (stopped from elsewhere): the dash ends and
+    # returns True, so a caller that waits for boxes can wait for the next.
+    gone: Callable[[], bool] | None = None
+    # Whether to ring the bell before the idle watchdog stops the box. An app
+    # box has no watchdog (its probe has no idle section): it scales to zero.
+    idle_warning: bool = True
+
+
+def box_controls(box: Box) -> Controls:
+    """The keys and panels of a `fal dev up` box."""
+    return Controls(
+        poller=model.Poller,
+        render=render,
+        actions={
+            "h": ("holding", lambda runner_id: model.hold(box)),
+            "r": (
+                "restarting the hot server",
+                lambda runner_id: model.hot_restart(box, runner_id),
+            ),
+        },
+        down=lambda: model.down(box),
+        down_prompt="press d again to save /work and stop the box",
+        down_label="saving /work and stopping the box",
+        outputs=True,
+    )
+
+
+@contextmanager
+def _cbreak(fd: int):
+    """Keys arrive one at a time, unechoed; Ctrl-C still interrupts."""
+    import termios
+    import tty
+
+    saved = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        yield
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+
+
+def _read_key(fd: int, timeout: float) -> str | None:
+    ready, _, _ = select.select([fd], [], [], timeout)
+    if not ready:
+        return None
+    data = os.read(fd, 32)
+    if not data:
+        return "q"  # the terminal went away
+    # Arrow keys and other escape sequences are not commands.
+    if data.startswith(b"\x1b"):
+        return None
+    return data[:1].decode(errors="ignore").lower()
+
+
+def _show_output(path: Path, console: Console) -> bool:
+    """Draw an image in the terminal; False if this terminal cannot show images."""
+    from fal.dev.media import preview, term_media
+
+    term = term_media.terminal_for(argparse.Namespace(preview=None, play=False))
+    if term.protocol == term_media.OFF:
+        return False
+    console.print(Text(f"{path}", style="dim"))
+    preview.show_paths([(str(path), "")], term)
+    return True
+
+
+def print_once(
+    box: Box, console: Console | None = None, controls: Controls | None = None
+) -> None:
+    """One poll, one frame: for scripts, captures, and terminals without a TTY."""
+    console = console or Console()
+    controls = controls or box_controls(box)
+    poller = controls.poller(box)
+    poller.prime()
+    console.print(controls.render(poller.snapshot, box))
+
+
+def run_dashboard(
+    box: Box,
+    interval: float = 3.0,
+    console: Console | None = None,
+    controls: Controls | None = None,
+) -> bool:
+    """Show the dashboard until q or Ctrl-C; True if it ended because the box
+    is gone (see ``Controls.gone``)."""
+    console = console or Console()
+    controls = controls or box_controls(box)
+    render = controls.render
+    # No termios on Windows; no screen to draw on without a terminal.
+    if os.name == "nt" or not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print_once(box, console, controls)
+        return False
+    poller = controls.poller(box, interval=interval)
+    poller.start()
+    fd = sys.stdin.fileno()
+    pending_down = 0.0
+    pending_quit = False
+    busy = threading.Lock()
+    idle_warning = model.IdleWarning()
+    gone = False
+
+    def act(label: str, func, *args) -> None:
+        """Run a slow action without freezing the screen."""
+
+        def run() -> None:
+            try:
+                poller.say(f"{label} ...", seconds=3600)
+                try:
+                    poller.say(func(*args))
+                except Exception as exc:
+                    poller.say(f"{label} failed: {exc}")
+                poller.refresh_state()
+            finally:
+                busy.release()
+
+        # One action at a time; a key pressed meanwhile is dropped, not queued.
+        if not busy.acquire(blocking=False):
+            poller.say("busy, try again in a moment")
+            return
+        threading.Thread(target=run, daemon=True).start()
+
+    # Before Live starts: inside it, sys.stdout is rich's proxy, not the terminal.
+    animate = loading.animation_enabled(sys.stdout)
+    try:
+        with _cbreak(fd):
+            live = Live(
+                render(poller.snapshot, box, screen=True, animate=animate),
+                console=console,
+                screen=True,
+                auto_refresh=False,
+            )
+            live.start()
+            try:
+                while True:
+                    # Redraw often while a loading state animates.
+                    animating = animate and model.waits(poller.snapshot)
+                    key = _read_key(fd, 1 / loading.FPS if animating else 1.0)
+                    runner_id = poller.snapshot.runner_id
+                    if controls.idle_warning and (
+                        warning := idle_warning.check(poller.snapshot, time.time())
+                    ):
+                        console.bell()
+                        poller.say(warning, seconds=60)
+                    if controls.gone and controls.gone():
+                        gone = True
+                        break
+                    if key == "q":
+                        if not busy.locked() or pending_quit:
+                            break
+                        pending_quit = True
+                        poller.say(
+                            "an action is still running; press q again to quit "
+                            "and abandon it (a stop not yet done leaves the box up)"
+                        )
+                        continue
+                    if key:
+                        pending_quit = False
+                    if key and key != "d" and pending_down:
+                        # Any other key cancels a pending down.
+                        pending_down = 0.0
+                        poller.say("", seconds=0)
+                    if key == "d":
+                        if time.time() - pending_down < CONFIRM_SECONDS:
+                            pending_down = 0.0
+                            act(controls.down_label, controls.down)
+                        else:
+                            pending_down = time.time()
+                            poller.say(controls.down_prompt, seconds=CONFIRM_SECONDS)
+                    elif (key == "s" or key in controls.actions) and not runner_id:
+                        poller.say("the box is not running")
+                    elif key == "s" and runner_id:
+                        live.stop()
+                        with _restored(fd):
+                            console.print(
+                                Text(
+                                    f"opening a shell on {runner_id}; "
+                                    "exit it to return",
+                                    style="dim",
+                                )
+                            )
+                            try:
+                                model.open_shell(box, runner_id)
+                            except Exception as exc:
+                                poller.say(f"shell failed: {exc}")
+                        live.start()
+                    elif key == "o" and controls.outputs:
+                        image = model.latest_output(box)
+                        if not image:
+                            poller.say(
+                                "no image in hot-out/ here; "
+                                "`fal dev hot run` saves its results there"
+                            )
+                        else:
+                            live.stop()
+                            with _restored(fd):
+                                try:
+                                    if _show_output(image, console):
+                                        console.input("press Enter to return ")
+                                    else:
+                                        model.open_externally(image)
+                                        poller.say(f"opened {image.name}")
+                                except Exception as exc:
+                                    poller.say(f"open failed: {exc}")
+                            live.start()
+                    elif key in controls.actions and runner_id:
+                        label, func = controls.actions[key]
+                        act(label, func, runner_id)
+                    frame = render(poller.snapshot, box, screen=True, animate=animate)
+                    live.update(frame, refresh=True)
+            finally:
+                live.stop()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        poller.stop()
+    return gone
+
+
+@contextmanager
+def _restored(fd: int):
+    """Hand the terminal back in its normal mode for an interactive shell."""
+    import termios
+
+    current = termios.tcgetattr(fd)
+    # Back to canonical, echoing input; the shell sets raw mode itself.
+    normal = list(current)
+    normal[3] |= termios.ICANON | termios.ECHO
+    termios.tcsetattr(fd, termios.TCSADRAIN, normal)
+    try:
+        yield
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, current)

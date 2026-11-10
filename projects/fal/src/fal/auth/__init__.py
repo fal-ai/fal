@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import Optional
 
+# At the top, not in the functions below: see the note in fal/sdk.py.
+from fal._proxy import unreachable_message
 from fal.auth import auth0, local
 from fal.config import Config
 from fal.exceptions import FalServerlessException
@@ -167,7 +169,8 @@ _ARCHIVE_REASON = "This account has been archived. Please contact support@fal.ai
 
 def _fetch_teams(bearer_token: str) -> list[dict]:
     import json  # noqa: PLC0415
-    from urllib.error import HTTPError  # noqa: PLC0415
+    from urllib.error import HTTPError, URLError  # noqa: PLC0415
+    from urllib.parse import urlsplit  # noqa: PLC0415
     from urllib.request import Request, urlopen  # noqa: PLC0415
 
     from fal.exceptions import FalServerlessException  # noqa: PLC0415
@@ -183,11 +186,16 @@ def _fetch_teams(bearer_token: str) -> list[dict]:
             return json.load(response)
     except HTTPError as exc:
         raise FalServerlessException("Failed to fetch teams") from exc
+    except URLError as exc:
+        raise FalServerlessException(
+            unreachable_message(urlsplit(REST_URL).hostname or REST_URL, exc.reason)
+        ) from None
 
 
 def current_user_info(headers: dict[str, str]) -> dict:
     import json  # noqa: PLC0415
-    from urllib.error import HTTPError  # noqa: PLC0415
+    from urllib.error import HTTPError, URLError  # noqa: PLC0415
+    from urllib.parse import urlsplit  # noqa: PLC0415
     from urllib.request import Request, urlopen  # noqa: PLC0415
 
     from fal.exceptions import FalServerlessException  # noqa: PLC0415
@@ -203,6 +211,10 @@ def current_user_info(headers: dict[str, str]) -> dict:
             return json.load(response)
     except HTTPError as exc:
         raise FalServerlessException("Failed to fetch user info") from exc
+    except URLError as exc:
+        raise FalServerlessException(
+            unreachable_message(urlsplit(REST_URL).hostname or REST_URL, exc.reason)
+        ) from None
 
 
 def login(console, connection: str | None = None, *, no_browser: bool = False):

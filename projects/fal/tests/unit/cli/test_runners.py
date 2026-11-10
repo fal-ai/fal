@@ -4,12 +4,13 @@ import os
 import struct
 from unittest.mock import MagicMock, patch
 
+import grpc
 import isolate_proto
 import pytest
 
 from fal.cli.main import parse_args
 from fal.cli.parser import FalParserExit
-from fal.cli.runners import _exec, _get_tty_size, _gpus, _shell_session
+from fal.cli.runners import _exec, _get_tty_size, _gpus, shell_session
 
 if os.name != "nt":
     import fcntl
@@ -96,7 +97,7 @@ def _exec_with_command(mock_client_cls, command):
 
     sent = []
 
-    def shell_runner(inputs):
+    def shell_runner(inputs, **kwargs):
         sent.extend(inputs)
         return [isolate_proto.ShellRunnerOutput(exit_code=0)]
 
@@ -141,13 +142,14 @@ def test_shell_session_separates_output_streams(mock_client_cls):
     ]
     stdout = io.BytesIO()
     stderr = io.BytesIO()
-    args = parse_args(["runners", "exec", "runner-id", "--", "true"])
 
-    exit_code = _shell_session(
-        args,
-        command=["true"],
+    exit_code = shell_session(
+        mock_client_cls.return_value,
+        "runner-id",
+        ["true"],
         interactive=False,
         remote_tty=False,
+        console=None,
         stdout=stdout,
         stderr=stderr,
     )
@@ -155,6 +157,51 @@ def test_shell_session_separates_output_streams(mock_client_cls):
     assert exit_code == 0
     assert stdout.getvalue() == b"out"
     assert stderr.getvalue() == b"err"
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_shell_session_reads_output_up_to_the_marker(mock_client_cls):
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    # The exit code arrives before the output ends; the marker is split in two.
+    stub.ShellRunner.return_value = [
+        isolate_proto.ShellRunnerOutput(exit_code=0),
+        isolate_proto.ShellRunnerOutput(data=b"result\n__en"),
+        isolate_proto.ShellRunnerOutput(data=b"d__\n"),
+        isolate_proto.ShellRunnerOutput(data=b"never read"),
+    ]
+    stdout = io.BytesIO()
+
+    shell_session(
+        mock_client_cls.return_value,
+        "runner-id",
+        ["true"],
+        interactive=False,
+        remote_tty=False,
+        console=None,
+        stdout=stdout,
+        timeout=5,
+        until=b"__end__",
+    )
+
+    assert stdout.getvalue() == b"result\n__end__\n"
+    assert stub.ShellRunner.call_args.kwargs == {"timeout": 5}
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_shell_session_without_a_console_raises_connection_errors(mock_client_cls):
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    stub.ShellRunner.side_effect = RuntimeError("no route")
+
+    with pytest.raises(RuntimeError, match="no route"):
+        shell_session(
+            mock_client_cls.return_value,
+            "runner-id",
+            ["true"],
+            interactive=False,
+            remote_tty=False,
+            console=None,
+            stdout=io.BytesIO(),
+        )
 
 
 @patch("fal.cli.runners.SyncServerlessClient")
@@ -173,7 +220,7 @@ def test_exec_without_terminal_requests_no_tty_and_closes_stdin(mock_client_cls)
 def test_exec_interactive_with_piped_stdin_streams_raw_bytes(mock_client_cls):
     sent = []
 
-    def shell_runner(inputs):
+    def shell_runner(inputs, **kwargs):
         sent.extend(inputs)
         return [isolate_proto.ShellRunnerOutput(exit_code=0)]
 
@@ -205,7 +252,7 @@ def test_exec_interactive_with_piped_stdin_streams_raw_bytes(mock_client_cls):
 def test_exec_interactive_on_terminal_requests_tty_and_sends_size(mock_client_cls):
     sent = []
 
-    def shell_runner(inputs):
+    def shell_runner(inputs, **kwargs):
         for msg in inputs:
             sent.append(msg)
             if msg.HasField("tty_size"):
@@ -237,7 +284,7 @@ def test_exec_interactive_on_terminal_requests_tty_and_sends_size(mock_client_cl
 def test_shell_with_piped_stdin(mock_client_cls, platform_name):
     sent = []
 
-    def shell_runner(inputs):
+    def shell_runner(inputs, **kwargs):
         sent.extend(inputs)
         return [isolate_proto.ShellRunnerOutput(exit_code=0)]
 
@@ -344,3 +391,160 @@ def test_interactive_shell_errors_on_windows(_mock_client_cls):
     args.console.print.assert_called_once_with(
         "[red]Error:[/] Interactive runner shell is not supported on Windows."
     )
+
+
+def test_print_logs_keeps_the_range_within_the_runners_lifetime():
+    from datetime import datetime, timedelta, timezone
+
+    from fal.cli import runners
+
+    started = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+    ended = started + timedelta(hours=1)
+    info = runners.RestRunnerInfo(started_at=started, ended_at=ended)
+    seen = {}
+
+    def fake_get_logs(rest_client, params, since, until, lines, *, oldest):
+        seen.update(params=params, since=since, until=until)
+        return iter([])
+
+    with (
+        patch.object(runners, "_get_runner_info", return_value=info),
+        patch.object(runners, "_get_logs", fake_get_logs),
+    ):
+        # The `fal dev logs --all` path: a start far before the runner existed.
+        runners.print_logs(
+            MagicMock(),
+            "r1",
+            MagicMock(),
+            follow=False,
+            since=started - timedelta(hours=23),
+        )
+
+    assert seen["params"] == {"job_id": "r1"}
+    assert (seen["since"], seen["until"]) == (started, ended)
+
+
+def test_interactive_shell_without_a_console_raises_on_windows():
+    with patch("fal.cli.runners.os.name", "nt"):
+        with pytest.raises(NotImplementedError, match="Windows"):
+            shell_session(
+                MagicMock(),
+                "r1",
+                None,
+                interactive=True,
+                remote_tty=True,
+                console=None,
+            )
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_shell_session_stops_waiting_for_a_marker_after_the_exit_code(
+    mock_client_cls, monkeypatch
+):
+    import threading
+
+    from fal.cli import runners
+
+    monkeypatch.setattr(runners, "UNTIL_GRACE_SECONDS", 0.05)
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    cancelled = threading.Event()
+
+    class Call:
+        def __iter__(self):
+            yield isolate_proto.ShellRunnerOutput(exit_code=3)
+            # Nothing more arrives, so only the cancel ends the stream.
+            assert cancelled.wait(5)
+            raise _Cancelled()
+
+        def cancel(self):
+            cancelled.set()
+
+    class _Cancelled(grpc.RpcError):
+        def code(self):
+            return grpc.StatusCode.CANCELLED
+
+    stub.ShellRunner.return_value = Call()
+
+    code = shell_session(
+        mock_client_cls.return_value,
+        "r1",
+        ["python3"],
+        interactive=False,
+        remote_tty=False,
+        console=None,
+        stdout=io.BytesIO(),
+        until=b"__end__",
+    )
+
+    assert code == 3
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_shell_session_with_done_ignores_the_exit_code_and_reads_on(mock_client_cls):
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    stub.ShellRunner.return_value = iter(
+        [
+            isolate_proto.ShellRunnerOutput(data=b"a", stream=1),
+            isolate_proto.ShellRunnerOutput(exit_code=0),
+            isolate_proto.ShellRunnerOutput(data=b"b", stream=1),
+            isolate_proto.ShellRunnerOutput(data=b"end", stream=1),
+            isolate_proto.ShellRunnerOutput(data=b"never", stream=1),
+        ]
+    )
+    out = io.BytesIO()
+
+    shell_session(
+        mock_client_cls.return_value,
+        "r1",
+        ["x"],
+        interactive=False,
+        remote_tty=False,
+        console=None,
+        stdout=out,
+        done=lambda: out.getvalue().endswith(b"end"),
+    )
+
+    assert out.getvalue() == b"abend"
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_shell_session_with_done_gives_up_when_the_stream_stays_open(
+    mock_client_cls, monkeypatch
+):
+    import threading
+
+    from fal.cli import runners
+
+    monkeypatch.setattr(runners, "UNTIL_GRACE_SECONDS", 0.05)
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    cancelled = threading.Event()
+
+    class Call:
+        def __iter__(self):
+            yield isolate_proto.ShellRunnerOutput(data=b"a", stream=1)
+            yield isolate_proto.ShellRunnerOutput(exit_code=0)
+            assert cancelled.wait(5)  # the server keeps the stream open
+            raise _Cancelled()
+
+        def cancel(self):
+            cancelled.set()
+
+    class _Cancelled(grpc.RpcError):
+        def code(self):
+            return grpc.StatusCode.CANCELLED
+
+    stub.ShellRunner.return_value = Call()
+    out = io.BytesIO()
+
+    shell_session(
+        mock_client_cls.return_value,
+        "r1",
+        ["x"],
+        interactive=False,
+        remote_tty=False,
+        console=None,
+        stdout=out,
+        done=lambda: False,
+    )
+
+    assert out.getvalue() == b"a"
