@@ -941,7 +941,7 @@ class App(BaseServable):
     _current_request_context: Any | None = None
 
     def __init_subclass__(cls, **kwargs):
-        app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
+        name = kwargs.pop("name", None)
         parent_settings = getattr(cls, "host_kwargs", {})
         parent_explicit_host_kwargs: set[str] = getattr(
             cls, "_explicit_host_kwargs", set()
@@ -1036,7 +1036,14 @@ class App(BaseServable):
 
         cls.host_kwargs["health_check_config"] = cls.get_health_check_config()
 
-        cls.app_name = getattr(cls, "app_name") or app_name
+        # The class's own app_name wins, then its name= argument. Without either,
+        # a subclass keeps the name it inherits.
+        cls.app_name = (
+            cls.__dict__.get("app_name")
+            or name
+            or getattr(cls, "app_name")
+            or _to_fal_app_name(cls.__name__)
+        )
 
         if cls.__init__ is not App.__init__:
             raise ValueError(
