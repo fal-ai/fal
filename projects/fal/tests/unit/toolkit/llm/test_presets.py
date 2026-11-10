@@ -950,6 +950,7 @@ def _snap(root, commit):
     path = root / commit
     path.mkdir(parents=True, exist_ok=True)
     (path / "config.json").write_text("{}")
+    (path / "model.safetensors").write_bytes(b"x")
     return str(path)
 
 

@@ -84,16 +84,44 @@ def write_marker(path: Path, data: Mapping[str, Any]) -> None:
         raise
 
 
+# Weight file formats a model repo may ship; training_args.bin is a pickled
+# config, not weights.
+_WEIGHT_SUFFIXES = (".safetensors", ".bin", ".pt", ".pth", ".gguf", ".ckpt")
+_NOT_WEIGHTS = frozenset({"training_args.bin"})
+
+
 def snapshot_intact(path: str) -> bool:
-    """Config and every weight file resolve (HF snapshots are symlinks)."""
+    """Config and weights resolve (HF snapshots are symlinks).
+
+    At least one weight file must survive, and every shard named by a
+    ``*.index.json`` weight map must resolve: a snapshot whose entries
+    vanished after the completion marker was written is not intact.
+    """
     if not os.path.isfile(os.path.join(path, "config.json")):
         return False
+    weights = 0
+    indexes = []
     for root, _, files in os.walk(path):
         for name in files:
-            if name.endswith((".safetensors", ".bin")) and not os.path.exists(
-                os.path.join(root, name)
-            ):
-                return False
+            full = os.path.join(root, name)
+            if name.endswith(_WEIGHT_SUFFIXES) and name not in _NOT_WEIGHTS:
+                if not os.path.exists(full):
+                    return False
+                weights += 1
+            elif name.endswith(".index.json"):
+                indexes.append((root, full))
+    if not weights:
+        return False
+    for root, index in indexes:
+        try:
+            with open(index) as f:
+                shards = set(json.load(f)["weight_map"].values())
+        except (OSError, ValueError, KeyError, AttributeError, TypeError):
+            return False
+        if not all(
+            isinstance(s, str) and os.path.exists(os.path.join(root, s)) for s in shards
+        ):
+            return False
     return True
 
 
@@ -184,11 +212,12 @@ def engine_cache_env(
 ) -> dict[str, str]:
     """Env vars that point engine compile caches at the persistent volume.
 
-    Compiled artifacts (torch Inductor and C++ extensions, Triton, DeepGEMM, FlashInfer,
-    TileLang, CuTe DSL, vLLM, SGLang) land under ``<root>/<namespace>/``, so a new runner reuses
-    them instead of recompiling. ``namespace`` should change whenever cached
-    artifacts could be incompatible (engine version, GPU type). HF caches are
-    shared across namespaces, since downloaded weights are not engine specific.
+    Compiled artifacts (torch Inductor and C++ extensions, Triton, DeepGEMM,
+    FlashInfer, TileLang, CuTe DSL, vLLM, SGLang) land under
+    ``<root>/<namespace>/``, so a new runner reuses them instead of recompiling.
+    ``namespace`` should change whenever cached artifacts could be incompatible
+    (engine version, GPU type). HF caches are shared across namespaces, since
+    downloaded weights are not engine specific.
 
     The CUDA driver's PTX JIT cache is also kept, keyed by driver version
     (detected when ``driver`` is None), since a driver upgrade invalidates it.

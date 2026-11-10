@@ -26,6 +26,7 @@ from typing import (
     Tuple,
 )
 
+import anyio
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
@@ -114,6 +115,9 @@ _MEAN_METRICS = frozenset(
 _METRIC_RE = re.compile(r"^([^\s{]+)(?:\{[^}]*\})?\s+([0-9.eE+-]+|nan|NaN)$")
 # Session ids remembered for replica routing (least recently used dropped).
 _SESSION_ROUTES_MAX = 4096
+# Responses API ids remembered with the replica that created them, so a
+# ``previous_response_id`` continuation reaches the engine holding its state.
+_RESPONSE_ROUTES_MAX = 65536
 # Extra requests in flight a session's replica may hold over the least loaded
 # one before the session moves.
 _STICKY_SLACK = 4
@@ -346,6 +350,22 @@ def _event_cut(buf: bytes) -> int:
     return max(lf + 2 if lf >= 0 else 0, crlf + 4 if crlf >= 0 else 0)
 
 
+def _sse_response_id(events: bytes) -> Optional[str]:
+    """The ``response.id`` of the first Responses API event in ``events``
+    that has one."""
+    for line in events.splitlines():
+        if not line.startswith(b"data:"):
+            continue
+        try:
+            event = json.loads(line[5:])
+        except ValueError:
+            continue
+        response = event.get("response") if isinstance(event, dict) else None
+        if isinstance(response, dict) and isinstance(response.get("id"), str):
+            return response["id"]
+    return None
+
+
 def _expired(deadline: Optional[float]) -> bool:
     return deadline is not None and time.monotonic() >= deadline
 
@@ -461,7 +481,14 @@ class _Stream:
         if not self._upstream_closed:
             # Closing the upstream connection makes the engine abort the
             # request, which also covers client disconnects and shutdown.
-            await self.upstream.aclose()
+            # Shielded: on a client disconnect this runs in a cancelled scope,
+            # and an interrupted httpx close cannot be retried (the response
+            # is marked closed first), which with httpcore < 1.0 left the
+            # engine connection open. The shield covers anyio scope
+            # cancellation (Starlette's task group on ASGI spec 2.3), not a
+            # second native task cancel.
+            with anyio.CancelScope(shield=True):
+                await self.upstream.aclose()
             self._upstream_closed = True
 
 
@@ -740,9 +767,10 @@ class LLMApp(_EngineChecks, App):
     hits as ``prompt_tokens_details.cached_tokens`` (``input_tokens_details``
     on the Responses API). Use ``/v1/responses`` for models that reason
     between tool calls (gpt-oss) and replay the response ``output`` items,
-    reasoning included, in the next ``input``. ``previous_response_id`` needs
-    one runner and is not isolated per caller, because the engine keeps that
-    state in memory by id.
+    reasoning included, in the next ``input``. ``previous_response_id`` is not
+    isolated per caller, and works only while one runner serves the app: the
+    engine keeps that state in memory by id. Within a runner, continuations
+    are routed to the engine replica that created the response.
 
     For multi-turn conversations on several runners, set ``prefix_hints`` and
     have clients send a stable session id (letters, digits and ``._:-``, at
@@ -1120,6 +1148,8 @@ class LLMApp(_EngineChecks, App):
         ]
         # Session id digest -> replica index, least recently used first.
         self._sessions: OrderedDict[bytes, int] = OrderedDict()
+        # Responses API id -> index of the replica that created it.
+        self._response_routes: OrderedDict[str, int] = OrderedDict()
         # The replica the current request was routed to: set in _proxy, read
         # where the engine call is made (tasks copy the context). Made here,
         # not at module level: a ContextVar cannot be pickled with the class.
@@ -1922,6 +1952,36 @@ class LLMApp(_EngineChecks, App):
                 self._sessions.popitem(last=False)
         return choice
 
+    def _continuation_replica(
+        self, path: str, payload: Dict[str, Any]
+    ) -> Optional[_Replica]:
+        """The replica that created ``previous_response_id``, if known. It is
+        used even when busy or unhealthy: the engine keeps the conversation in
+        memory, so any other replica would answer that the id is not found."""
+        if path != "/v1/responses" or len(self._replicas) == 1:
+            return None
+        previous = payload.get("previous_response_id")
+        if not isinstance(previous, str):
+            return None
+        index = self._response_routes.get(previous)
+        if index is None:
+            return None
+        replica = self._replicas[index]
+        if replica.proc is not None and replica.proc.poll() is not None:
+            # The engine exited and its in-memory state went with it.
+            del self._response_routes[previous]
+            return None
+        self._response_routes.move_to_end(previous)
+        return replica
+
+    def _note_response(self, response_id: Any, replica: _Replica) -> None:
+        if not isinstance(response_id, str) or len(self._replicas) == 1:
+            return
+        self._response_routes[response_id] = replica.index
+        self._response_routes.move_to_end(response_id)
+        while len(self._response_routes) > _RESPONSE_ROUTES_MAX:
+            self._response_routes.popitem(last=False)
+
     def _add_extra_routes(self, app: Any) -> None:
         super()._add_extra_routes(app)
         # @endpoint routes are POST only; OpenAI clients GET these.
@@ -2028,7 +2088,9 @@ class LLMApp(_EngineChecks, App):
         self._note_prefix(payload, request.headers)
         # Routing is independent of prefix_hints: those only advertise ids to
         # the gateway, while a replica's prefix cache pays off either way.
-        replica = self._pick_replica(self._session_id(payload, request.headers))
+        replica = self._continuation_replica(path, payload) or self._pick_replica(
+            self._session_id(payload, request.headers)
+        )
         self._route_var.set(replica)
 
         abort = asyncio.Event()
@@ -2070,33 +2132,10 @@ class LLMApp(_EngineChecks, App):
                 # Still waiting for engine headers: cancelling closes the
                 # connection, which aborts the engine request.
                 send.cancel()
-                if abort.is_set() and not _expired(deadline):
-                    self._count_shutdown_abort()
-                    return _shutting_down_response()
-                # An expired deadline wins here too, as in _relay.
-                if idle_bound and not _expired(deadline):
-                    reason = "idle_timeout"
-                    self._count_idle_abort(path)
-                else:
-                    reason = "deadline"
-                    self._count_deadline_abort()
-                # Same shape as a mid-stream expiry (200 SSE), so stream
-                # clients handle a deadline in one place.
-                return StreamingResponse(
-                    iter([self._finish_chunk(path, reason)]),
-                    media_type="text/event-stream",
-                )
+                return self._stream_cut_short(path, abort, deadline, idle_bound)
             upstream = send.result()
             if upstream.status_code != 200:
-                try:
-                    body = await asyncio.wait_for(
-                        upstream.aread(), _ERROR_BODY_TIMEOUT_S
-                    )
-                except asyncio.TimeoutError:
-                    body = b'{"detail": "engine error body timed out"}'
-                finally:
-                    await upstream.aclose()
-                return self._engine_reply(body, upstream.status_code)
+                return await self._engine_error_reply(upstream, path, abort, deadline)
             relaying = True
             replica._engine_errors = 0
             stream = _Stream(self, upstream, path, abort, replica)
@@ -2109,6 +2148,75 @@ class LLMApp(_EngineChecks, App):
             if not relaying:
                 self._inflight.discard(abort)
                 replica.inflight -= 1
+
+    def _stream_cut_short(
+        self,
+        path: str,
+        abort: asyncio.Event,
+        deadline: Optional[float],
+        idle_bound: bool = False,
+    ) -> Response:
+        """Reply for a stream that ended before relaying began: shutdown,
+        idle timeout or deadline."""
+        if abort.is_set() and not _expired(deadline):
+            self._count_shutdown_abort()
+            return _shutting_down_response()
+        # An expired deadline wins here too, as in _relay.
+        if idle_bound and not _expired(deadline):
+            reason = "idle_timeout"
+            self._count_idle_abort(path)
+        else:
+            reason = "deadline"
+            self._count_deadline_abort()
+        # Same shape as a mid-stream expiry (200 SSE), so stream clients
+        # handle a deadline in one place.
+        return StreamingResponse(
+            iter([self._finish_chunk(path, reason)]),
+            media_type="text/event-stream",
+        )
+
+    async def _engine_error_reply(
+        self,
+        upstream: Any,
+        path: str,
+        abort: asyncio.Event,
+        deadline: Optional[float],
+    ) -> Response:
+        """Relay a non-200 stream reply, reading its body within the request
+        deadline and until shutdown, as the stream itself would be."""
+        read = asyncio.ensure_future(upstream.aread())
+        aborted = asyncio.ensure_future(abort.wait())
+        remaining = _remaining(deadline)
+        limit = (
+            _ERROR_BODY_TIMEOUT_S
+            if remaining is None
+            else min(remaining, _ERROR_BODY_TIMEOUT_S)
+        )
+        try:
+            await asyncio.wait(
+                {read, aborted}, timeout=limit, return_when=asyncio.FIRST_COMPLETED
+            )
+        except asyncio.CancelledError:
+            self._count_if_cancelled()
+            raise
+        finally:
+            aborted.cancel()
+            if not read.done():
+                read.cancel()
+            with anyio.CancelScope(shield=True):
+                await asyncio.wait({read})
+                await upstream.aclose()
+        if not read.cancelled():
+            body = read.result()
+            return self._engine_reply(body, upstream.status_code)
+        if abort.is_set() or _expired(deadline):
+            # The engine already answered with this status, so it counts
+            # toward engine_error_threshold even though the body is dropped.
+            self._route()._count_engine_reply(upstream.status_code)
+            return self._stream_cut_short(path, abort, deadline)
+        return self._engine_reply(
+            b'{"detail": "engine error body timed out"}', upstream.status_code
+        )
 
     async def _open_upstream(self, path: str, payload: Dict[str, Any]) -> Any:
         """Start a streaming request on the routed replica; the result has the
@@ -2147,6 +2255,9 @@ class LLMApp(_EngineChecks, App):
         partial = b""
         done_sent = False
         finished = False
+        # Responses ids are noted from the first event that carries one.
+        creator = stream.replica
+        want_id = path == "/v1/responses" and len(self._replicas) > 1
         chunks = stream.upstream.aiter_raw().__aiter__()
         aborted = asyncio.ensure_future(stream.abort.wait())
         pending: Optional[asyncio.Future] = None
@@ -2217,6 +2328,11 @@ class LLMApp(_EngineChecks, App):
                     done_sent = done_sent or (
                         out.startswith(b"data: [DONE]") or b"\ndata: [DONE]" in out
                     )
+                    if want_id and creator is not None and b'"response":' in out:
+                        response_id = _sse_response_id(out)
+                        if response_id is not None:
+                            self._note_response(response_id, creator)
+                            want_id = False
                     if path == "/v1/responses":
                         # No [DONE] here: the terminal event ends the stream.
                         if _RESPONSES_TERMINAL_RE.search(out):
@@ -2305,9 +2421,14 @@ class LLMApp(_EngineChecks, App):
         upstream = task.result()
         if upstream.status_code == 200:
             try:
-                usage = upstream.json().get("usage")
+                reply = upstream.json()
             except ValueError:
-                usage = None
+                reply = None
+            if not isinstance(reply, dict):
+                reply = {}
+            if path == "/v1/responses":
+                self._note_response(reply.get("id"), self._route())
+            usage = reply.get("usage")
             if isinstance(usage, dict):
                 self.record_usage(path, usage)
         return self._engine_reply(upstream.content, upstream.status_code)

@@ -15,6 +15,8 @@ app = FastAPI()
 ABORT_FILE = os.environ.get("FAKE_ENGINE_ABORT_FILE")
 LAST_BODY_FILE = os.environ.get("FAKE_ENGINE_BODY_FILE")
 PORT = 0
+# Responses this engine created, like vLLM's in-memory response store.
+RESPONSE_IDS: set = set()
 
 
 def _mark_abort() -> None:
@@ -69,6 +71,22 @@ async def _complete(request: Request):
         "prompt_tokens_details": {"cached_tokens": 3},
     }
     if body.get("fail"):
+        if body.get("error_body_ticks"):
+            # Error headers now, the body later, like a stalled engine.
+            async def slow_error():
+                try:
+                    for _ in range(int(body["error_body_ticks"])):
+                        await asyncio.sleep(0.1)
+                    yield b'{"error": "boom"}'
+                except BaseException:
+                    _mark_abort()
+                    raise
+
+            return StreamingResponse(
+                slow_error(),
+                status_code=int(body.get("fail_status", 400)),
+                media_type="application/json",
+            )
         return JSONResponse(
             {"error": "boom"}, status_code=int(body.get("fail_status", 400))
         )
@@ -123,11 +141,24 @@ async def _respond(request: Request):
         "total_tokens": 12,
         "input_tokens_details": {"cached_tokens": 3},
     }
+    previous = body.get("previous_response_id")
+    if previous is not None and previous not in RESPONSE_IDS:
+        return JSONResponse(
+            {"error": {"message": f"Response with id '{previous}' not found."}},
+            status_code=404,
+        )
+    response_id = f"resp_{PORT}_{len(RESPONSE_IDS)}"
+    RESPONSE_IDS.add(response_id)
     # Padding makes the terminal event larger than the proxy's stream tail.
     text = "x" * int(body.get("pad_chars", 0))
     final = {
         "type": "response.completed",
-        "response": {"status": "completed", "output_text": text, "usage": usage},
+        "response": {
+            "id": response_id,
+            "status": "completed",
+            "output_text": text,
+            "usage": usage,
+        },
     }
     if not body.get("stream"):
         for _ in range(int(body.get("delay_ticks", 0))):

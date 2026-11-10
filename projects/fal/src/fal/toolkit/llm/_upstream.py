@@ -44,10 +44,12 @@ class UpstreamStream:
         self._closed = False
         self._chunked = "chunked" in headers.get("transfer-encoding", "").lower()
         length = headers.get("content-length")
-        try:
-            self._remaining = None if self._chunked or length is None else int(length)
-        except ValueError:
-            raise UpstreamError(f"bad Content-Length: {length!r}") from None
+        self._remaining = None
+        if not self._chunked and length is not None:
+            digits = length.strip()
+            if not (digits.isascii() and digits.isdigit() and len(digits) <= 18):
+                raise UpstreamError(f"bad Content-Length: {length!r}")
+            self._remaining = int(digits)
         # Chunked decoding: bytes left in the current chunk (-1 = need a size line).
         self._chunk_left = -1
         self._done = False

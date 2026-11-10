@@ -311,3 +311,29 @@ def test_bad_content_length_is_an_upstream_error_and_frees_the_slot():
             server.close()
 
     asyncio.run(go())
+
+
+@pytest.mark.parametrize(
+    "length",
+    # Past Python's int() digit limit a bare int() raises ValueError.
+    ["-5", "-0", "1_0", "+3", "", pytest.param("9" * 5000, id="5000-digits")],
+)
+def test_malformed_content_length_is_rejected(length):
+    async def go():
+        async def handler(reader, writer):
+            await reader.readuntil(b"\r\n\r\n")
+            writer.write(
+                f"HTTP/1.1 200 OK\r\nContent-Length: {length}\r\n\r\nabcdef".encode()
+            )
+            await writer.drain()
+
+        server, port = await _serve(handler)
+        slots = asyncio.Semaphore(1)
+        try:
+            with pytest.raises(UpstreamError):
+                await open_stream("127.0.0.1", port, "/", b"{}", 5.0, slots)
+            await asyncio.wait_for(slots.acquire(), 1)
+        finally:
+            server.close()
+
+    asyncio.run(go())

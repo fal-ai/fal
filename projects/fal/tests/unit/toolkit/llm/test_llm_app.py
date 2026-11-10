@@ -782,6 +782,7 @@ def _fake_snapshot_download(monkeypatch, tmp_path):
     snap = tmp_path / "snap"
     snap.mkdir(exist_ok=True)
     (snap / "config.json").write_text("{}")
+    (snap / "model.safetensors").write_bytes(b"x")
 
     def fake(repo_id, **kwargs):
         calls.append(bool(kwargs.get("local_files_only")))
@@ -1169,6 +1170,57 @@ def test_stream_deadline_before_headers(served):
     assert lines[-1] == "data: [DONE]"
     assert json.loads(lines[-2][5:])["choices"][0]["finish_reason"] == "deadline"
     assert app._usage_totals["deadline_aborts"] == 1
+    assert _wait_for(abort_file, timeout=8.0)
+
+
+def test_stream_error_body_read_honors_deadline(served):
+    app, url, abort_file, _ = served
+    start = time.monotonic()
+    r = httpx.post(
+        f"{url}/v1/chat/completions",
+        json={
+            "stream": True,
+            "fail": True,
+            "fail_status": 500,
+            "error_body_ticks": 300,
+        },
+        headers={"X-Fal-Request-Deadline": "0.5"},
+        timeout=30,
+    )
+    assert time.monotonic() - start < 5
+    assert r.status_code == 200
+    lines = [c for c in r.text.splitlines() if c.startswith("data:")]
+    assert json.loads(lines[-2][5:])["choices"][0]["finish_reason"] == "deadline"
+    assert app._usage_totals["deadline_aborts"] == 1
+    # The 500 still counts toward engine_error_threshold.
+    assert app._replicas[0]._engine_errors == 1
+    assert _wait_for(abort_file, timeout=8.0)
+    assert _wait_idle(app)
+
+
+@pytest.mark.parametrize("served", [{"shutdown_grace_s": 0.5}], indirect=True)
+def test_stream_error_body_read_ends_on_shutdown(served):
+    app, url, abort_file, _ = served
+    result: dict = {}
+
+    def call():
+        result["r"] = httpx.post(
+            f"{url}/v1/chat/completions",
+            json={"stream": True, "fail": True, "error_body_ticks": 300},
+            timeout=30,
+        )
+
+    t = threading.Thread(target=call)
+    t.start()
+    assert _wait_inflight(app)
+    time.sleep(0.5)  # error headers are in; the body is not
+    start = time.monotonic()
+    _handle_exit(app)
+    t.join(timeout=10)
+    assert time.monotonic() - start < 5
+    assert result["r"].status_code == 503
+    assert result["r"].headers["x-fal-needs-retry"] == "true"
+    assert app._usage_totals["shutdown_aborts"] == 1
     assert _wait_for(abort_file, timeout=8.0)
 
 
@@ -1863,9 +1915,12 @@ def test_abort_after_finish_reason_only_sends_done(served, single_choice):
 
 
 def test_upstream_close_retried_after_cancelled_disconnect():
-    # Starlette cancels the body task on disconnect; the first close is
-    # interrupted at its checkpoint and the response's own cleanup finishes it.
+    # Starlette cancels the body task on disconnect, so the close runs in a
+    # cancelled scope. Like httpx, the fake marks itself closed before its
+    # await, so an interrupted close is never retried: only a close that is
+    # not interrupted reaches the connection.
     class Up:
+        is_closed = False
         closed = False
 
         async def aiter_raw(self):
@@ -1874,6 +1929,9 @@ def test_upstream_close_retried_after_cancelled_disconnect():
                 yield b'data: {"a": 1}\n\n'
 
         async def aclose(self):
+            if self.is_closed:
+                return
+            self.is_closed = True
             await asyncio.sleep(0.01)
             self.closed = True
 
@@ -2013,6 +2071,7 @@ class _Hub:
         path = self.root / commit
         path.mkdir(parents=True, exist_ok=True)
         (path / "config.json").write_text("{}")
+        (path / "model.safetensors").write_bytes(b"x")
         return path
 
     def hub_commit(self, model, revision, timeout):

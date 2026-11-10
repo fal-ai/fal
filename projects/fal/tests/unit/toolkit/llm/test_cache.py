@@ -74,3 +74,62 @@ def test_nvidia_driver_version(tmp_path, monkeypatch, text, expected):
         path.write_text(text)
     monkeypatch.setattr("fal._cuda_cache._DRIVER_VERSION_FILE", str(path))
     assert nvidia_driver_version() == expected
+
+
+def _snap(tmp_path, weights=(), index=None):
+    snap = tmp_path / "snap"
+    snap.mkdir()
+    (snap / "config.json").write_text("{}")
+    for name in weights:
+        (snap / name).write_bytes(b"x")
+    if index is not None:
+        import json
+
+        (snap / "model.safetensors.index.json").write_text(
+            json.dumps({"weight_map": {f"w{i}": s for i, s in enumerate(index)}})
+        )
+    return str(snap)
+
+
+def test_snapshot_without_weights_is_not_intact(tmp_path):
+    from fal.toolkit.llm._cache import snapshot_intact
+
+    assert not snapshot_intact(_snap(tmp_path))
+
+
+def test_snapshot_with_weights_is_intact(tmp_path):
+    from fal.toolkit.llm._cache import snapshot_intact
+
+    assert snapshot_intact(_snap(tmp_path, ["model.safetensors"]))
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["model.bin", "model.pt", "model.pth", "model-Q4_K_M.gguf", "model.ckpt"],
+)
+def test_snapshot_with_other_weight_formats_is_intact(tmp_path, name):
+    from fal.toolkit.llm._cache import snapshot_intact
+
+    assert snapshot_intact(_snap(tmp_path, [name]))
+
+
+def test_snapshot_with_only_training_args_is_not_intact(tmp_path):
+    from fal.toolkit.llm._cache import snapshot_intact
+
+    assert not snapshot_intact(_snap(tmp_path, ["training_args.bin"]))
+
+
+def test_snapshot_missing_indexed_shard_is_not_intact(tmp_path):
+    from fal.toolkit.llm._cache import snapshot_intact
+
+    path = _snap(
+        tmp_path, ["m-1.safetensors"], index=["m-1.safetensors", "m-2.safetensors"]
+    )
+    assert not snapshot_intact(path)
+
+
+def test_snapshot_all_indexed_shards_present_is_intact(tmp_path):
+    from fal.toolkit.llm._cache import snapshot_intact
+
+    shards = ["m-1.safetensors", "m-2.safetensors"]
+    assert snapshot_intact(_snap(tmp_path, shards, index=shards))

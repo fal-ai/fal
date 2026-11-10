@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import random
 import socket
 import subprocess
 import sys
 import threading
 import time
+import types
 from collections import OrderedDict
 from pathlib import Path
 
@@ -127,6 +129,7 @@ def _router(n: int) -> LLMApp:
     app = Router()
     app._replicas = [_Replica(app, i, 9000 + i) for i in range(n)]
     app._sessions = OrderedDict()
+    app._response_routes = OrderedDict()
     return app
 
 
@@ -191,6 +194,24 @@ def test_session_routes_are_bounded(monkeypatch):
     for i in range(10):
         app._pick_replica(f"s{i}")
     assert len(app._sessions) == 3
+
+
+def test_response_routes_are_bounded(monkeypatch):
+    monkeypatch.setattr(_app, "_RESPONSE_ROUTES_MAX", 3)
+    app = _router(2)
+    for i in range(10):
+        app._note_response(f"resp_{i}", app._replicas[i % 2])
+    assert list(app._response_routes) == ["resp_7", "resp_8", "resp_9"]
+    payload = {"previous_response_id": "resp_9"}
+    assert app._continuation_replica("/v1/responses", payload) is app._replicas[1]
+    assert app._continuation_replica("/v1/chat/completions", payload) is None
+    assert app._continuation_replica("/v1/responses", {}) is None
+    expired = {"previous_response_id": "resp_0"}
+    assert app._continuation_replica("/v1/responses", expired) is None
+    # An engine that exited lost the conversation: route as usual.
+    app._replicas[1].proc = types.SimpleNamespace(poll=lambda: 1)
+    assert app._continuation_replica("/v1/responses", payload) is None
+    assert "resp_9" not in app._response_routes
 
 
 def test_unhealthy_replica_is_routed_around():
@@ -296,6 +317,52 @@ def test_requests_follow_their_session(served):
     # Idle again: the session keeps its replica even though both are free.
     httpx.post(f"{url}/v1/chat/completions", json={"user": "other"})
     assert r1.requests == 4
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_responses_continuation_stays_on_the_creating_engine(served, stream):
+    app, url, _ = served
+    r0, r1 = app._replicas
+
+    def create(**body):
+        r = httpx.post(
+            f"{url}/v1/responses",
+            json={"stream": stream, **body},
+            headers={"X-Fal-Runner-Hint": "conv"},
+        )
+        assert r.status_code == 200, r.text
+        if not stream:
+            return r.json()["id"]
+        events = [
+            json.loads(line[5:])
+            for line in r.text.splitlines()
+            if line.startswith("data:")
+        ]
+        return events[-1]["response"]["id"]
+
+    first = create()
+    assert (r0.requests, r1.requests) == (1, 0)
+    # Load the creating replica past the sticky slack, so the session alone
+    # would move the continuation to the other engine.
+    r0.inflight += 50
+    try:
+        second = create(previous_response_id=first)
+        third = create(previous_response_id=second)
+    finally:
+        r0.inflight -= 50
+    assert (r0.requests, r1.requests) == (3, 0)
+    assert third.startswith(f"resp_{r0.port}_")
+    # An id this runner never saw is routed as usual: by load, to r1.
+    r0.inflight += 50
+    try:
+        r = httpx.post(
+            f"{url}/v1/responses",
+            json={"stream": stream, "previous_response_id": "resp_unknown"},
+        )
+    finally:
+        r0.inflight -= 50
+    assert r.status_code == 404
+    assert (r0.requests, r1.requests) == (3, 1)
 
 
 def test_abort_reaches_the_routed_replica(served, monkeypatch):
