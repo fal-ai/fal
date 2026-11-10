@@ -44,6 +44,7 @@ from fal.toolkit.llm._preread import DEFAULT_WORKERS, preread_weights
 from fal.toolkit.llm._presets import (
     AGENT_KV_CPU_OFFLOAD,
     AGENT_PROFILE,
+    B200,
     H100,
     PROFILES,
     RTX_PRO_6000,
@@ -52,6 +53,7 @@ from fal.toolkit.llm._presets import (
     detect_gpu,
     engine_arg_warnings,
     engine_preset_args,
+    engine_preset_env,
     load_model_config,
     merge_engine_args,
     model_facts,
@@ -502,7 +504,7 @@ _FAL_RAM_GIB_PER_GPU = (
     (RTX_PRO_6000, 60),
     (H100, 60),
     ("NVIDIA_H200", 112),
-    ("NVIDIA_B200", 210),
+    (B200, 210),
 )
 _MIN_RAM_GIB_PER_GPU = 16
 
@@ -550,10 +552,12 @@ class LLMApp(App):
 
     With ``engine_presets`` on, tensor parallelism (from ``num_gpus``),
     ``--disable-custom-all-reduce`` on PCIe-only GPUs and the engine's max
-    concurrent sequences (from ``max_multiplexing``) are added to the launch;
+    concurrent sequences (from ``max_multiplexing``: 2x on several GPUs, 1x
+    on one) are added to the launch;
     any flag already in ``engine_args`` wins. Set ``max_multiplexing`` to the
     measured cap (256 on one GPU, 128 for multi-GPU MoE) so the router feeds
-    the engine enough requests. The presets also apply measured vLLM recipes
+    the engine enough requests; on several GPUs the engine cap is twice it.
+    The presets also apply measured vLLM recipes
     on RTX PRO 6000 and H100 (see ``RECIPES``): sequence caps, FP8 KV cache
     and EAGLE3 for Qwen3-8B, and settings for gpt-oss-120b and DeepSeek V4
     Flash (run it on 2 GPUs: 1.9x the tokens per GPU-hour of 4). A recipe may
@@ -616,6 +620,13 @@ class LLMApp(App):
     # Active parameters in billions when the config.json estimate is wrong.
     active_params_b: ClassVar[Optional[float]] = None
     engine_env: ClassVar[Dict[str, str]] = {}
+    # Keep the presets' speculative decoding (MTP, EAGLE, DSpark) only while
+    # max_multiplexing, the expected concurrency, is at or below this; above it
+    # the speculative flags are dropped with a warning (a user
+    # --speculative-config in engine_args is kept, with a warning). It wins
+    # over the limit a recipe carries (GLM-5.3 on B300: 8); 0 never uses
+    # speculation. None: the recipe's limit, else always on.
+    spec_max_conc: ClassVar[Optional[int]] = None
     # vLLM only. Fraction (0, 0.8] of the container's RAM to use as a CPU tier for
     # evicted KV blocks (OffloadingConnector). Long prefixes pushed out of GPU
     # memory reload in well under a second instead of being recomputed (gpt-oss
@@ -733,7 +744,8 @@ class LLMApp(App):
     def __init_subclass__(cls, **kwargs: Any) -> None:
         # Check only the class that sets these, so subclasses do not repeat it.
         sets_config = bool(
-            {"engine_args", "num_gpus", "max_multiplexing"} & set(vars(cls))
+            {"engine_args", "num_gpus", "max_multiplexing", "spec_max_conc"}
+            & set(vars(cls))
         )
         user_multiplexing = cls.max_multiplexing
         super().__init_subclass__(**kwargs)
@@ -761,7 +773,7 @@ class LLMApp(App):
         # warnings (not print): this runs on the deploying machine and callers
         # can filter or assert on it.
         for message in engine_arg_warnings(
-            cls.engine_args, cls.num_gpus or 1, user_multiplexing
+            cls.engine_args, cls.num_gpus or 1, user_multiplexing, cls.spec_max_conc
         ):
             warnings.warn(f"{cls.__name__}: {message}", stacklevel=2)
 
@@ -795,6 +807,7 @@ class LLMApp(App):
                     max_multiplexing=self.max_multiplexing,
                     user_args=engine_args,
                     skip_checkpoint=self._skip_checkpoint,
+                    spec_max_conc=self.spec_max_conc,
                 ),
                 engine_args,
             )
@@ -1297,9 +1310,25 @@ class LLMApp(App):
             f"{stats.seconds:.1f}s ({stats.gb_per_s:.2f} GB/s)"
         )
 
+    def _preset_env(self, model_path: str) -> Dict[str, str]:
+        if not self.engine_presets or self.engine not in ("vllm", "sglang"):
+            return {}
+        model = model_facts(
+            self.model, load_model_config(model_path), self.active_params_b
+        )
+        return engine_preset_env(
+            self.engine,
+            self._machine(),
+            model,
+            profile=self.engine_profile,
+            user_args=self.engine_args,
+            skip_checkpoint=self._skip_checkpoint,
+            max_multiplexing=self.max_multiplexing,
+        )
+
     def _start_engine(self, model_path: str) -> subprocess.Popen:
         cmd = self.engine_command(model_path)
-        env = {**os.environ, **self.engine_env}
+        env = {**self._preset_env(model_path), **os.environ, **self.engine_env}
         env.setdefault("VLLM_NO_USAGE_STATS", "1")
         # vLLM's own 600s engine-ready limit is too short for a cold data
         # parallel boot (kernel JIT and warmup); the startup budget governs.

@@ -21,6 +21,8 @@ from fal.toolkit.llm._presets import (
     ModelFacts,
     _estimate_active_params,
     classify_gpu,
+    engine_arg_warnings,
+    engine_preset_env,
     model_facts,
     short_gpu_type,
 )
@@ -156,12 +158,12 @@ def test_user_boolean_flag_wins_without_eating_next_preset_flag():
         "--tensor-parallel-size",
         "4",
         "--max-num-seqs",
-        "16",
+        "32",
         "--disable-custom-all-reduce",
     ]
     merged = merge_engine_args(preset, ["--no-disable-custom-all-reduce"])
     assert "--disable-custom-all-reduce" not in merged[:-1]
-    assert merged[:4] == ["--tensor-parallel-size", "4", "--max-num-seqs", "16"]
+    assert merged[:4] == ["--tensor-parallel-size", "4", "--max-num-seqs", "32"]
 
 
 def test_user_value_not_mistaken_for_flag():
@@ -231,7 +233,7 @@ def test_warns_on_max_seqs_mismatch():
         class A(LLMApp):
             model = "m"
             max_multiplexing = 16
-            engine_args = ["--max-num-seqs=32"]
+            engine_args = ["--max-num-seqs=8"]
 
 
 def test_warns_on_tp_mismatch():
@@ -409,11 +411,11 @@ def test_every_preset_flag_is_recognized_as_user_override():
         assert merge_engine_args(args, args) == args
 
 
-def test_every_recipe_names_gpu_count_gpu_engine_version_and_numbers():
+def test_every_recipe_names_gpu_count_gpu_engine_and_numbers():
     for recipe in RECIPES:
-        assert "vLLM 0.32.0" in recipe.source
-        assert any(tag in recipe.source for tag in ("1x ", "2x ", "4x "))
-        assert "RTX PRO 6000" in recipe.source
+        assert "vLLM" in recipe.source or "SGLang" in recipe.source
+        assert any(tag in recipe.source for tag in ("1x ", "2x ", "4x ", "8x "))
+        assert any(gpu in recipe.source for gpu in ("RTX PRO 6000", "B200", "B300"))
         assert any(ch.isdigit() for ch in recipe.source)
 
 
@@ -427,6 +429,8 @@ def test_every_recipe_names_gpu_count_gpu_engine_version_and_numbers():
         ("NVIDIA H100 80GB HBM3", 81559, "H100"),
         ("NVIDIA H100 PCIe", 81559, "H100"),
         ("NVIDIA H200", 143771, "NVIDIA_H200"),
+        ("NVIDIA B200", 183359, "B200"),
+        ("NVIDIA B300 SXM6 AC", 288000, "B300"),
         ("NVIDIA RTX 6000 Ada Generation", 49140, "NVIDIA_RTX_6000_ADA_GENERATION"),
         ("", None, "UNKNOWN"),
     ],
@@ -1634,3 +1638,256 @@ def test_qwen38_checkpoint_fallback_and_bf16_paths():
     assert _flag_value(args, "--quantization") == "fp8"
     assert _flag_value(args, "--gpu-memory-utilization") == "0.92"
     assert "--language-model-only" in args
+
+
+GLM53_ID = "zai-org/GLM-5.3"
+GLM53_FLASH_ID = "zai-org/GLM-5.3-Flash"
+DSV41_ID = "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+GLM_CONFIG = {"architectures": ["GlmMoeDsaForCausalLM"], "n_routed_experts": 256}
+DSV41_CONFIG = {"architectures": ["DeepseekV4ForCausalLM"], "n_routed_experts": 256}
+SPEC_FLAGS = ("--speculative-config", "--speculative-algorithm")
+
+
+def _blackwell(name, engine, config, model_id, num_gpus, **kwargs):
+    machine = Machine(name.split()[1], name, 183359, num_gpus)
+    return _run(engine, config, machine, model_id=model_id, **kwargs)
+
+
+def _b300(engine, config, model_id, num_gpus=8, **kwargs):
+    return _blackwell("NVIDIA B300", engine, config, model_id, num_gpus, **kwargs)
+
+
+def _b200(engine, config, model_id, num_gpus=8, **kwargs):
+    return _blackwell("NVIDIA B200", engine, config, model_id, num_gpus, **kwargs)
+
+
+def _has_spec(args):
+    return any(a in args for a in SPEC_FLAGS)
+
+
+def test_seqs_are_twice_the_concurrency_on_several_gpus():
+    assert _base("vllm", "H100", 8, 8) == ["--tensor-parallel-size", "8"] + [
+        "--max-num-seqs",
+        "16",
+    ]
+    assert _base("sglang", "H100", 2, 32)[-2:] == ["--max-running-requests", "64"]
+
+
+def test_seqs_stay_at_the_concurrency_on_one_gpu():
+    assert _base("vllm", "H100", 1, 64) == ["--max-num-seqs", "64"]
+
+
+def test_recipe_min_seqs_own_the_cap_instead_of_doubling():
+    args = _b300("sglang", DSV41_CONFIG, DSV41_ID, num_gpus=2, max_multiplexing=8)
+    assert _flags(args)["--max-running-requests"] == "64"
+    args = _rtx("vllm", DSV4_FLASH, model_id=DSV4_ID, num_gpus=4, max_multiplexing=100)
+    assert _flags(args)["--max-num-seqs"] == "128"
+
+
+def test_no_seqs_warning_at_twice_the_concurrency_but_below_it_warns():
+    assert not engine_arg_warnings(["--max-num-seqs", "32"], 8, 16)
+    assert not engine_arg_warnings(["--max-num-seqs", "256"], 8, 16)
+    (message,) = engine_arg_warnings(["--max-num-seqs", "8"], 8, 16)
+    assert "queue requests" in message
+
+
+def test_glm53_b300_keeps_mtp_up_to_the_limit(capsys):
+    args = _b300("vllm", GLM_CONFIG, GLM53_ID, max_multiplexing=8)
+    flags = _flags(args)
+    assert json.loads(flags["--speculative-config"]) == {
+        "method": "mtp",
+        "num_speculative_tokens": 3,
+    }
+    assert flags["--tensor-parallel-size"] == "8"
+    assert flags["--tool-call-parser"] == "glm47"
+    assert flags["--safetensors-load-strategy"] == "prefetch"
+    assert "--no-enable-flashinfer-autotune" in args
+    assert "vllm-project/vllm#64580" in capsys.readouterr().out
+
+
+def test_glm53_b300_drops_mtp_above_the_limit(capsys):
+    args = _b300("vllm", GLM_CONFIG, GLM53_ID, max_multiplexing=16)
+    assert not _has_spec(args)
+    assert "--tool-call-parser" in args
+    assert "dropping speculative decoding" in capsys.readouterr().out
+
+
+def test_spec_max_conc_unknown_concurrency_keeps_spec(capsys):
+    args = _b300("vllm", GLM_CONFIG, GLM53_ID)
+    assert _has_spec(args)
+    assert "max_multiplexing is not set" in capsys.readouterr().out
+
+
+def test_spec_max_conc_class_value_overrides_the_recipe(capsys):
+    kept = _b300("vllm", GLM_CONFIG, GLM53_ID, max_multiplexing=16, spec_max_conc=32)
+    assert _has_spec(kept)
+    off = _b300("vllm", GLM_CONFIG, GLM53_ID, max_multiplexing=1, spec_max_conc=0)
+    assert not _has_spec(off)
+
+
+def test_spec_max_conc_zero_disables_even_without_max_multiplexing():
+    args = _b300("vllm", GLM_CONFIG, GLM53_ID, spec_max_conc=0)
+    assert not _has_spec(args)
+
+
+def test_spec_max_conc_zero_keeps_a_user_speculative_config():
+    user = ["--speculative-config", "{}"]
+    preset = _b300("vllm", GLM_CONFIG, GLM53_ID, spec_max_conc=0, user_args=user)
+    merged = merge_engine_args(preset, user)
+    assert merged.count("--speculative-config") == 1
+    assert merged[-2:] == user
+
+
+def test_user_can_re_enable_flashinfer_autotune():
+    preset = _b300("vllm", GLM_CONFIG, GLM53_ID)
+    assert "--no-enable-flashinfer-autotune" in preset
+    merged = merge_engine_args(preset, ["--enable-flashinfer-autotune"])
+    assert "--no-enable-flashinfer-autotune" not in merged
+
+
+def test_class_spec_max_conc_zero_does_not_warn():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+
+        class A(LLMApp):
+            model = "m"
+            max_multiplexing = 16
+            spec_max_conc = 0
+
+
+def test_gb200_is_not_b200():
+    assert classify_gpu("NVIDIA GB200", 190000) == "NVIDIA_GB200"
+    assert classify_gpu("NVIDIA GB300", 280000) == "NVIDIA_GB300"
+
+
+def test_dsv41_recipe_is_skipped_above_its_measured_concurrency(capsys):
+    args = _b300("sglang", DSV41_CONFIG, DSV41_ID, 2, max_multiplexing=48)
+    assert "--dsv4-attn-backend" not in args
+    assert not _has_spec(args)
+    assert "skipped" in capsys.readouterr().out
+    env = engine_preset_env(
+        "sglang",
+        Machine("B300", "NVIDIA B300", 288000, 2),
+        model_facts(DSV41_ID, DSV41_CONFIG),
+        max_multiplexing=48,
+    )
+    assert env == {}
+
+
+def test_flash_mtp_is_gated_at_32():
+    kept = _b200("vllm", GLM_CONFIG, GLM53_FLASH_ID, max_multiplexing=32)
+    assert _has_spec(kept)
+    assert not _has_spec(_b200("vllm", GLM_CONFIG, GLM53_FLASH_ID, max_multiplexing=33))
+
+
+def test_user_speculative_config_wins_but_warns_over_the_limit(capsys):
+    user = ["--speculative-config", '{"method":"mtp","num_speculative_tokens":1}']
+    preset = _b300("vllm", GLM_CONFIG, GLM53_ID, max_multiplexing=16, user_args=user)
+    assert "your --speculative-config is passed as given" in capsys.readouterr().out
+    merged = merge_engine_args(preset, user)
+    assert merged.count("--speculative-config") == 1
+    assert merged[-2:] == user
+
+
+def test_spec_max_conc_without_a_gate_leaves_single_gpu_recipes_alone():
+    args = _rtx(
+        "vllm",
+        QWEN3_8B,
+        model_id="Qwen/Qwen3-8B",
+        fp8_weights=True,
+        max_multiplexing=256,
+    )
+    assert json.loads(_flags(args)["--speculative-config"]) == EAGLE3_QWEN3_8B
+
+
+def test_spec_denylist_still_wins_over_a_recipe_gate():
+    args = _h100("vllm", GPT_OSS_120B, max_multiplexing=8, spec_max_conc=100)
+    assert not _has_spec(args)
+
+
+def test_class_level_spec_max_conc_warns_at_class_creation():
+    with pytest.warns(UserWarning, match="spec_max_conc 8"):
+
+        class A(LLMApp):
+            model = "m"
+            max_multiplexing = 16
+            spec_max_conc = 8
+
+    with pytest.warns(UserWarning, match="your --speculative-config is kept"):
+
+        class B(LLMApp):
+            model = "m"
+            max_multiplexing = 16
+            spec_max_conc = 8
+            engine_args = ["--speculative-config", "{}"]
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+
+        class C(LLMApp):
+            model = "m"
+            max_multiplexing = 8
+            spec_max_conc = 8
+
+
+def test_glm53_b200_has_no_mtp_and_wrong_shapes_do_not_match():
+    args = _b200("vllm", GLM_CONFIG, GLM53_ID, max_multiplexing=4)
+    assert not _has_spec(args)
+    assert _flags(args)["--tool-call-parser"] == "glm47"
+    # Four GPUs, another model, or SGLang: no recipe.
+    assert "--tool-call-parser" not in _b300("vllm", GLM_CONFIG, GLM53_ID, 4)
+    assert "--tool-call-parser" not in _b300("vllm", GLM_CONFIG, "other/model")
+    assert "--tool-call-parser" not in _b300("sglang", GLM_CONFIG, GLM53_ID)
+
+
+def test_glm53_flash_b200_vllm_mtp3():
+    args = _b200("vllm", GLM_CONFIG, GLM53_FLASH_ID, max_multiplexing=16)
+    flags = _flags(args)
+    assert flags["--tokenizer-mode"] == "glm5_next"
+    assert flags["--reasoning-parser"] == "glm47"
+    assert json.loads(flags["--speculative-config"])["method"] == "mtp"
+    assert not _has_spec(
+        _b200("vllm", GLM_CONFIG, GLM53_FLASH_ID, max_multiplexing=16, spec_max_conc=0)
+    )
+
+
+def test_dsv41_flash_b300_sglang_tp2_dspark():
+    args = _b300("sglang", DSV41_CONFIG, DSV41_ID, num_gpus=2, max_multiplexing=32)
+    flags = _flags(args)
+    assert flags["--tp-size"] == "2"
+    assert flags["--speculative-algorithm"] == "DSPARK"
+    assert flags["--speculative-dspark-block-size"] == "5"
+    assert flags["--dsv4-attn-backend"] == "trtllm"
+    assert "--enable-decoder-swa-bounded-replay" in args
+    # A user algorithm replaces every preset speculative flag.
+    user = ["--speculative-algorithm", "EAGLE"]
+    merged = merge_engine_args(args, user)
+    assert "--speculative-dspark-block-size" not in merged
+    # Four GPUs (DEP4) is not expressible: no recipe.
+    assert "--dsv4-attn-backend" not in _b300("sglang", DSV41_CONFIG, DSV41_ID, 4)
+
+
+def test_recipe_env_for_matching_machines_only():
+    def env(engine, name, model_id, num_gpus):
+        machine = Machine(name.split()[1], name, 183359, num_gpus)
+        return engine_preset_env(
+            engine, machine, model_facts(model_id, GLM_CONFIG), user_args=()
+        )
+
+    assert (
+        env("vllm", "NVIDIA B300", GLM53_ID, 8)[
+            "VLLM_SPARSE_INDEXER_MAX_DECODE_LOGITS_MB"
+        ]
+        == "0"
+    )
+    assert env("vllm", "NVIDIA B200", GLM53_ID, 8) == {}
+    sglang = env("sglang", "NVIDIA B300", DSV41_ID, 2)
+    assert sglang["SGLANG_DEFAULT_THINKING"] == "1"
+    assert sglang["NCCL_NVLS_ENABLE"] == "0"
+
+
+def test_agent_profile_does_not_duplicate_the_recipe_tool_parser(capsys):
+    args = _b300("vllm", GLM_CONFIG, GLM53_ID, max_multiplexing=8, profile="agent")
+    assert args.count("--tool-call-parser") == 1
+    assert args.count("--enable-auto-tool-choice") == 1
+    assert "no known tool-call parser" not in capsys.readouterr().out

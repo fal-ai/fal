@@ -33,8 +33,17 @@ _MAX_MODEL_LEN_FLAG = "--max-model-len"
 _REASONING_PARSER_FLAG = "--reasoning-parser"
 _LANGUAGE_ONLY_FLAG = "--language-model-only"
 _TEMPLATE_KWARGS_FLAG = "--default-chat-template-kwargs"
+_TOKENIZER_MODE_FLAG = "--tokenizer-mode"
+_FLASHINFER_AUTOTUNE_OFF_FLAG = "--no-enable-flashinfer-autotune"
+_WEIGHT_PREFETCH_FLAG = "--weight-loader-prefetch-checkpoints"
+_SWA_REPLAY_FLAG = "--enable-decoder-swa-bounded-replay"
+_CACHE_REPORT_FLAG = "--enable-cache-report"
 _BOOLEAN_FLAGS = frozenset(
     {
+        _FLASHINFER_AUTOTUNE_OFF_FLAG,
+        _WEIGHT_PREFETCH_FLAG,
+        _SWA_REPLAY_FLAG,
+        _CACHE_REPORT_FLAG,
         _ALL_REDUCE_FLAG,
         _TRUST_REMOTE_CODE_FLAG,
         _PROMPT_DETAILS_FLAG,
@@ -56,6 +65,11 @@ _FLAG_GROUPS: Dict[str, str] = {
     _SPEC_FLAG: "spec",
     "--speculative-model": "spec",
     "--num-speculative-tokens": "spec",
+    "--speculative-algorithm": "spec",
+    "--speculative-dspark-block-size": "spec",
+    "--speculative-num-steps": "spec",
+    "--speculative-eagle-topk": "spec",
+    "--speculative-num-draft-tokens": "spec",
     _QUANT_FLAG: "quant",
     "-q": "quant",
     _ALL_REDUCE_FLAG: "all_reduce",
@@ -70,6 +84,19 @@ _FLAG_GROUPS: Dict[str, str] = {
     _REASONING_PARSER_FLAG: "reasoning_parser",
     _LANGUAGE_ONLY_FLAG: "language_only",
     _TEMPLATE_KWARGS_FLAG: "template_kwargs",
+    _TOKENIZER_MODE_FLAG: "tokenizer_mode",
+    "--enable-flashinfer-autotune": "flashinfer_autotune",
+    _WEIGHT_PREFETCH_FLAG: "weight_prefetch",
+    _SWA_REPLAY_FLAG: "swa_replay",
+    _CACHE_REPORT_FLAG: "cache_report",
+    "--chunked-prefill-size": "chunked_prefill",
+    "--cuda-graph-max-bs-decode": "cuda_graph_decode",
+    "--schedule-policy": "schedule_policy",
+    "--dsv4-attn-backend": "dsv4_attn_backend",
+    "--mem-fraction-static": "mem_fraction",
+    "--prefill-decode-interval": "prefill_decode_interval",
+    "--swa-prefix-tails": "swa_prefix_tails",
+    "--watchdog-timeout": "watchdog_timeout",
     "--pipeline-parallel-size": "pp",
     "--pp-size": "pp",
     "-pp": "pp",
@@ -92,6 +119,8 @@ _NO_NVLINK_EXACT = frozenset({"A10", "A10G", "L4"})
 
 RTX_PRO_6000 = "RTX_PRO_6000"
 H100 = "H100"
+B200 = "B200"
+B300 = "B300"
 # Architectures whose EAGLE3 drafts crash vLLM 0.32 at startup.
 _SPEC_DENYLIST = frozenset({"GptOssForCausalLM"})
 # max_throughput trades quality for speed and is opt-in; models without a
@@ -180,6 +209,11 @@ def classify_gpu(name: str, memory_mib: Optional[int] = None) -> str:
         return RTX_PRO_6000
     if "H100" in upper:
         return H100
+    # Not GB200 / GB300 (Grace Blackwell, a different node shape).
+    if re.search(r"(?<![A-Z0-9])B300", upper):
+        return B300
+    if re.search(r"(?<![A-Z0-9])B200", upper):
+        return B200
     return re.sub(r"[^A-Z0-9]+", "_", upper).strip("_") or "UNKNOWN"
 
 
@@ -349,6 +383,13 @@ class Recipe:
     recipe is picked before the download, so it matches on model id, GPU,
     engine, GPU count and profile only. ``fp8_weights`` marks the FP8 weights
     default, which the app's ``fp8_weights = False`` opts out of.
+
+    ``spec_max_conc`` keeps the recipe's speculative decoding flags only while
+    the app's ``max_multiplexing`` (its expected concurrency) is at or below
+    it: speculation wins at low to mid concurrency and loses once KV is tight.
+    ``None`` leaves it always on. ``max_conc`` skips the whole recipe above
+    that concurrency (the settings were measured up to it). ``env`` is set on
+    the engine process (the container's environment and ``engine_env`` win).
     """
 
     source: str  # what was measured, for the next reader
@@ -368,6 +409,9 @@ class Recipe:
     # Only when the presets own the GPU layout (no user tp, pp or dp).
     preset_layout: bool = False
     note: Optional[str] = None  # printed at boot when the recipe applies
+    spec_max_conc: Optional[int] = None
+    max_conc: Optional[int] = None
+    env: Mapping[str, str] = field(default_factory=dict)
 
     def matches(
         self,
@@ -413,6 +457,24 @@ _EAGLE3_QWEN3_8B = {
         }
     )
 }
+
+_MTP3 = {_SPEC_FLAG: json.dumps({"method": "mtp", "num_speculative_tokens": 3})}
+# GLM-5.3 on vLLM: the model's own tool and reasoning parsers, sequential
+# weight prefetch (141 shards read through JuiceFS mmap are ~40x slower), and
+# FlashInfer autotune off (its warmup faults in the TRT-LLM MoE routing kernel
+# on this nightly).
+_GLM53_VLLM_ARGS = {
+    _AUTO_TOOL_FLAG: "",
+    _TOOL_PARSER_FLAG: "glm47",
+    _REASONING_PARSER_FLAG: "glm47",
+    _LOAD_STRATEGY_FLAG: "prefetch",
+    _FLASHINFER_AUTOTUNE_OFF_FLAG: "",
+}
+_GLM53_NOTE = (
+    "GLM-5.3 needs a vLLM nightly with vllm-project/vllm#64580 (dd4e4014 or "
+    "newer); v0.33.0 and earlier change 0.4-0.75% of the DSA indexer's top-2048 "
+    "selections. Use a container image that has it"
+)
 
 _RTX_AND_H100 = (RTX_PRO_6000, H100)
 _DSV4_FLASH = frozenset({"deepseek-ai/deepseek-v4-flash-0731"})
@@ -567,6 +629,120 @@ RECIPES: Tuple[Recipe, ...] = (
             "per GPU-hour than 4, at the same single-stream speed"
         ),
     ),
+    # GLM-5.3 and DSv4.1-Flash below come from fal-ai-community/llm-serving
+    # (commit 8fddeef, AgentX 1.0.12 official preset). Not remeasured here.
+    Recipe(
+        source=(
+            "vLLM nightly dd4e4014, 8x B300, GLM-5.3 (llm-serving "
+            "glm-5.3/vllm/b300/launch.sh): TP8 + MTP3 only to C8; at C16 MTP's "
+            "KV cost (2.75M vs 3.46M tokens) took p90 from 37.8 to 22.4 "
+            "tok/s/user and TTFT p90 from 3.3 to 14 s"
+        ),
+        gpus=(B300,),
+        engines=("vllm",),
+        args={**_GLM53_VLLM_ARGS, **_MTP3},
+        gpu_counts=(8,),
+        model_ids=frozenset({"zai-org/glm-5.3"}),
+        preset_layout=True,
+        spec_max_conc=8,
+        # Independent of MTP: the chunked SM100 decode-indexer path faults on
+        # B300 at startup with a 1M max_model_len.
+        env={"VLLM_SPARSE_INDEXER_MAX_DECODE_LOGITS_MB": "0"},
+        note=_GLM53_NOTE,
+    ),
+    Recipe(
+        source=(
+            "vLLM nightly dd4e4014, 8x B200, GLM-5.3 (llm-serving "
+            "glm-5.3/vllm/b200/launch.sh): TP8 with MTP off, since with it one "
+            "1M-token request needs 47 GiB of KV and 8x B200 have 35 GiB left"
+        ),
+        gpus=(B200,),
+        engines=("vllm",),
+        args=_GLM53_VLLM_ARGS,
+        gpu_counts=(8,),
+        model_ids=frozenset({"zai-org/glm-5.3"}),
+        preset_layout=True,
+        note=_GLM53_NOTE,
+    ),
+    # llm-serving keeps MTP off here until its quality is checked against its
+    # golden eval; set spec_max_conc = 0 on the app to drop it.
+    Recipe(
+        source=(
+            "vLLM nightly 40941f2c, 8x B200, GLM-5.3-Flash (llm-serving "
+            "glm-5.3-flash/README.md): TP8 + MTP3 at C32 gave 168.8 vs 144.9 "
+            "output tok/s/GPU and 120.4 vs 74.6 p90 tok/s/user; C16 p90 180.2 "
+            "vs 105.9. Quality not yet checked upstream"
+        ),
+        gpus=(B200,),
+        engines=("vllm",),
+        args={
+            _TOKENIZER_MODE_FLAG: "glm5_next",
+            _AUTO_TOOL_FLAG: "",
+            _TOOL_PARSER_FLAG: "glm47",
+            _REASONING_PARSER_FLAG: "glm47",
+            **_MTP3,
+        },
+        gpu_counts=(8,),
+        model_ids=frozenset({"zai-org/glm-5.3-flash"}),
+        preset_layout=True,
+        spec_max_conc=32,
+        note=(
+            "GLM-5.3-Flash MTP3 was measured on a vLLM nightly (40941f2c), not "
+            "v0.32; upstream has not validated its quality yet. Set "
+            "spec_max_conc = 0 to serve without it"
+        ),
+    ),
+    # The c32 variant of the B300 recipe (conc <= 32 upstream; above 32 it uses
+    # mem 0.8, prefill-decode-interval 64, swa-prefix-tails 3072 and no prefill
+    # CUDA graph, not expressed here).
+    Recipe(
+        source=(
+            "SGLang nightly-dev-cu13-20261102, 2x B300, DeepSeek-V4.1-Flash "
+            "(llm-serving deepseek-v4.1-flash/sglang/b300/launch.sh): TP2 + "
+            "DSpark block 5 at every concurrency, cap 64; C32 p90 226 tok/s/user"
+            " (acceptance forced to 3.51, not a quality validation)"
+        ),
+        gpus=(B300,),
+        engines=("sglang",),
+        args={
+            "--trust-remote-code": "",
+            "--reasoning-parser": "auto",
+            "--tool-call-parser": "auto",
+            _CACHE_REPORT_FLAG: "",
+            _WEIGHT_PREFETCH_FLAG: "",
+            "--watchdog-timeout": "3600",
+            "--chunked-prefill-size": "16384",
+            "--cuda-graph-max-bs-decode": "64",
+            "--schedule-policy": "shortest-prefill-first",
+            "--dsv4-attn-backend": "trtllm",
+            "--mem-fraction-static": "0.85",
+            "--prefill-decode-interval": "96",
+            "--swa-prefix-tails": "2048",
+            _SWA_REPLAY_FLAG: "",
+            "--speculative-algorithm": "DSPARK",
+            "--speculative-dspark-block-size": "5",
+        },
+        min_seqs=64,
+        gpu_counts=(2,),
+        max_conc=32,
+        model_ids=frozenset({"deepseek-ai/deepseek-v4.1-flash-1017"}),
+        preset_layout=True,
+        env={
+            "SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE": "1",
+            "SGLANG_DSV41_ENGRAM_HOST_TABLE_LAYOUT": "per_rank",
+            "SGLANG_DEFAULT_THINKING": "1",
+            "SGLANG_DSV41_REASONING_EFFORT": "high",
+            "SGLANG_TIMEOUT_KEEP_ALIVE": "900",
+            "SGLANG_ENABLE_TP_MEMORY_INBALANCE_CHECK": "0",
+            "NCCL_NVLS_ENABLE": "0",
+            "NCCL_MNNVL_ENABLE": "0",
+        },
+        note=(
+            "DeepSeek-V4.1-Flash on B300 was measured on the SGLang nightly "
+            "lmsysorg/sglang nightly-dev-cu13-20261102, with the thinking-on "
+            "env defaults (SGLANG_DEFAULT_THINKING=1, reasoning effort high)"
+        ),
+    ),
 )
 
 
@@ -595,6 +771,73 @@ def checkpoint_for(
     return None
 
 
+def _matching_recipes(
+    engine: str,
+    machine: Machine,
+    model: ModelFacts,
+    profile: str,
+    user_args: Sequence[str],
+    skip_checkpoint: Optional[str],
+    max_multiplexing: Optional[int] = None,
+    announce: bool = True,
+) -> List[Recipe]:
+    skipped = skip_checkpoint.lower() if skip_checkpoint else None
+    user_layout = any(_has_flag(user_args, g) for g in _LAYOUT_GROUPS)
+    recipes = [
+        r
+        for r in RECIPES
+        if r.matches(engine, machine, model, profile)
+        and not (skipped and r.checkpoint and r.checkpoint.lower() == skipped)
+    ]
+    over = [
+        r
+        for r in recipes
+        if r.max_conc is not None
+        and max_multiplexing is not None
+        and max_multiplexing > r.max_conc
+    ]
+    if over and announce:
+        print(
+            "[llm-app] max_multiplexing is above the concurrency a recipe was "
+            f"measured at ({over[0].max_conc}), so it is skipped"
+        )
+    recipes = [r for r in recipes if r not in over]
+    if user_layout and any(r.preset_layout for r in recipes) and announce:
+        print(
+            "[llm-app] engine_args set the parallel layout, so recipes measured "
+            "with the tensor parallel preset (e.g. FP8 KV cache) are skipped"
+        )
+    if user_layout:
+        recipes = [r for r in recipes if not r.preset_layout]
+    return recipes
+
+
+def engine_preset_env(
+    engine: str,
+    machine: Machine,
+    model: ModelFacts,
+    *,
+    profile: str = "throughput",
+    user_args: Sequence[str] = (),
+    skip_checkpoint: Optional[str] = None,
+    max_multiplexing: Optional[int] = None,
+) -> Dict[str, str]:
+    """Environment of the matching recipes; the container's and ``engine_env`` win."""
+    env: Dict[str, str] = {}
+    for recipe in _matching_recipes(
+        engine,
+        machine,
+        model,
+        profile,
+        user_args,
+        skip_checkpoint,
+        max_multiplexing,
+        announce=False,
+    ):
+        env.update(recipe.env)
+    return env
+
+
 def _has_flag(args: Sequence[str], group: str) -> bool:
     return any(_flag_group(token) == group for token in args)
 
@@ -609,6 +852,7 @@ def engine_preset_args(
     max_multiplexing: Optional[int] = None,
     user_args: Sequence[str] = (),
     skip_checkpoint: Optional[str] = None,
+    spec_max_conc: Optional[int] = None,
 ) -> List[str]:
     """Engine arguments that match the machine, for ``vllm`` or ``sglang``.
 
@@ -620,8 +864,15 @@ def engine_preset_args(
       4090/5090, L40/L40S, L4, A10), since the custom all-reduce kernel needs
       NVLink.
     - ``max_multiplexing``: ``--max-num-seqs`` (vLLM) or
-      ``--max-running-requests`` (SGLang), matching the router's concurrency.
-      A recipe may raise the engine cap above it, never lower it.
+      ``--max-running-requests`` (SGLang). Multi-GPU: twice the router's
+      concurrency, so bursts and retries are admitted (llm-serving sets 2x
+      everywhere). Not doubled when a matching recipe sets its own
+      ``min_seqs`` (that measured cap applies, raised to the router's
+      concurrency) or when engine_args set a pipeline or data parallel layout
+      (the cap is per rank). One GPU: exactly the router's concurrency,
+      because the engine's memory profiling and CUDA graphs scale with the cap
+      and one card has no KV to spare. A recipe may raise the engine cap above
+      it, never lower it.
     - vLLM: ``--enable-prompt-tokens-details``, so ``usage`` carries
       ``prompt_tokens_details.cached_tokens``.
     - ``profile="agent"`` (vLLM): ``--enable-prefix-caching``, the tool-call
@@ -635,7 +886,11 @@ def engine_preset_args(
 
     Measured recipes (see ``RECIPES``) add more for specific GPU, engine, model
     and profile combinations. Speculative decoding is never added for an
-    architecture in ``_SPEC_DENYLIST``. ``user_args`` (the app's
+    architecture in ``_SPEC_DENYLIST``. A recipe's speculative decoding is
+    kept only while ``max_multiplexing`` is at or below its ``spec_max_conc``
+    (``spec_max_conc`` here overrides the recipe's; ``0`` never keeps it); a
+    user ``--speculative-config`` always wins but is warned about when over the
+    limit. ``user_args`` (the app's
     ``engine_args``) drives messages about the presets and, when it sets a
     tensor, pipeline or data parallel size, skips recipes that assume the
     tensor parallel preset.
@@ -648,20 +903,9 @@ def engine_preset_args(
         raise ValueError(f"unknown engine {engine!r}; expected 'vllm' or 'sglang'")
     if profile not in PROFILES:
         raise ValueError(f"unknown engine_profile {profile!r}; expected {PROFILES}")
-    skipped = skip_checkpoint.lower() if skip_checkpoint else None
-    user_layout = any(_has_flag(user_args, g) for g in _LAYOUT_GROUPS)
-    recipes = [
-        r
-        for r in RECIPES
-        if r.matches(engine, machine, model, profile)
-        and not (skipped and r.checkpoint and r.checkpoint.lower() == skipped)
-    ]
-    if user_layout and any(r.preset_layout for r in recipes):
-        print(
-            "[llm-app] engine_args set the parallel layout, so recipes measured "
-            "with the tensor parallel preset (e.g. FP8 KV cache) are skipped"
-        )
-        recipes = [r for r in recipes if not r.preset_layout]
+    recipes = _matching_recipes(
+        engine, machine, model, profile, user_args, skip_checkpoint, max_multiplexing
+    )
     for recipe in recipes:
         if recipe.note:
             print(f"[llm-app] {recipe.note}")
@@ -672,7 +916,44 @@ def engine_preset_args(
             f"[llm-app] speculative decoding on {sorted(spec_denied)} crashes "
             "vLLM 0.32 at startup; your --speculative-config is passed as given"
         )
+    spec_off: List[Recipe] = []
+    for recipe in recipes:
+        limit = spec_max_conc if spec_max_conc is not None else recipe.spec_max_conc
+        if limit is None or not any(_flag_group(f) == "spec" for f in recipe.args):
+            continue
+        if limit == 0:
+            if not user_spec:
+                spec_off.append(recipe)
+        elif max_multiplexing is None:
+            print(
+                f"[llm-app] speculative decoding is only measured up to "
+                f"{limit} concurrent requests; max_multiplexing is not set, so "
+                "it is kept"
+            )
+        elif max_multiplexing > limit:
+            if user_spec:
+                print(
+                    f"[llm-app] max_multiplexing {max_multiplexing} is above "
+                    f"spec_max_conc {limit}, where speculative decoding "
+                    "usually hurts; your --speculative-config is passed as given"
+                )
+            else:
+                spec_off.append(recipe)
+                print(
+                    f"[llm-app] dropping speculative decoding: max_multiplexing "
+                    f"{max_multiplexing} is above spec_max_conc {limit} "
+                    "(it loses once KV is tight)"
+                )
     seqs = max_multiplexing
+    # A recipe with its own cap was measured at that cap; doubling past it is
+    # untested (it also scales profiling memory and CUDA graphs).
+    if (
+        seqs is not None
+        and machine.num_gpus > 1
+        and not any(_has_flag(user_args, g) for g in ("pp", "dp"))
+        and all(r.min_seqs is None for r in recipes)
+    ):
+        seqs *= 2
     for recipe in recipes:
         if recipe.min_seqs is not None:
             seqs = max(seqs or 0, recipe.min_seqs)
@@ -690,11 +971,11 @@ def engine_preset_args(
         args.append(_PROMPT_DETAILS_FLAG)
     for recipe in recipes:
         for flag, value in recipe.args.items():
-            if flag == _SPEC_FLAG and spec_denied:
+            if _flag_group(flag) == "spec" and (spec_denied or recipe in spec_off):
                 continue
             args += [flag] if flag in _BOOLEAN_FLAGS else [flag, value]
     if profile == AGENT_PROFILE and engine == "vllm":
-        args += _agent_args(model)
+        args += _agent_args(model, any(_TOOL_PARSER_FLAG in r.args for r in recipes))
     # Online FP8 for a bf16 checkpoint; an FP8 one already has it.
     if fp8_weights and not model.prequantized:
         args += [_QUANT_FLAG, "fp8"]
@@ -702,7 +983,7 @@ def engine_preset_args(
         profile == "latency"
         and engine == "vllm"
         and machine.gpu_key == RTX_PRO_6000
-        and _SPEC_FLAG not in args
+        and not any(_flag_group(a) == "spec" for a in args)
         and not user_spec
     ):
         print(f"[llm-app] latency profile: no measured recipe for {model.model_id!r}")
@@ -739,11 +1020,16 @@ def tool_call_parser(model: ModelFacts) -> Optional[str]:
     return None
 
 
-def _agent_args(model: ModelFacts) -> List[str]:
-    """vLLM flags of the agent profile (see ``PROFILES``)."""
+def _agent_args(model: ModelFacts, recipe_tools: bool = False) -> List[str]:
+    """vLLM flags of the agent profile (see ``PROFILES``).
+
+    ``recipe_tools``: a recipe already sets the tool-call parser.
+    """
     args = [_PREFIX_CACHING_FLAG]
     parser = tool_call_parser(model)
-    if parser:
+    if recipe_tools:
+        pass
+    elif parser:
         args += [_AUTO_TOOL_FLAG, _TOOL_PARSER_FLAG, parser]
     else:
         print(
@@ -820,7 +1106,10 @@ def _int_or_none(value: Optional[str]) -> Optional[int]:
 
 
 def engine_arg_warnings(
-    user: Sequence[str], num_gpus: int, max_multiplexing: Optional[int]
+    user: Sequence[str],
+    num_gpus: int,
+    max_multiplexing: Optional[int],
+    spec_max_conc: Optional[int] = None,
 ) -> List[str]:
     """Messages for user arguments that disagree with the app's resources."""
     messages: List[str] = []
@@ -835,10 +1124,30 @@ def engine_arg_warnings(
                 f"parallel) but num_gpus is {num_gpus}"
             )
     seqs = _int_or_none(_user_flag_value(user, "max_seqs"))
-    if seqs is not None and max_multiplexing is not None and seqs != max_multiplexing:
+    # Above the router's concurrency is harmless headroom (the presets use 2x
+    # on several GPUs); below it the router queues requests inside the engine.
+    if seqs is not None and max_multiplexing is not None and seqs < max_multiplexing:
         messages.append(
             f"engine_args set max concurrent sequences {seqs} but "
             f"max_multiplexing is {max_multiplexing}; the router would "
-            "starve the engine or queue requests inside it"
+            "queue requests inside the engine"
         )
+    # 0 is the documented opt-out, so it is not worth a warning.
+    if (
+        spec_max_conc
+        and max_multiplexing is not None
+        and max_multiplexing > spec_max_conc
+    ):
+        if _has_flag(user, "spec"):
+            messages.append(
+                f"max_multiplexing {max_multiplexing} is above spec_max_conc "
+                f"{spec_max_conc}, where speculative decoding usually hurts; "
+                "your --speculative-config is kept"
+            )
+        else:
+            messages.append(
+                f"max_multiplexing {max_multiplexing} is above spec_max_conc "
+                f"{spec_max_conc}: if a preset recipe applies, its speculative "
+                "decoding is dropped"
+            )
     return messages
