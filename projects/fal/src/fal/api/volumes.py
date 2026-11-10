@@ -12,16 +12,21 @@ if TYPE_CHECKING:
     from .client import SyncServerlessClient
 
 
-def create_volume(client: "SyncServerlessClient", name: str) -> str:
+def create_volume(
+    client: "SyncServerlessClient", name: str, *, connect_timeout: float | None = None
+) -> str:
     # Hand-written like api/_metrics.py and cli/queue.py: the generated
     # openapi-fal-rest client predates the /volumes/ endpoint. Switch to
     # openapi_fal_rest.api.volumes.create_volume once the client is regenerated.
     rest_client = client._create_rest_client()
     volume = Volume(name)
+    timeout = rest_client.get_timeout()
+    if connect_timeout is not None:
+        timeout = httpx.Timeout(timeout, connect=connect_timeout)
     with httpx.Client(
         base_url=rest_client.base_url,
         headers=rest_client.get_headers(),
-        timeout=rest_client.get_timeout(),
+        timeout=timeout,
         verify=rest_client.verify_ssl,
         follow_redirects=rest_client.follow_redirects,
     ) as http:

@@ -186,7 +186,7 @@ class FalParser(argparse.ArgumentParser):
 
 
 class FalClientParser(FalParser):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, team_help="The team to use.", **kwargs):
         from fal.flags import GRPC_HOST
 
         super().__init__(*args, **kwargs)
@@ -197,7 +197,7 @@ class FalClientParser(FalParser):
         )
         self.add_argument(
             "--team",
-            help="The team to use.",
+            help=team_help,
         )
 
 
