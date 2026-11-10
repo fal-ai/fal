@@ -16,6 +16,14 @@ _READ_BLOCK = 8 * 1024 * 1024
 
 @dataclass
 class PrereadStats:
+    """Result of ``preread_weights``.
+
+    Attributes:
+        files (`int`): Number of files read.
+        bytes (`int`): Total bytes read.
+        seconds (`float`): Wall-clock duration of the read.
+    """
+
     files: int
     bytes: int
     seconds: float
@@ -58,6 +66,16 @@ def preread_weights(
     or a single file. Blocking: call it from a thread in async code. Setting
     ``stop`` skips the chunks not yet started, so the pool (whose threads the
     interpreter joins at exit) drains quickly.
+
+    Args:
+        path: Directory to search recursively, or a single file.
+        workers: Number of parallel reader threads.
+        patterns: Filename patterns of the files to read.
+        chunk_bytes: Size in bytes of each range read by one worker.
+        stop: Event that, once set, skips the chunks not yet started.
+
+    Returns:
+        Counts and timing of the read.
     """
     root = Path(path)
     if root.is_file():

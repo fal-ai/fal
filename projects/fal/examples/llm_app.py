@@ -2,6 +2,11 @@
 
 Deploy:  fal deploy examples/llm_app.py::QwenVLLM
 Call:    POST https://fal.run/<user>/qwen-vllm/v1/chat/completions
+
+This is the smallest useful LLMApp: a model, a machine and a context limit.
+The presets add tensor parallelism and the engine's concurrent sequence cap
+from ``num_gpus`` and ``max_multiplexing``, so ``engine_args`` only holds what
+is specific to this model. See ``llm_client.py`` for a client.
 """
 
 from __future__ import annotations
@@ -31,8 +36,6 @@ class QwenVLLM(
     engine_args = [
         "--max-model-len",
         "8192",
-        "--max-num-seqs",
-        "32",
         "--gpu-memory-utilization",
         "0.90",
     ]

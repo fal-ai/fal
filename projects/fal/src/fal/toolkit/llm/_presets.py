@@ -898,6 +898,25 @@ def engine_preset_args(
     it could not be served and the original weights are used instead.
 
     Use ``merge_engine_args`` to put user arguments on top.
+
+    Args:
+        engine: ``"vllm"`` or ``"sglang"``.
+        machine: The GPU type, name, memory and count one engine will see.
+        model: Facts about the model (architectures, size, window).
+        profile: ``"throughput"``, ``"latency"``, ``"max_throughput"`` or
+            ``"agent"``.
+        fp8_weights: Apply online FP8 quantization.
+        max_multiplexing: The app's expected concurrency, mapped to the
+            engine's sequence cap.
+        user_args: The app's ``engine_args``.
+        skip_checkpoint: Recipe checkpoint that could not be served.
+        spec_max_conc: Overrides the recipes' speculative decoding limit.
+
+    Returns:
+        Engine arguments to pass to the launch command.
+
+    Raises:
+        ValueError: If ``engine`` or ``profile`` is unknown.
     """
     if engine not in _TP_FLAG:
         raise ValueError(f"unknown engine {engine!r}; expected 'vllm' or 'sglang'")
@@ -1083,6 +1102,13 @@ def merge_engine_args(preset: Sequence[str], user: Sequence[str]) -> List[str]:
     when the user arguments mention it as ``--flag value``, ``--flag=value``
     or bare ``--flag``. User arguments are never altered and come last.
     ``preset`` must come from ``engine_preset_args``.
+
+    Args:
+        preset: Arguments from ``engine_preset_args``.
+        user: The app's own ``engine_args``.
+
+    Returns:
+        The merged argument list.
     """
     user_groups = {g for g in map(_flag_group, user) if g}
     if user_groups & _LAYOUT_GROUPS:

@@ -224,6 +224,18 @@ def engine_cache_env(
     ``fal.App`` already sets ``CUDA_CACHE_PATH`` before ``setup()`` (see
     ``persist_cuda_cache``), and ``apply_engine_cache_env`` never overrides a
     set variable, so inside an App that default wins over this namespaced path.
+
+    Args:
+        namespace: Subdirectory name for the cache set. Change it when cached
+            artifacts could be incompatible.
+        root: Cache root. Defaults to the persistent ``/data`` engine cache
+            directory.
+        hf_home: Hugging Face cache directory shared across namespaces.
+        driver: CUDA driver version used to key the PTX JIT cache. Detected
+            when ``None``.
+
+    Returns:
+        Mapping from environment variable name to value.
     """
     base = Path(root) if root is not None else ENGINE_CACHE_ROOT
     base = base / _slug(namespace)
@@ -259,7 +271,18 @@ def apply_engine_cache_env(
 ) -> Mapping[str, str]:
     """Create the cache dirs and set the env vars that are not already set.
 
-    Values the user set explicitly win. Returns the effective values.
+    Values the user set explicitly win.
+
+    Args:
+        namespace: Subdirectory name for the cache set.
+        root: Cache root. Defaults to the persistent ``/data`` engine cache
+            directory.
+        hf_home: Hugging Face cache directory shared across namespaces.
+        driver: CUDA driver version used to key the PTX JIT cache.
+        env: Mapping to update. Defaults to ``os.environ``.
+
+    Returns:
+        The effective environment values, including ones the user had set.
     """
     target = os.environ if env is None else env
     effective: dict[str, str] = {}

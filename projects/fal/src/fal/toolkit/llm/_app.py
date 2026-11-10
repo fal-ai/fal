@@ -780,6 +780,127 @@ class LLMApp(_EngineChecks, App):
 
     Subclasses overriding ``handle_exit`` or ``teardown`` must call ``super()``:
     they start the shutdown drain and stop the engine.
+
+    Attributes:
+        engine (`str`): Engine to launch, ``"vllm"`` or ``"sglang"``.
+            Defaults to ``"vllm"``. Any other value needs an ``engine_command``
+            override.
+        model (`str`): Hugging Face repo id or local model directory to serve.
+            Required. Defaults to ``""``.
+        model_revision (`str | None`): Hub branch, tag or commit to pin. A
+            pinned revision is never swapped for a recipe checkpoint. Defaults
+            to ``None`` (unpinned ``main``, reused once downloaded).
+        served_model_name (`str | None`): Model name clients send in the
+            ``model`` field. Defaults to ``None``, which uses ``model``.
+        engine_args (`list[str]`): Extra command-line flags for the engine.
+            They win over the presets per flag. Defaults to ``[]``.
+        engine_presets (`bool`): Prepend machine-matched engine flags
+            (tensor parallelism, all-reduce, sequence cap, measured recipes).
+            Defaults to ``True``.
+        engine_profile (`str`): Preset profile: ``"throughput"``,
+            ``"latency"``, ``"max_throughput"`` or ``"agent"``. Defaults to
+            ``"throughput"``. ``"max_throughput"`` trades quality for speed
+            and is opt-in. ``"agent"`` targets long tool-calling sessions on
+            vLLM: prefix caching, the model family's tool-call parser, a
+            context window up to 128k, the CPU KV tier and ``prefix_hints``.
+        fp8_weights (`bool | None`): ``None`` uses the measured default
+            checkpoint for the model, ``False`` stays on bf16, ``True`` also
+            applies online FP8 to models without a measured checkpoint (a
+            quality tradeoff). Defaults to ``None``.
+        active_params_b (`float | None`): Active parameters in billions, for
+            when the estimate from ``config.json`` is wrong. Defaults to
+            ``None``.
+        engine_env (`dict[str, str]`): Environment variables for the engine
+            process. Defaults to ``{}``.
+        spec_max_conc (`int | None`): Keep the presets' speculative decoding
+            only while ``max_multiplexing`` is at or below this value. ``0``
+            never uses it. Defaults to ``None``, which uses the recipe's limit.
+        kv_cpu_offload (`float | None`): vLLM only. Fraction (0 to 0.8) of the
+            container's RAM used as a CPU tier for evicted KV blocks. ``0``
+            turns it off. Defaults to ``None`` (off, except ``0.7`` with
+            ``engine_profile = "agent"``).
+        kv_cpu_offload_gib (`float | None`): Size of the CPU KV tier in GiB.
+            It turns the tier on and takes precedence over ``kv_cpu_offload``.
+            Defaults to ``None``.
+        engine_port (`int`): Local port of the engine. With replicas, engine
+            ``i`` listens on ``engine_port + i``. Defaults to ``8000``.
+        engine_replicas (`int`): Engines per runner. ``num_gpus`` is split
+            into this many equal slices, one engine each. Defaults to ``1``.
+        engine_startup_timeout_s (`float`): Seconds to wait for the engine to
+            become ready. Defaults to ``3300.0``.
+        engine_max_connections (`int`): Size of the connection pool to the
+            engine. It must exceed the engine's max sequences plus queueing.
+            Defaults to ``4096``.
+        raw_stream_client (`bool`): Use the lightweight raw-socket client for
+            streaming requests. Set ``False`` to use httpx. Defaults to
+            ``True``.
+        persistent_caches (`bool`): Keep engine compile caches on the
+            persistent ``/data`` volume. Defaults to ``True``.
+        cache_namespace (`str | None`): Overrides the automatic cache
+            namespace (engine, version and GPU type). Defaults to ``None``.
+        preread_workers (`int`): Threads that pre-read weight shards in
+            parallel to warm the page cache. ``0`` disables it. Defaults to
+            ``48``.
+        report_usage (`bool`): Ask the engine for a final usage chunk on
+            streams so ``record_usage`` sees token counts. Clients get one
+            extra chunk with empty ``choices``. Defaults to ``True``.
+        prefix_hints (`bool | None`): Advertise recent session ids so the
+            gateway can route a conversation back to the runner that holds its
+            KV cache. Defaults to ``None`` (on with
+            ``engine_profile = "agent"``).
+        prefix_hint_max (`int`): Number of recent session ids to advertise.
+            Defaults to ``64``.
+        request_deadline_s (`float | None`): Per-request time limit in
+            seconds. Streams end with ``finish_reason`` ``"deadline"``, unary
+            calls get a 504, and the engine request is aborted either way.
+            Defaults to ``None`` (no limit).
+        deadline_margin_s (`float`): Seconds subtracted from the gateway's
+            remaining request time when enforcing the deadline. Defaults to
+            ``1.0``.
+        stream_idle_timeout_s (`float | None`): A stream with no bytes from
+            the engine for this long ends with ``finish_reason``
+            ``"idle_timeout"`` and the engine request is aborted. It also caps
+            the time to first token. Defaults to ``300.0``. ``None`` disables.
+        engine_stall_timeout_s (`float | None`): The health check fails when
+            the engine holds requests but its token counters do not move for
+            this long. vLLM only. Defaults to ``180.0``. ``None`` disables.
+        engine_error_threshold (`int | None`): The health check fails after
+            this many consecutive inference 5xx replies. Defaults to ``None``
+            (disabled).
+        shutdown_grace_s (`float`): Seconds that in-flight requests get to
+            finish after SIGTERM before they are aborted (streams end with
+            ``finish_reason`` ``"shutdown"``, unary calls get a retryable
+            503). Capped to fit inside ``termination_grace_period_seconds``.
+            Defaults to ``30.0``.
+        termination_grace_period_seconds (`int | None`): Seconds between
+            SIGTERM and SIGKILL. Raise it to drain longer. Defaults to ``60``.
+        cancel_on_gateway_cancel (`bool`): Stop the handler when the gateway
+            cancels a request, so the engine aborts it and frees its KV cache.
+            Defaults to ``True``.
+        keep_alive (`int`): Idle seconds before a runner scales down. Keep it
+            at least twice the boot time. Defaults to ``600``.
+
+    Example:
+        ```python
+        from fal.container import ContainerImage
+        from fal.toolkit.llm import LLMApp
+
+
+        class QwenVLLM(
+            LLMApp,
+            kind="container",
+            image=ContainerImage.from_dockerfile_str(
+                "FROM vllm/vllm-openai:v0.32.0"
+            ),
+            name="qwen-vllm",
+        ):
+            machine_type = "GPU-RTXPRO6000"
+            num_gpus = 1
+            max_multiplexing = 256
+            model = "Qwen/Qwen2.5-7B-Instruct"
+            served_model_name = "qwen2.5-7b-instruct"
+            engine_args = ["--max-model-len", "8192"]
+        ```
     """
 
     engine: ClassVar[str] = "vllm"
@@ -999,6 +1120,23 @@ class LLMApp(_EngineChecks, App):
             warnings.warn(f"{cls.__name__}: {message}", stacklevel=2)
 
     def engine_command(self, model_path: str) -> List[str]:
+        """Build the command that launches the engine.
+
+        Override it to run any server that speaks the OpenAI API on
+        ``engine_port``. The default builds a ``vllm serve`` or
+        ``sglang.launch_server`` command from ``engine``, the presets and
+        ``engine_args``.
+
+        Args:
+            model_path: Local path of the resolved model weights.
+
+        Returns:
+            The engine command as an argument list.
+
+        Raises:
+            ValueError: If ``engine`` is neither ``"vllm"`` nor ``"sglang"``
+                and this method is not overridden.
+        """
         name = self._served_name()
         if self.engine == "vllm":
             head = ["vllm", "serve", model_path]
@@ -1059,7 +1197,19 @@ class LLMApp(_EngineChecks, App):
         ]
 
     def record_usage(self, path: str, usage: Dict[str, Any]) -> None:
-        """Called with the engine's token ``usage`` for every completed request."""
+        """Receive the token usage of a request once the engine reports it.
+
+        Override it to log or bill usage. Call ``super()`` to keep the built-in
+        totals. A stream reports usage only if the engine sends a usage chunk:
+        ``report_usage`` asks for one unless the client set its own
+        ``stream_options``, and ``/v1/responses`` always includes it.
+
+        Args:
+            path: Request path, for example ``/v1/chat/completions``.
+            usage: The ``usage`` object from the engine's response, with
+                ``prompt_tokens`` and ``completion_tokens`` (``input_tokens``
+                and ``output_tokens`` on the Responses API).
+        """
         # The Responses API names these input_tokens and output_tokens.
         counts = {
             "prompt_tokens": usage.get("prompt_tokens") or usage.get("input_tokens"),
@@ -1824,11 +1974,21 @@ class LLMApp(_EngineChecks, App):
         return stats, None
 
     async def health(self) -> Dict[str, Any]:  # type: ignore[override]
-        """Engine liveness, never request outcomes: every engine process is
-        up, its own /health answers 200 and, when it holds requests, its token
-        counters keep moving (see ``engine_stall_timeout_s``). With replicas,
-        one failing engine fails the check (the runner is replaced); until
-        then, routing avoids it."""
+        """Report engine liveness, never request outcomes.
+
+        The check passes when every engine process is up, its own ``/health``
+        answers 200 and, when it holds requests, its token counters keep
+        moving (see ``engine_stall_timeout_s``). With replicas, one failing
+        engine fails the check (the runner is replaced); until then, routing
+        avoids it. Overrides must call ``super()``.
+
+        Returns:
+            A dict with ``status``, ``version`` and engine stats.
+
+        Raises:
+            HTTPException: With status 503 while the runner shuts down or when
+                an engine is unhealthy.
+        """
         self._serving_loop = asyncio.get_running_loop()
         if self._draining:
             raise HTTPException(503, "runner is shutting down")
