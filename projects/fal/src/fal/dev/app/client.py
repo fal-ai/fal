@@ -144,11 +144,16 @@ def wait_ready(
                 "was probably replaced. Boot it again with `fal dev app restart`, or "
                 "start a new box with `fal dev app start`."
             )
-        if phase in STOPPED_PHASES:
+        if phase in (*STOPPED_PHASES, "error"):
+            fix = (
+                " Syncing a fix (`fal dev app sync`) also recovers it."
+                if phase == "error"
+                else ""
+            )
             raise AppFailed(
                 f"The app did not start ({phase} {state['detail']}). The runner is "
                 "still up and billing: fix the code and run `fal dev app restart`, "
-                "or release it with `fal dev app stop`."
+                f"or release it with `fal dev app stop`.{fix}"
             )
         time.sleep(POLL_SECONDS)
     if unreachable is not None:

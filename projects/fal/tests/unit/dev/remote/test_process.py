@@ -134,3 +134,55 @@ def test_replace_sdk_uses_a_unique_temp_dir_and_cleans_up(tmp_path, monkeypatch)
     assert len(set(seen)) == 2
     assert (child.sdk / "fal" / "x.py").exists()
     assert [p.name for p in tmp_path.glob("sdk.new-*")] == []
+
+
+def test_failed_reload_during_setup_is_not_reported_ready(tmp_path, monkeypatch):
+    child = ChildProcess(tmp_path, LogBuffer())
+    proc = SimpleNamespace(poll=lambda: None)
+    child.proc = proc
+    child.pending_reload = True
+
+    def fake_call(action, payload, timeout):
+        if action == "status":
+            return 200, {}
+        return 200, {"action": "error", "reason": "SyntaxError in app.py"}
+
+    monkeypatch.setattr(process, "child_call", fake_call)
+    child._wait_ready(proc)
+    assert child.phase == "error"
+    assert "SyntaxError" in child.detail
+    assert child.ready_at is None
+
+    # A later successful reload clears it.
+    monkeypatch.setattr(
+        process, "child_call", lambda *a, **k: (200, {"action": "reload"})
+    )
+    assert child.reload(["app.py"])["action"] == "reload"
+    assert child.phase == "ready"
+    assert child.ready_at is not None
+
+
+def test_fix_synced_during_a_failing_deferred_reload_is_not_dropped(
+    tmp_path, monkeypatch
+):
+    child = ChildProcess(tmp_path, LogBuffer())
+    proc = SimpleNamespace(poll=lambda: None)
+    child.proc = proc
+    child.pending_reload = True
+    child.phase = "setup"
+    reloads = []
+
+    def fake_call(action, payload, timeout):
+        if action == "status":
+            return 200, {}
+        reloads.append(1)
+        if len(reloads) == 1:
+            child.reload(["app.py"])  # the user syncs a fix mid-reload
+            return 200, {"action": "error", "reason": "SyntaxError"}
+        return 200, {"action": "reload"}
+
+    monkeypatch.setattr(process, "child_call", fake_call)
+    child._wait_ready(proc)
+    assert len(reloads) == 2
+    assert child.phase == "ready"
+    assert child.ready_at is not None

@@ -228,6 +228,17 @@ class ChildProcess:
             except CHILD_ERRORS as exc:
                 result = {"action": "error", "reason": str(exc)}
             self.logs.emit(f"[fal dev] applied edits made during setup: {result}")
+            if result.get("action") == "error":
+                # Stays until a later reload succeeds; do not report ready.
+                with self.lock:
+                    if self.proc is not proc:
+                        return
+                    if self.pending_reload:
+                        # Fixed code was synced during the reload: try again.
+                        continue
+                    self.phase = "error"
+                    self.detail = str(result.get("reason", "reload failed"))
+                return
             if result.get("action") == "restart":
                 threading.Thread(
                     target=self.start, kwargs={"generation": generation}, daemon=True
@@ -402,7 +413,7 @@ class ChildProcess:
                 self.pending_reload = True
                 return {"action": "pending", "reason": f"the app is in {phase}"}
             generation = self.generation
-        if phase != "ready":
+        if phase not in ("ready", "error"):
             if self.start():
                 return {"action": "restart", "reason": f"the app was {phase}"}
             return {"action": "not_running", "reason": f"the app is {phase}"}
@@ -412,6 +423,11 @@ class ChildProcess:
             return {"action": "error", "reason": f"app not reachable: {exc}"}
         if result.get("action") == "restart":
             self.start(generation=generation)
+        elif phase == "error" and result.get("action") != "error":
+            with self.lock:
+                if self.generation == generation and self.phase == "error":
+                    self.phase, self.detail = "ready", ""
+                    self.ready_at = time.time()
         return result
 
     def restart_needed(self) -> bool:

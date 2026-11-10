@@ -304,3 +304,93 @@ def test_start_refuses_a_box_that_is_already_running_without_touching_the_sessio
             session_env=[],
         )
     assert not deployed
+
+
+def _start_box_kwargs(tmp_path):
+    from fal.dev.account import Account
+
+    return dict(
+        name="dev-x",
+        root=tmp_path,
+        explicit_root=False,
+        replace=False,
+        keep_alive=60,
+        machine_type=None,
+        account=Account("me", True),
+        host=None,
+        environment=None,
+        session_env=[],
+    )
+
+
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_start_box_tears_down_the_box_when_the_session_cannot_be_saved(
+    monkeypatch, tmp_path, cleanup_fails, capsys
+):
+    from fal.dev.app import deploy as app_deploy
+
+    monkeypatch.setattr(app_deploy, "find_session", lambda name: None)
+    monkeypatch.setattr(app_deploy, "box_exists", lambda *a, **k: False)
+    layout = SimpleNamespace(
+        root=tmp_path, paths=["."], workdir=".", ignore=[], ignore_base=None
+    )
+    monkeypatch.setattr(
+        app_deploy,
+        "deploy_box",
+        lambda *a, **k: SimpleNamespace(
+            layout=layout, class_name="App", run_url="https://x"
+        ),
+    )
+
+    def boom(self):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Session, "save", boom)
+    deleted = []
+
+    def fake_delete(name, host, team, environment=None):
+        deleted.append((name, host, team, environment))
+        if cleanup_fails:
+            raise RuntimeError("rpc down")
+        return [], True
+
+    monkeypatch.setattr(app_deploy, "delete_app", fake_delete)
+
+    app = tmp_path / "app.py"
+    with pytest.raises(OSError, match="disk full") as info:
+        app_deploy.start_box(app, None, None, **_start_box_kwargs(tmp_path))
+    assert [d[0] for d in deleted] == ["dev-x"]
+    out = capsys.readouterr().out
+    assert "stopping box dev-x" in out
+    assert ("may still be billing" in out) == cleanup_fails
+
+
+def test_start_box_cleanup_survives_ctrl_c(monkeypatch, tmp_path, capsys):
+    from fal.dev.app import deploy as app_deploy
+
+    monkeypatch.setattr(app_deploy, "find_session", lambda name: None)
+    monkeypatch.setattr(app_deploy, "box_exists", lambda *a, **k: False)
+    layout = SimpleNamespace(
+        root=tmp_path, paths=["."], workdir=".", ignore=[], ignore_base=None
+    )
+    monkeypatch.setattr(
+        app_deploy,
+        "deploy_box",
+        lambda *a, **k: SimpleNamespace(
+            layout=layout, class_name="App", run_url="https://x"
+        ),
+    )
+
+    def boom(self):
+        raise OSError("disk full")
+
+    def interrupted(*a, **k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(Session, "save", boom)
+    monkeypatch.setattr(app_deploy, "delete_app", interrupted)
+    with pytest.raises(OSError, match="disk full"):
+        app_deploy.start_box(
+            tmp_path / "app.py", None, None, **_start_box_kwargs(tmp_path)
+        )
+    assert "may still be billing" in capsys.readouterr().out

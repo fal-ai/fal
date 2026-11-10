@@ -337,27 +337,61 @@ def start_box(
         host=host,
         environment=environment,
     )
-    layout = deployed.layout
-    session = Session(
-        name=name,
-        file_path=str(file),
-        root=str(layout.root),
-        module=".".join(file.relative_to(root).with_suffix("").parts),
-        class_name=deployed.class_name,
-        run_url=deployed.run_url,
-        token=token,
-        account=account,
-        host=host,
-        environment=environment,
-        machine_type=machine_type,
-        paths=layout.paths,
-        workdir=layout.workdir,
-        ignore=layout.ignore,
-        ignore_base=layout.ignore_base,
-        session_env=session_env,
-    )
-    session.save()
+    try:
+        layout = deployed.layout
+        session = Session(
+            name=name,
+            file_path=str(file),
+            root=str(layout.root),
+            module=".".join(file.relative_to(root).with_suffix("").parts),
+            class_name=deployed.class_name,
+            run_url=deployed.run_url,
+            token=token,
+            account=account,
+            host=host,
+            environment=environment,
+            machine_type=machine_type,
+            paths=layout.paths,
+            workdir=layout.workdir,
+            ignore=layout.ignore,
+            ignore_base=layout.ignore_base,
+            session_env=session_env,
+        )
+        session.save()
+    except BaseException:
+        # The box is deployed but nothing local points at it: tear down exactly
+        # the app this call deployed, and never hide the original failure.
+        _stop_unsaved_box(name, host, account.fal_team, environment)
+        raise
     return session
+
+
+def _stop_unsaved_box(
+    name: str, host: str | None, team: str | None, environment: str | None
+) -> None:
+    """Delete a box whose session was never saved; report instead of raising."""
+    from rich.markup import escape
+
+    from fal.console import console
+
+    if not name.startswith(NAME_PREFIX):
+        return
+    console.print(
+        escape(f"stopping box {name} after failed save of its session ..."),
+        markup=True,
+    )
+    try:
+        delete_app(name, host, team, environment)
+    except (Exception, KeyboardInterrupt) as exc:
+        console.print(
+            escape(
+                f"could not stop box {name} "
+                f"({str(exc) or type(exc).__name__}); it may still be billing. "
+                f"Its session was not saved, so delete the app {name!r} with "
+                "`fal apps delete`."
+            ),
+            markup=True,
+        )
 
 
 def delete_app(
