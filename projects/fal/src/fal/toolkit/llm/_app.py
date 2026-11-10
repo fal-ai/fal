@@ -173,6 +173,18 @@ def _engine_version(engine: str) -> str:
         return "unknown"
 
 
+def _torch_tag() -> str:
+    """Torch build (version and CUDA) as a cache-key part: kernels compiled by
+    one build are not valid for another, and an engine version alone does not
+    pin it across images."""
+    from importlib import metadata  # noqa: PLC0415
+
+    try:
+        return metadata.version("torch")
+    except Exception:
+        return "unknown"
+
+
 # ``"usage": {...}`` with one level of nesting, for a Responses API terminal
 # event whose start fell out of the stream tail (it carries the whole output).
 _USAGE_TAIL_RE = re.compile(r'"usage":\s*(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})')
@@ -955,7 +967,12 @@ class LLMApp(App):
         namespace = None
         if self.persistent_caches:
             namespace = self.cache_namespace or "-".join(
-                (self.engine, _engine_version(self.engine), self._gpu_type())
+                (
+                    self.engine,
+                    _engine_version(self.engine),
+                    _torch_tag(),
+                    self._gpu_type(),
+                )
             )
             apply_engine_cache_env(namespace)
 

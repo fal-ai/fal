@@ -21,6 +21,8 @@ def test_engine_cache_env_namespaced(tmp_path):
         "TILELANG_CACHE_DIR",
         "VLLM_CACHE_ROOT",
         "SGLANG_CACHE_DIR",
+        "TORCH_EXTENSIONS_DIR",
+        "CUTE_DSL_CACHE_DIR",
     ):
         assert key in env
     # No driver (CPU host): the CUDA JIT cache keeps its default location.

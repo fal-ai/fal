@@ -688,7 +688,9 @@ def _make_probe(tmp_path, monkeypatch, **attrs):
     monkeypatch.setattr(_cache, "ENGINE_CACHE_ROOT", tmp_path / "engine")
     monkeypatch.setattr(_app, "namespace_dir", lambda ns: tmp_path / "engine" / ns)
     for key in list(os.environ):
-        if key.startswith(("HF_", "VLLM_", "TRITON_", "TORCHINDUCTOR_")):
+        if key.startswith(
+            ("HF_", "VLLM_", "TRITON_", "TORCHINDUCTOR_", "TORCH_EXT", "CUTE_DSL")
+        ):
             monkeypatch.delenv(key)
     shard_dir = tmp_path / "model"
     shard_dir.mkdir(exist_ok=True)
@@ -2523,3 +2525,22 @@ def test_unused_kv_tier_is_not_sized(monkeypatch, capsys):
         monkeypatch.setattr(cls, "_gpu_name", staticmethod(no_probe))
         cls().engine_command("/m")
     assert "WARNING" not in capsys.readouterr().out
+
+
+def test_default_cache_namespace_keys_gpu_engine_and_torch(tmp_path, monkeypatch):
+    monkeypatch.setattr(_app, "_engine_version", lambda engine: "9.9")
+    monkeypatch.setattr(_app, "_torch_tag", lambda: "2.8.0")
+    monkeypatch.setattr(_app.LLMApp, "_gpu_type", staticmethod(lambda: "RTXPRO6000"))
+    app = _make_probe(tmp_path, monkeypatch, cache_namespace=None)
+    app.setup()
+    cache_dir = os.environ["VLLM_CACHE_ROOT"]
+    assert f"{app.engine}-9.9-2.8.0-RTXPRO6000" in cache_dir
+    for key in ("TORCH_EXTENSIONS_DIR", "CUTE_DSL_CACHE_DIR"):
+        assert key in os.environ
+
+
+def test_persistent_caches_off_leaves_engine_env_alone(tmp_path, monkeypatch):
+    app = _make_probe(tmp_path, monkeypatch, persistent_caches=False)
+    app.setup()
+    assert "VLLM_CACHE_ROOT" not in os.environ
+    assert "TORCH_EXTENSIONS_DIR" not in os.environ
