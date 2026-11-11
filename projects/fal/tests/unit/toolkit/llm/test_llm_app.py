@@ -284,6 +284,31 @@ def test_stream_passthrough_usage(served):
     assert app._usage_totals["completion_tokens"] == 5
 
 
+def test_record_usage_error_does_not_fail_unary_or_stream(served, capsys):
+    app, url, _, _ = served
+    calls = []
+
+    def boom(path, usage):
+        calls.append(path)
+        raise RuntimeError("billing down")
+
+    app.record_usage = boom
+    r = httpx.post(
+        f"{url}/v1/chat/completions",
+        json={"model": "m", "messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert r.status_code == 200
+    assert r.json()["usage"]["completion_tokens"] == 5
+    with httpx.stream(
+        "POST", f"{url}/v1/chat/completions", json={"stream": True, "n_chunks": 3}
+    ) as sr:
+        assert sr.status_code == 200
+        lines = [c for c in sr.iter_lines() if c.startswith("data:")]
+    assert lines[-1] == "data: [DONE]"
+    assert len(calls) == 2
+    assert capsys.readouterr().out.count("record_usage failed") == 2
+
+
 def test_stream_disconnect_aborts_engine(served):
     _, url, abort_file, _ = served
     with httpx.stream(
@@ -2603,3 +2628,49 @@ def test_persistent_caches_off_leaves_engine_env_alone(tmp_path, monkeypatch):
     app.setup()
     assert "VLLM_CACHE_ROOT" not in os.environ
     assert "TORCH_EXTENSIONS_DIR" not in os.environ
+
+
+@pytest.mark.parametrize(
+    "engine,path", [("vllm", "/health"), ("sglang", "/health_generate")]
+)
+def test_wait_ready_probes_serving_endpoint_per_engine(monkeypatch, engine, path):
+    class App(LLMApp):
+        model = "org/m"
+
+    App.engine = engine
+    app = object.__new__(App)
+    proc = types.SimpleNamespace(poll=lambda: None)
+    app._replicas = [types.SimpleNamespace(url="http://r0", proc=proc)]
+    app._deadline = time.monotonic() + 30
+    seen = []
+
+    def fake_get(url, timeout):
+        assert 1.0 <= timeout <= (30.0 if engine == "sglang" else 5.0)
+        seen.append(url)
+        # SGLang's /health is 200 before warmup; only /health_generate gates.
+        code = 200 if url.endswith(path) else 500
+        return types.SimpleNamespace(status_code=code)
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    app._wait_ready()
+    assert seen == [f"http://r0{path}"]
+
+
+def test_wait_ready_probe_timeout_capped_by_remaining_budget(monkeypatch):
+    class App(LLMApp):
+        model = "org/m"
+
+    App.engine = "sglang"
+    app = object.__new__(App)
+    proc = types.SimpleNamespace(poll=lambda: None)
+    app._replicas = [types.SimpleNamespace(url="http://r0", proc=proc)]
+    app._deadline = time.monotonic() + 5
+    timeouts = []
+
+    def fake_get(url, timeout):
+        timeouts.append(timeout)
+        return types.SimpleNamespace(status_code=200)
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    app._wait_ready()
+    assert timeouts[0] <= 5.0

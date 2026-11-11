@@ -1498,6 +1498,36 @@ def test_agent_tool_parser_same_architecture_exceptions(arch, model_id, parser):
     assert _presets.tool_call_parser(facts) == parser
 
 
+@pytest.mark.parametrize(
+    "arch,model_id,parser",
+    [
+        ("Qwen3ForCausalLM", "Qwen/Qwen3-8B", "qwen3"),
+        ("Qwen3ForCausalLM", "Qwen/Qwen3-8B-FP8", "qwen3"),
+        ("Qwen3MoeForCausalLM", "Qwen/Qwen3-30B-A3B", "qwen3"),
+        ("Qwen3MoeForCausalLM", "Qwen/Qwen3-Coder-30B-A3B-Instruct", None),
+        ("Qwen3MoeForCausalLM", "Qwen/Qwen3-30B-A3B-Instruct-2507", None),
+        ("Qwen3ForCausalLM", "org/qwen3-finetune", None),
+        ("Qwen2ForCausalLM", "Qwen/Qwen2.5-7B-Instruct", None),
+    ],
+)
+def test_agent_profile_qwen3_reasoning_parser(arch, model_id, parser):
+    config = {**QWEN3_8B, "architectures": [arch]}
+    args = _rtx(config=config, model_id=model_id, profile="agent")
+    if parser is None:
+        assert "--reasoning-parser" not in args
+    else:
+        assert _flag_value(args, "--reasoning-parser") == parser
+
+
+def test_agent_profile_qwen3_reasoning_parser_vllm_only_and_user_wins():
+    sglang = _rtx("sglang", QWEN3_8B, model_id="Qwen/Qwen3-8B", profile="agent")
+    assert "--reasoning-parser" not in sglang
+    preset = _rtx(config=QWEN3_8B, model_id="Qwen/Qwen3-8B", profile="agent")
+    merged = merge_engine_args(preset, ["--reasoning-parser", "deepseek_r1"])
+    assert merged.count("--reasoning-parser") == 1
+    assert _flag_value(merged, "--reasoning-parser") == "deepseek_r1"
+
+
 def test_agent_profile_skips_qwen3_fp8_eagle_recipe():
     args = _rtx(config=QWEN3_8B, model_id="Qwen/Qwen3-8B", profile="agent")
     assert "--speculative-config" not in args

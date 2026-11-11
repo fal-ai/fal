@@ -184,6 +184,21 @@ _AGENT_ARCH_ARGS: Tuple[Tuple[FrozenSet[str], str, Mapping[str, str]], ...] = (
         },
     ),
 )
+# Qwen3 hybrid-thinking checkpoints (Qwen3-8B, Qwen3-32B, Qwen3-30B-A3B) think
+# by default and emit <think>...</think> in the reply. Without a reasoning
+# parser that text lands in message.content; with it, in reasoning_content.
+# Coder and the *-Instruct-2507 variants never think and are left alone.
+_QWEN3_THINKING_ARCHS = frozenset({"Qwen3ForCausalLM", "Qwen3MoeForCausalLM"})
+_NON_THINKING_MARKERS = ("coder", "instruct")
+
+
+def _qwen3_thinks(model: "ModelFacts") -> bool:
+    mid = (model.model_id or "").lower()
+    return (
+        bool(model.architectures & _QWEN3_THINKING_ARCHS)
+        and mid.startswith("qwen/qwen3-")
+        and not any(m in mid for m in _NON_THINKING_MARKERS)
+    )
 
 
 def _normalize_gpu(gpu_type: str) -> str:
@@ -1061,6 +1076,8 @@ def _agent_args(model: ModelFacts, recipe_tools: bool = False) -> List[str]:
         if architectures & model.architectures and mid.startswith(prefix):
             for flag, value in extra.items():
                 args += [flag] if flag in _BOOLEAN_FLAGS else [flag, value]
+    if _qwen3_thinks(model):
+        args += [_REASONING_PARSER_FLAG, "qwen3"]
     window = _num(_text_config(model.config or {}), "max_position_embeddings")
     if window is None:
         print(

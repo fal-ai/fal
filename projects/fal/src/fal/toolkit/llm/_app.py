@@ -1817,8 +1817,15 @@ class LLMApp(_EngineChecks, App):
                 buf = b""
         handle(buf, False)
 
+    def _ready_path(self) -> str:
+        # SGLang's /health answers 200 as soon as its HTTP server is up, before
+        # warmup finishes; /health_generate runs a one-token generation and
+        # fails until the engine can serve. vLLM's /health only passes when
+        # the engine is up.
+        return "/health_generate" if self.engine == "sglang" else "/health"
+
     def _wait_ready(self) -> None:
-        """Wait until every replica answers /health; any exit fails setup."""
+        """Wait until every replica can serve; any exit fails setup."""
         import httpx  # noqa: PLC0415
 
         waiting = list(self._replicas)
@@ -1829,7 +1836,15 @@ class LLMApp(_EngineChecks, App):
                     self._fail(f"{self._engine_label(replica)} exited with code {code}")
             for replica in list(waiting):
                 try:
-                    resp = httpx.get(f"{replica.url}/health", timeout=5.0)
+                    # /health_generate runs a generation, so it gets longer than
+                    # /health, capped so one probe cannot overrun the budget.
+                    # The runtime health probe stays on the cheap /health.
+                    cap = 30.0 if self.engine == "sglang" else 5.0
+                    left = self._deadline - time.monotonic()
+                    resp = httpx.get(
+                        f"{replica.url}{self._ready_path()}",
+                        timeout=max(1.0, min(cap, left)),
+                    )
                 except httpx.HTTPError:
                     continue
                 if resp.status_code == 200:
@@ -2590,5 +2605,9 @@ class LLMApp(_EngineChecks, App):
                 self._note_response(reply.get("id"), self._route())
             usage = reply.get("usage")
             if isinstance(usage, dict):
-                self.record_usage(path, usage)
+                try:
+                    self.record_usage(path, usage)
+                except Exception as exc:
+                    # The request already succeeded; a hook bug must not fail it.
+                    print(f"[llm-app] record_usage failed: {exc!r}")
         return self._engine_reply(upstream.content, upstream.status_code)
