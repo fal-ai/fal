@@ -19,7 +19,7 @@ import pytest
 import uvicorn
 from fastapi import Request
 
-from fal.toolkit.llm import LLMApp, _app, _cache
+from fal.toolkit.llm import LLMApp, _app, _cache, _upstream
 from fal.toolkit.llm._app import (
     _deadline_budget,
     _event_cut,
@@ -2674,3 +2674,152 @@ def test_wait_ready_probe_timeout_capped_by_remaining_budget(monkeypatch):
     monkeypatch.setattr(httpx, "get", fake_get)
     app._wait_ready()
     assert timeouts[0] <= 5.0
+
+
+def test_bad_requests_use_openai_error_shape(served):
+    _, url, _, _ = served
+    r = httpx.post(
+        f"{url}/v1/chat/completions",
+        content=b"not json",
+        headers={"content-type": "application/json"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["type"] == "invalid_request_error"
+    r = httpx.post(f"{url}/v1/chat/completions", json=[1])
+    assert r.status_code == 400
+    assert r.json()["error"]["message"] == "body must be an object"
+
+
+@pytest.mark.parametrize("flag", ["true", 1, "false"])
+def test_non_boolean_stream_is_rejected(served, flag):
+    _, url, _, body_file = served
+    r = httpx.post(f"{url}/v1/chat/completions", json={"stream": flag})
+    assert r.status_code == 400
+    assert "`stream`" in r.json()["error"]["message"]
+    assert not body_file.exists()
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_unreachable_engine_is_a_counted_503(served, stream):
+    app, url, _, _ = served
+    app._proc.kill()
+    app._proc.wait()
+    r = httpx.post(f"{url}/v1/chat/completions", json={"stream": stream})
+    assert r.status_code == 503
+    assert r.json()["error"]["type"] == "engine_unavailable"
+    assert r.headers["retry-after"] == "1"
+    assert r.headers["x-fal-runner-health-check"] == "true"
+    assert app._replicas[0]._engine_errors == 1
+    assert not app._inflight
+    r = httpx.get(f"{url}/v1/models")
+    assert r.status_code == 503
+
+
+def test_mid_stream_engine_failure_ends_in_band(served):
+    app, url, _, _ = served
+    r = httpx.post(
+        f"{url}/v1/chat/completions", json={"stream": True, "die_after_chunks": 2}
+    )
+    assert r.status_code == 200
+    events = [e for e in r.text.split("\n\n") if e]
+    assert events[-1] == "data: [DONE]"
+    assert json.loads(events[-2][len("data: ") :])["choices"][0]["finish_reason"] == (
+        "error"
+    )
+    assert app._replicas[0]._engine_errors == 1
+    # Response headers alone do not reset the count, so repeats add up.
+    httpx.post(
+        f"{url}/v1/chat/completions", json={"stream": True, "die_after_chunks": 1}
+    )
+    assert app._replicas[0]._engine_errors == 2
+    # A stream that then ends cleanly resets the count.
+    assert httpx.post(f"{url}/v1/chat/completions", json={"stream": True}).is_success
+    assert app._replicas[0]._engine_errors == 0
+
+
+@pytest.mark.parametrize("parent_exits", [False, True])
+def test_stop_engine_kills_the_process_group(tmp_path, parent_exits):
+    child_pid_file = tmp_path / "child.pid"
+    script = (
+        "import os, subprocess, sys, time\n"
+        "c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+        f"open({str(child_pid_file)!r} + '.tmp', 'w').write(str(c.pid))\n"
+        f"os.replace({str(child_pid_file)!r} + '.tmp', {str(child_pid_file)!r})\n"
+        f"time.sleep({0 if parent_exits else 60})\n"
+    )
+
+    class A(LLMApp):
+        model = "m"
+
+    app = A()
+    replica = _app._Replica(app, 0, 9000)
+    replica.proc = subprocess.Popen(
+        [sys.executable, "-c", script], start_new_session=True
+    )
+    replica.proc._own_group = True  # type: ignore[attr-defined]
+    app._replicas = [replica]
+    assert _wait_for(child_pid_file)
+    child = int(child_pid_file.read_text())
+    if parent_exits:
+        replica.proc.wait(timeout=5)
+    app._stop_engine(5.0)
+    assert replica.proc.poll() is not None
+    end = time.time() + 5
+    while time.time() < end:
+        try:
+            os.kill(child, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        os.kill(child, 9)
+        pytest.fail("engine worker survived _stop_engine")
+
+
+def test_engine_leads_its_own_process_group(served):
+    app, _, _, _ = served
+    assert os.getpgid(app._proc.pid) == app._proc.pid
+    assert app._proc._own_group
+
+
+def test_stream_that_breaks_after_finishing_gets_only_done(served):
+    _, url, _, _ = served
+    r = httpx.post(
+        f"{url}/v1/chat/completions",
+        json={"stream": True, "n_chunks": 1, "finish_then_die": True},
+    )
+    assert r.status_code == 200
+    events = [e for e in r.text.split("\n\n") if e]
+    assert events[-1] == "data: [DONE]"
+    reasons = [
+        c.get("finish_reason")
+        for e in events[:-1]
+        for c in json.loads(e[len("data: ") :])["choices"]
+    ]
+    assert [x for x in reasons if x] == ["stop"]
+
+
+def test_busy_engine_is_an_uncounted_503(served):
+    app, _, _, _ = served
+    replica = app._replicas[0]
+    for exc in (_upstream.UpstreamBusy("full"), httpx.PoolTimeout("full")):
+        r = app._engine_unavailable(replica, exc)
+        assert r.status_code == 503
+        assert r.headers["retry-after"] == "1"
+        assert "x-fal-runner-health-check" not in r.headers
+        assert r.headers["x-fal-stop-runner"] == "false"
+    assert replica._engine_errors == 0
+
+
+def test_models_refused_while_draining(served):
+    app, url, _, _ = served
+    app._draining = True
+    try:
+        assert httpx.get(f"{url}/v1/models").status_code == 503
+    finally:
+        app._draining = False
+
+
+def test_stream_usage_ignores_non_object_events():
+    assert _app._parse_stream_usage(b'data: ["usage"]\n\n') is None
+    assert _app._parse_stream_usage(b'data: "usage"\n\n') is None

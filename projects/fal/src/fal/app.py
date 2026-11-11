@@ -271,6 +271,15 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     return fn
 
 
+def _inherited_app_name(cls: type) -> Optional[str]:
+    for base in cls.__mro__[1:]:
+        if "app_name" in base.__dict__:
+            # fal's own bases (App, toolkit apps) never donate their name.
+            if base.__module__.split(".")[0] != "fal":
+                return base.__dict__["app_name"]
+    return None
+
+
 def _persist_cuda_cache() -> None:
     # Module-level import on purpose: fal ships pickle-by-value, and a lazy
     # import of a module the payload never referenced fails on the runner.
@@ -877,8 +886,9 @@ class App(BaseServable):
             based on the user model.
         persist_cuda_cache: Keep the CUDA driver's JIT cache on /data, keyed by
             GPU model and driver version, so PTX-only kernels compile once
-            instead of on every boot. Set to False to opt out. Skipped on CPU
-            apps, without /data, and for CUDA_CACHE_PATH already in the env.
+            instead of on every boot. Off by default (LLMApp turns it on).
+            Skipped on CPU apps, without /data, and for CUDA_CACHE_PATH
+            already in the env.
         volumes: Named volumes to mount, keyed by mount path. Each volume must
             already exist (`fal volumes create <name>`); `fal.Volume` is only a
             reference. A mount path is a single top-level directory. Cannot
@@ -925,7 +935,7 @@ class App(BaseServable):
     secrets: ClassVar[Optional[list[str]]] = None
     data_mounts: ClassVar[Optional[list[str]]] = None
     volumes: ClassVar[Optional[dict[str, Volume | str]]] = None
-    persist_cuda_cache: ClassVar[bool] = True
+    persist_cuda_cache: ClassVar[bool] = False
     # Cancel a request's handler (asyncio.CancelledError) when the gateway
     # cancels it (POST <endpoint>/cancel, sent for queue cancels and request
     # timeouts), and when the client disconnects. Both are off by default;
@@ -1036,12 +1046,13 @@ class App(BaseServable):
 
         cls.host_kwargs["health_check_config"] = cls.get_health_check_config()
 
-        # The class's own app_name wins, then its name= argument. Without either,
-        # a subclass keeps the name it inherits.
+        # Own or inherited app_name wins over name=, as before. A name generated
+        # for a toolkit base inside fal (e.g. LLMApp) is not inherited, so
+        # subclasses of it get their own.
         cls.app_name = (
             cls.__dict__.get("app_name")
+            or _inherited_app_name(cls)
             or name
-            or getattr(cls, "app_name")
             or _to_fal_app_name(cls.__name__)
         )
 

@@ -23,6 +23,10 @@ class UpstreamError(ConnectionError):
     """The engine closed or garbled a response."""
 
 
+class UpstreamBusy(UpstreamError):
+    """No engine connection slot freed up in time: proxy load, not an engine fault."""
+
+
 class UpstreamStream:
     """The response to one request; the subset of httpx.Response the proxy uses."""
 
@@ -181,7 +185,7 @@ async def _acquire(slots: asyncio.Semaphore) -> None:
                 slots.release()
             raise
     if task.cancelled():
-        raise UpstreamError("no free engine connection slot")
+        raise UpstreamBusy("no free engine connection slot")
 
 
 async def _connect(

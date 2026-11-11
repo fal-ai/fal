@@ -5,6 +5,7 @@ import json
 import math
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -24,6 +25,7 @@ from typing import (
     Optional,
     Set,
     Tuple,
+    Type,
 )
 
 import anyio
@@ -61,7 +63,7 @@ from fal.toolkit.llm._presets import (
     model_facts,
     short_gpu_type,
 )
-from fal.toolkit.llm._upstream import open_stream
+from fal.toolkit.llm._upstream import UpstreamBusy, open_stream
 
 # vLLM speculative decoding counters (cumulative since engine start).
 _SPEC_ACCEPTED = "vllm:spec_decode_num_accepted_tokens_total"
@@ -223,6 +225,8 @@ def _parse_stream_usage(tail: bytes) -> Optional[Dict[str, Any]]:
             try:
                 event = json.loads(line[5:])
             except ValueError:
+                break
+            if not isinstance(event, dict):
                 break
             # Chat and completions: top level. Responses: under ``response``.
             usage = event.get("usage")
@@ -389,6 +393,15 @@ def _wait_limit(
     return remaining, False
 
 
+def _error_body(message: str, kind: str) -> Dict[str, Any]:
+    """An OpenAI-shaped error body."""
+    return {"error": {"message": message, "type": kind}}
+
+
+def _bad_request(message: str) -> JSONResponse:
+    return JSONResponse(_error_body(message, "invalid_request_error"), status_code=400)
+
+
 def _shutting_down_response() -> JSONResponse:
     return JSONResponse(
         _SHUTTING_DOWN_BODY,
@@ -471,8 +484,9 @@ class _Stream:
             if self.replica is not None:
                 self.replica.inflight -= 1
             self.app._count_if_cancelled()
-            usage = _parse_stream_usage(self.tail)
             try:
+                # Inside the try: a parser bug must not skip the upstream close.
+                usage = _parse_stream_usage(self.tail)
                 if usage:
                     self.app.record_usage(self.path, usage)
             except Exception as exc:
@@ -638,6 +652,18 @@ class _Replica(_EngineChecks):
 # share the container limit, so leave headroom. The agent default is 0.7
 # (_presets.AGENT_KV_CPU_OFFLOAD).
 _KV_OFFLOAD_MAX_FRACTION = 0.8
+
+
+def _kill_group(proc: "subprocess.Popen[bytes]") -> None:
+    # _start_engine starts the engine as a session leader, so its pid is the
+    # group id, still valid for its workers after the leader itself exited.
+    if getattr(proc, "_own_group", False):
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    elif proc.poll() is None:
+        proc.kill()
 
 
 def _read_limit(path: Path) -> Optional[int]:
@@ -1055,7 +1081,12 @@ class LLMApp(_EngineChecks, App):
     # high volume and is nearly insensitive to boot time; the cost is idle GPU
     # time at low volume. Rule of thumb: keep_alive >= 2x boot time.
     keep_alive = 600
+    persist_cuda_cache = True
 
+    # setup() adds httpx's.
+    _transport_errors: Tuple[Type[BaseException], ...] = (OSError,)
+    # Transport errors that mean the proxy ran out of engine connections.
+    _busy_errors: Tuple[Type[BaseException], ...] = (UpstreamBusy,)
     _draining = False
     _drain_started: Optional[float] = None
     # A recipe checkpoint that failed to download (see _resolve_model).
@@ -1286,6 +1317,9 @@ class LLMApp(_EngineChecks, App):
         # serves requests, and the readiness wait is a plain polling loop.
         import httpx  # noqa: PLC0415
 
+        # Engine transport failures: httpx's, and the raw client's (OSError).
+        self._transport_errors = (httpx.HTTPError, OSError)
+        self._busy_errors = (httpx.PoolTimeout, UpstreamBusy)
         if not self.model:
             raise ValueError("LLMApp subclasses must set `model`")
         t0 = time.monotonic()
@@ -1757,12 +1791,16 @@ class LLMApp(_EngineChecks, App):
                     f"{replica_env['CUDA_VISIBLE_DEVICES']}: {' '.join(replica_cmd)}"
                 )
             # Recorded before the next launch, so a failed one still stops it.
+            # Own session: the engine's workers share its process group, so
+            # _stop_engine can kill them along with it.
             replica.proc = subprocess.Popen(
                 replica_cmd,
                 env=replica_env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
+                start_new_session=True,
             )
+            replica.proc._own_group = True  # type: ignore[attr-defined]
             threading.Thread(
                 target=self._pump_engine_logs,
                 args=(replica.proc, replica.index),
@@ -1924,6 +1962,8 @@ class LLMApp(_EngineChecks, App):
             for r in getattr(self, "_replicas", ())
             if r.proc is not None and r.proc.poll() is None
         ]
+        # The parent gets SIGTERM alone so it can shut its workers down; the
+        # group is SIGKILLed after, which reaps workers it left behind.
         for proc in procs:
             proc.terminate()
         end = time.monotonic() + timeout
@@ -1932,8 +1972,14 @@ class LLMApp(_EngineChecks, App):
             try:
                 proc.wait(timeout=max(0.0, end - time.monotonic()))
             except subprocess.TimeoutExpired:
-                proc.kill()
+                _kill_group(proc)
                 stuck.append(proc)
+            else:
+                _kill_group(proc)
+        # A parent that already exited may have left workers in its group.
+        for r in getattr(self, "_replicas", ()):
+            if r.proc is not None and r.proc not in procs:
+                _kill_group(r.proc)
         for proc in stuck:
             try:
                 proc.wait(timeout=5)
@@ -2068,10 +2114,40 @@ class LLMApp(_EngineChecks, App):
             headers=self._probe_header() if status >= 500 else None,
         )
 
+    def _engine_unavailable(self, replica: _Replica, exc: BaseException) -> Response:
+        """The engine could not be reached or dropped the connection. Counts
+        toward ``engine_error_threshold``, and the gateway probes the health
+        check before acting on the runner, as for an engine 5xx. Running out of
+        connection slots is proxy load, so it is neither counted nor probed."""
+        if not isinstance(exc, self._busy_errors):
+            replica._count_engine_reply(502)
+        return self._unreachable(replica, exc)
+
+    def _unreachable(self, replica: _Replica, exc: BaseException) -> Response:
+        if isinstance(exc, self._busy_errors):
+            print(f"[llm-app] {self._engine_label(replica)} busy: {exc!r}")
+            # A bare 503 makes the gateway stop the runner; this one is fine.
+            return JSONResponse(
+                _error_body("engine busy", "engine_unavailable"),
+                status_code=503,
+                headers={"Retry-After": "1", "X-Fal-Stop-Runner": "false"},
+            )
+        print(f"[llm-app] {self._engine_label(replica)} unreachable: {exc!r}")
+        return JSONResponse(
+            _error_body("engine unavailable", "engine_unavailable"),
+            status_code=503,
+            headers={"Retry-After": "1", **self._probe_header()},
+        )
+
     @endpoint("/v1/models")
     async def models(self) -> Response:
+        if self._draining:
+            return _shutting_down_response()
         replica = self._pick_replica(None)
-        upstream = await self._client.get(f"{replica.url}/v1/models")
+        try:
+            upstream = await self._client.get(f"{replica.url}/v1/models")
+        except self._transport_errors as exc:
+            return self._unreachable(replica, exc)
         return self._engine_reply(
             upstream.content, upstream.status_code, inference=False
         )
@@ -2245,19 +2321,24 @@ class LLMApp(_EngineChecks, App):
         try:
             payload: Dict[str, Any] = await request.json()
         except ValueError:
-            return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+            return _bad_request("invalid JSON body")
         if self._abort_fired:
             # The abort sweep ran while the body was being read, so this
             # request's event would never be set.
             return _shutting_down_response()
         if not isinstance(payload, dict):
-            return JSONResponse({"error": "body must be an object"}, status_code=400)
+            return _bad_request("body must be an object")
+        stream_flag = payload.get("stream")
+        if stream_flag is not None and not isinstance(stream_flag, bool):
+            # The engine would coerce "true" or 1 and stream, while the proxy
+            # would wait for one JSON reply.
+            return _bad_request("`stream` must be a boolean")
         try:
             budget = _deadline_budget(
                 request.headers, self.request_deadline_s, self.deadline_margin_s
             )
         except ValueError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
+            return _bad_request(str(exc))
         deadline = None if budget is None else arrival + budget
         payload["model"] = self._served_name()
         self._note_prefix(payload, request.headers)
@@ -2308,11 +2389,15 @@ class LLMApp(_EngineChecks, App):
                 # connection, which aborts the engine request.
                 send.cancel()
                 return self._stream_cut_short(path, abort, deadline, idle_bound)
-            upstream = send.result()
+            try:
+                upstream = send.result()
+            except self._transport_errors as exc:
+                return self._engine_unavailable(replica, exc)
             if upstream.status_code != 200:
                 return await self._engine_error_reply(upstream, path, abort, deadline)
             relaying = True
-            replica._engine_errors = 0
+            # The error count resets when the stream ends cleanly (_relay), so
+            # an engine that answers and then dies mid-stream still adds up.
             stream = _Stream(self, upstream, path, abort, replica)
             return _RelayResponse(
                 self._relay(stream, path, payload.get("n") in (None, 1), deadline),
@@ -2390,7 +2475,10 @@ class LLMApp(_EngineChecks, App):
             self._route()._count_engine_reply(upstream.status_code)
             return self._stream_cut_short(path, abort, deadline)
         return self._engine_reply(
-            b'{"detail": "engine error body timed out"}', upstream.status_code
+            json.dumps(
+                _error_body("engine error body timed out", "engine_error")
+            ).encode(),
+            upstream.status_code,
         )
 
     async def _open_upstream(self, path: str, payload: Dict[str, Any]) -> Any:
@@ -2488,8 +2576,24 @@ class LLMApp(_EngineChecks, App):
                 try:
                     chunk = read.result()
                 except StopAsyncIteration:
+                    if stream.replica is not None:
+                        stream.replica._count_engine_reply(200)
                     if partial:
                         yield partial
+                    return
+                except self._transport_errors as exc:
+                    # Headers were sent, so the client learns of it in-band:
+                    # the partial event is dropped, then an "error" finish.
+                    if stream.replica is not None:
+                        stream.replica._count_engine_reply(502)
+                    print(f"[llm-app] {path} stream from {self.engine} broke: {exc!r}")
+                    if not done_sent:
+                        # As above: after a real finish only [DONE] is missing.
+                        yield (
+                            b"data: [DONE]\n\n"
+                            if finished and single_choice
+                            else self._finish_chunk(path, "error")
+                        )
                     return
                 stream.feed(chunk)
                 partial = partial + chunk if partial else chunk
@@ -2593,7 +2697,10 @@ class LLMApp(_EngineChecks, App):
                 status_code=504,
                 headers={"X-Fal-Needs-Retry": "false", **self._probe_header()},
             )
-        upstream = task.result()
+        try:
+            upstream = task.result()
+        except self._transport_errors as exc:
+            return self._engine_unavailable(self._route(), exc)
         if upstream.status_code == 200:
             try:
                 reply = upstream.json()

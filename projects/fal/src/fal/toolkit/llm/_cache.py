@@ -221,9 +221,10 @@ def engine_cache_env(
 
     The CUDA driver's PTX JIT cache is also kept, keyed by driver version
     (detected when ``driver`` is None), since a driver upgrade invalidates it.
-    ``fal.App`` already sets ``CUDA_CACHE_PATH`` before ``setup()`` (see
-    ``persist_cuda_cache``), and ``apply_engine_cache_env`` never overrides a
-    set variable, so inside an App that default wins over this namespaced path.
+    An App with ``persist_cuda_cache`` on (LLMApp's default) already sets
+    ``CUDA_CACHE_PATH`` before ``setup()``, and ``apply_engine_cache_env``
+    never overrides a set variable, so inside such an App that default wins
+    over this namespaced path.
 
     Args:
         namespace: Subdirectory name for the cache set. Change it when cached

@@ -6,6 +6,7 @@ import pytest
 import fal
 from fal import _cuda_cache as cuda_cache
 from fal._cuda_cache import apply_cuda_cache_env, cuda_cache_dir
+from fal.toolkit.llm import LLMApp
 from fal.toolkit.utils.download_utils import FAL_PERSISTENT_DIR
 
 
@@ -101,12 +102,19 @@ async def test_app_lifespan_survives_cache_failure(isolate_agent_env, monkeypatc
     seen: list[str] = []
 
     class A(fal.App):
+        persist_cuda_cache = True
+
         def setup(self):
             seen.append("setup")
 
     async with A().lifespan(fastapi.FastAPI()):
         pass
     assert seen == ["setup"]
+
+
+def test_cuda_cache_is_opt_in():
+    assert fal.App.persist_cuda_cache is False
+    assert LLMApp.persist_cuda_cache is True
 
 
 def test_cache_disabled_by_user_is_noop(tmp_path):

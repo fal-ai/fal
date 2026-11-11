@@ -1355,7 +1355,7 @@ def test_app_default_app_name_is_generated_from_class_name():
     assert MyCustomApp.app_name == "my-custom-app"
 
 
-def test_app_name_argument_beats_inherited_app_name():
+def test_inherited_app_name_beats_name_argument():
     class BaseApp(App):
         pass
 
@@ -1368,9 +1368,25 @@ def test_app_name_argument_beats_inherited_app_name():
     class PlainChild(BaseApp):
         pass
 
-    assert NamedChild.app_name == "named-child"
+    assert NamedChild.app_name == "base-app"
     assert OwnAttrChild.app_name == "own-attr"
     assert PlainChild.app_name == "base-app"
+
+
+def test_fal_toolkit_base_name_is_not_inherited():
+    class ToolkitBase(App):
+        pass
+
+    ToolkitBase.__module__ = "fal.toolkit.fake"
+
+    class NamedChild(ToolkitBase, name="named-child"):
+        pass
+
+    class PlainChild(ToolkitBase):
+        pass
+
+    assert NamedChild.app_name == "named-child"
+    assert PlainChild.app_name == "plain-child"
 
 
 # ============================================================================

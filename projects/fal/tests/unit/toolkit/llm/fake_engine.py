@@ -102,6 +102,9 @@ async def _complete(request: Request):
             done = False
             try:
                 for i in range(int(body.get("n_chunks", 5))):
+                    if i == body.get("die_after_chunks"):
+                        # The connection drops without the chunked terminator.
+                        raise RuntimeError("engine died mid-stream")
                     delta = {"choices": [{"delta": {"content": str(i)}}]}
                     event = f"data: {json.dumps(delta)}\n\n"
                     if body.get("split_events"):
@@ -113,6 +116,12 @@ async def _complete(request: Request):
                     else:
                         yield event
                         await asyncio.sleep(0.2)
+                if body.get("finish_then_die"):
+                    # The real finish arrives, then the connection drops.
+                    final = {"choices": [{"delta": {}, "finish_reason": "stop"}]}
+                    yield f"data: {json.dumps(final)}\n\n"
+                    await asyncio.sleep(0.2)
+                    raise RuntimeError("engine died after finishing")
                 if (body.get("stream_options") or {}).get("include_usage"):
                     yield f"data: {json.dumps({'choices': [], 'usage': usage})}\n\n"
                 yield "data: [DONE]\n\n"

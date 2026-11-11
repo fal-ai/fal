@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from fal.toolkit.llm._upstream import UpstreamError, open_stream
+from fal.toolkit.llm._upstream import UpstreamBusy, UpstreamError, open_stream
 
 
 async def _serve(handler):
@@ -216,7 +216,8 @@ def test_slot_wait_times_out(monkeypatch):
 
     async def go():
         slots = asyncio.Semaphore(0)
-        with pytest.raises(UpstreamError):
+        # Busy, not an engine fault: the proxy neither counts nor probes it.
+        with pytest.raises(UpstreamBusy):
             await open_stream("127.0.0.1", 1, "/", b"{}", 5.0, slots)
 
     asyncio.run(go())
