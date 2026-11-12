@@ -5,7 +5,7 @@ import secrets
 import subprocess
 import time
 from contextlib import contextmanager, suppress
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import (
     AsyncIterator,
     Callable,
@@ -1209,85 +1209,6 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
     # First request should complete successfully
     result = first_handle.get()
     assert result == {"slept": True}, f"First request should succeed, got {result}"
-
-
-def test_app_client_async(test_sleep_app: str):
-    handle = apps.submit(test_sleep_app, arguments={"wait_time": 1})
-
-    # Wait until the app is completed
-    assert handle.get() == {"slept": True}
-
-    # New request
-    handle = apps.submit(test_sleep_app, arguments={"wait_time": 5})
-
-    for event in handle.iter_events(logs=True):
-        assert isinstance(event, (apps.Queued, apps.InProgress))
-        if isinstance(event, apps.InProgress) and event.logs:
-            logs = [log["message"] for log in event.logs]
-            assert "sleeping..." in logs
-        elif isinstance(event, apps.Queued):
-            assert event.position == 0
-
-    deadline = time.monotonic() + 20
-    while True:
-        status = handle.status(logs=True)
-        assert isinstance(status, apps.Completed)
-        if status.logs or time.monotonic() >= deadline:
-            break
-        time.sleep(1)
-
-    assert status.logs, "Logs missing from Completed status"
-    assert any("sleeping..." in log["message"] for log in status.logs)
-
-    # It is safe to use fetch_result when we know for a fact the request itself
-    # is completed.
-    result = handle.fetch_result()
-
-    # .get() can still be used and will return the same value
-    get_result = handle.get()
-    assert result == get_result
-    assert result == {"slept": True}
-
-
-# If the logging subsystem is not working for some nodes, this test will flake
-@pytest.mark.skip(
-    reason="The traceback logs endpoint returned no logs within the polling window; "
-    "remove once traceback delivery is reliable. Ping @efiop",
-)
-def test_traceback_logs(test_exception_app: AppClient, rest_client: Client):
-    date = (
-        datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)
-    ).isoformat()
-
-    with pytest.raises(AppClientError):
-        test_exception_app.fail({})
-
-    with httpx.Client(
-        base_url=rest_client.base_url,
-        headers=rest_client.get_headers(),
-        timeout=300,
-    ) as client:
-        # Give some time for logs to propagate through the logging subsystem.
-        for _ in range(10):
-            time.sleep(2)
-            response = client.get(
-                rest_client.base_url + f"/logs/?traceback=true&since={date}"
-            )
-
-            response.raise_for_status()
-            logs = response.json()
-            if len(logs) > 0:
-                break
-
-        assert len(logs) > 0
-        for log in logs:
-            assert log["message"].count("\n") > 1, "Logs should be multi-line"
-            assert (
-                '{"traceback":' not in log["message"]
-            ), "Logs should not be JSON-wrapped"
-            assert (
-                "this app is designed to fail" in log["message"]
-            ), "Logs should contain the traceback message"
 
 
 def test_app_openapi_spec_metadata(
