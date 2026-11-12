@@ -3,8 +3,6 @@ import ssl
 
 import certifi
 
-CERTIFI_REQUIREMENT = "certifi>=2026.10.19"
-
 
 def create_ssl_context() -> ssl.SSLContext:
     ca_file = os.environ.get("SSL_CERT_FILE") or None

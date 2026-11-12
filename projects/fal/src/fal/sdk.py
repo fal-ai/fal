@@ -192,7 +192,9 @@ class LocalCredentials(ServerCredentials):
 class RemoteCredentials(ServerCredentials):
     def to_grpc(self) -> grpc.ChannelCredentials:
         root_file = (
-            os.environ.get("GRPC_DEFAULT_SSL_ROOTS_FILE_PATH") or certifi.where()
+            os.environ.get("GRPC_DEFAULT_SSL_ROOTS_FILE_PATH")
+            or os.environ.get("SSL_CERT_FILE")
+            or certifi.where()
         )
         return grpc.ssl_channel_credentials(
             root_certificates=Path(root_file).read_bytes()
