@@ -36,3 +36,13 @@ def test_preread_stop_skips_unstarted_chunks(tmp_path):
 
     assert stats.files == 1
     assert stats.bytes == 0
+
+
+def test_preread_without_preadv(tmp_path, monkeypatch):
+    # Windows has no os.preadv; the seek-and-read fallback reads the same bytes.
+    monkeypatch.delattr(os, "preadv", raising=False)
+    (tmp_path / "a.safetensors").write_bytes(os.urandom(1000))
+
+    stats = preread_weights(tmp_path, workers=2, chunk_bytes=300)
+
+    assert stats.bytes == 1000

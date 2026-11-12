@@ -692,9 +692,11 @@ def cmd_compare(_args):
                 continue
             best_row, best_lv = min(priced, key=lambda rb: task_price(rb[0]))
             gate_lv = gate_level(best_row["levels"])
+            # The recomputed price, as in the table: the stored field may come
+            # from an older formula.
             print(
                 f"  best: {best_row['label']} at "
-                f"${gate_lv['usd_per_task']} per task at {FLOOR_LEVEL} streams, "
+                f"${task_price(best_row)} per task at {FLOOR_LEVEL} streams, "
                 f"{gate_lv.get('out_tokens_p50')} output tokens median"
             )
             if gate_lv.get("truncated_tasks"):

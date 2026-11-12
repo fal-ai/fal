@@ -7,9 +7,11 @@ A 7B model fits on one GPU, so tensor parallelism across both GPUs mostly
 adds communication cost. With ``engine_replicas = 2`` the runner starts one
 engine per GPU (each on its own port, starting at ``engine_port``) and routes
 every request to one of them: the engine that served the same session id
-before, else the one with the fewest requests in flight. ``num_gpus`` must
-divide evenly by ``engine_replicas``. The health check fails when either
-engine is down.
+before, else the one with the fewest requests in flight. Affinity is not
+strict: a session whose engine is far busier than the other moves (and loses
+its cached prefix), so a hot id cannot pile every request onto one GPU.
+``num_gpus`` must divide evenly by ``engine_replicas``. The health check fails
+when either engine is down.
 
 Run this once on real GPUs and compare it to a single-engine app before you
 rely on it for throughput.

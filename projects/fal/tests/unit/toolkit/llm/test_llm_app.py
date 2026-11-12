@@ -4,7 +4,6 @@ import asyncio
 import io
 import json
 import os
-import resource
 import socket
 import subprocess
 import sys
@@ -323,6 +322,42 @@ def test_unary_disconnect_aborts_engine(served):
     with pytest.raises(httpx.ReadTimeout):
         httpx.post(f"{url}/v1/chat/completions", json={"delay_ticks": 300}, timeout=1.0)
     assert _wait_for(abort_file, timeout=8.0)
+
+
+def _disconnect_once_engine_has_it(url: str, body: dict, body_file: Path) -> None:
+    # Raw socket so the client leaves only after the engine got the request:
+    # a short client timeout could leave before that on a slow runner.
+    host, port = url.removeprefix("http://").split(":")
+    payload = json.dumps(body).encode()
+    with socket.create_connection((host, int(port))) as s:
+        s.sendall(
+            b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Length: " + str(len(payload)).encode() + b"\r\n\r\n" + payload
+        )
+        assert _wait_for(body_file)
+
+
+@pytest.mark.parametrize(
+    "served", [{}, {"raw_stream_client": False}], indirect=True, ids=["raw", "httpx"]
+)
+def test_disconnect_before_stream_headers_aborts_engine(served):
+    # The client leaves while the engine still holds headers back.
+    app, url, abort_file, body_file = served
+    _disconnect_once_engine_has_it(
+        url, {"stream": True, "header_delay_ticks": 300}, body_file
+    )
+    assert _wait_for(abort_file)
+    assert _wait_idle(app)
+
+
+def test_disconnect_during_error_body_aborts_engine(served):
+    app, url, abort_file, body_file = served
+    _disconnect_once_engine_has_it(
+        url, {"stream": True, "fail": True, "error_body_ticks": 300}, body_file
+    )
+    assert _wait_for(abort_file)
+    assert _wait_idle(app)
 
 
 def test_llm_app_opts_into_gateway_cancel():
@@ -2320,7 +2355,10 @@ def test_engine_pool_is_sized_for_many_streams(served):
     assert type(app).engine_max_connections >= 1024
 
 
+@pytest.mark.skipif(os.name == "nt", reason="resource is POSIX-only")
 def test_pool_fits_the_fd_limit(monkeypatch):
+    import resource  # noqa: PLC0415
+
     calls = []
     monkeypatch.setattr(resource, "getrlimit", lambda _: (1024, 1 << 20))
     monkeypatch.setattr(resource, "setrlimit", lambda *a: calls.append(a))
@@ -2737,6 +2775,7 @@ def test_mid_stream_engine_failure_ends_in_band(served):
     assert app._replicas[0]._engine_errors == 0
 
 
+@pytest.mark.skipif(os.name == "nt", reason="process groups are POSIX-only")
 @pytest.mark.parametrize("parent_exits", [False, True])
 def test_stop_engine_kills_the_process_group(tmp_path, parent_exits):
     child_pid_file = tmp_path / "child.pid"
@@ -2776,6 +2815,7 @@ def test_stop_engine_kills_the_process_group(tmp_path, parent_exits):
         pytest.fail("engine worker survived _stop_engine")
 
 
+@pytest.mark.skipif(os.name == "nt", reason="process groups are POSIX-only")
 def test_engine_leads_its_own_process_group(served):
     app, _, _, _ = served
     assert os.getpgid(app._proc.pid) == app._proc.pid

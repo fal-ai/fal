@@ -506,6 +506,16 @@ class _Stream:
             self._upstream_closed = True
 
 
+async def _drop_upstream(send: "asyncio.Future[Any]") -> None:
+    """Cancel a pending upstream open and close the response if it won the
+    race. Cancelling closes the connection, which aborts the engine request."""
+    send.cancel()
+    with anyio.CancelScope(shield=True):
+        await asyncio.wait({send})
+        if not send.cancelled() and send.exception() is None:
+            await send.result().aclose()
+
+
 async def _wait_for_disconnect(request: Request) -> None:
     # Blocking receive instead of Request.is_disconnected(): the latter polls
     # with a cancelled scope, which can miss the event.
@@ -657,7 +667,8 @@ _KV_OFFLOAD_MAX_FRACTION = 0.8
 def _kill_group(proc: "subprocess.Popen[bytes]") -> None:
     # _start_engine starts the engine as a session leader, so its pid is the
     # group id, still valid for its workers after the leader itself exited.
-    if getattr(proc, "_own_group", False):
+    # Windows has no process groups to kill, only the process itself.
+    if getattr(proc, "_own_group", False) and hasattr(os, "killpg"):
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
@@ -803,6 +814,8 @@ class LLMApp(_EngineChecks, App):
     most 64 characters; anything else is not advertised) on every turn, as the
     ``X-Fal-Runner-Hint`` header (routing) and in the body as
     ``prompt_cache_key`` or ``user`` (so the runner can advertise it).
+    Advertised ids are visible to every caller of the runner, so use opaque
+    random ids, never user identifiers such as an email or account id.
 
     Subclasses overriding ``handle_exit`` or ``teardown`` must call ``super()``:
     they start the shutdown drain and stop the engine.
@@ -846,14 +859,17 @@ class LLMApp(_EngineChecks, App):
             turns it off. Defaults to ``None`` (off, except ``0.7`` with
             ``engine_profile = "agent"``).
         kv_cpu_offload_gib (`float | None`): Size of the CPU KV tier in GiB.
-            It turns the tier on and takes precedence over ``kv_cpu_offload``.
-            Defaults to ``None``.
+            It turns the tier on and takes precedence over a nonzero
+            ``kv_cpu_offload``; ``kv_cpu_offload = 0`` still turns the tier
+            off. Defaults to ``None``.
         engine_port (`int`): Local port of the engine. With replicas, engine
             ``i`` listens on ``engine_port + i``. Defaults to ``8000``.
         engine_replicas (`int`): Engines per runner. ``num_gpus`` is split
             into this many equal slices, one engine each. Defaults to ``1``.
         engine_startup_timeout_s (`float`): Seconds to wait for the engine to
-            become ready. Defaults to ``3300.0``.
+            become ready. Capped at the platform startup budget
+            (``startup_timeout``) minus a safety margin. Defaults to
+            ``3300.0``.
         engine_max_connections (`int`): Size of the connection pool to the
             engine. It must exceed the engine's max sequences plus queueing.
             Defaults to ``4096``.
@@ -875,6 +891,7 @@ class LLMApp(_EngineChecks, App):
             KV cache. Defaults to ``None`` (on with
             ``engine_profile = "agent"``).
         prefix_hint_max (`int`): Number of recent session ids to advertise.
+            Any caller of the runner can read them: use opaque random ids.
             Defaults to ``64``.
         request_deadline_s (`float | None`): Per-request time limit in
             seconds. Streams end with ``finish_reason`` ``"deadline"``, unary
@@ -907,26 +924,26 @@ class LLMApp(_EngineChecks, App):
             at least twice the boot time. Defaults to ``600``.
 
     Example:
-        ```python
-        from fal.container import ContainerImage
-        from fal.toolkit.llm import LLMApp
+        .. code-block:: python
+
+            from fal.container import ContainerImage
+            from fal.toolkit.llm import LLMApp
 
 
-        class QwenVLLM(
-            LLMApp,
-            kind="container",
-            image=ContainerImage.from_dockerfile_str(
-                "FROM vllm/vllm-openai:v0.32.0"
-            ),
-            name="qwen-vllm",
-        ):
-            machine_type = "GPU-RTXPRO6000"
-            num_gpus = 1
-            max_multiplexing = 256
-            model = "Qwen/Qwen2.5-7B-Instruct"
-            served_model_name = "qwen2.5-7b-instruct"
-            engine_args = ["--max-model-len", "8192"]
-        ```
+            class QwenVLLM(
+                LLMApp,
+                kind="container",
+                image=ContainerImage.from_dockerfile_str(
+                    "FROM vllm/vllm-openai:v0.32.0"
+                ),
+                name="qwen-vllm",
+            ):
+                machine_type = "GPU-RTXPRO6000"
+                num_gpus = 1
+                max_multiplexing = 256
+                model = "Qwen/Qwen2.5-7B-Instruct"
+                served_model_name = "qwen2.5-7b-instruct"
+                engine_args = ["--max-model-len", "8192"]
     """
 
     engine: ClassVar[str] = "vllm"
@@ -2367,34 +2384,39 @@ class LLMApp(_EngineChecks, App):
             ):
                 payload["stream_options"] = {"include_usage": True}
             send = asyncio.ensure_future(self._open_upstream(path, payload))
+            # StreamingResponse watches for disconnect only once relaying
+            # starts, so a client gone while the engine queues is caught here.
+            watcher = asyncio.ensure_future(_wait_for_disconnect(request))
             aborted = asyncio.ensure_future(abort.wait())
             limit, idle_bound = _wait_limit(deadline, self.stream_idle_timeout_s)
             try:
                 await asyncio.wait(
-                    {send, aborted},
+                    {send, watcher, aborted},
                     timeout=limit,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
             except asyncio.CancelledError:
-                send.cancel()
                 self._count_if_cancelled()
-                if send.done() and not send.cancelled() and not send.exception():
-                    # Headers arrived in the same tick: close what we got.
-                    await send.result().aclose()
+                await _drop_upstream(send)
                 raise
             finally:
+                watcher.cancel()
                 aborted.cancel()
+            if watcher.done() and not watcher.cancelled():
+                await _drop_upstream(send)
+                return Response(status_code=499)
             if not send.done():
-                # Still waiting for engine headers: cancelling closes the
-                # connection, which aborts the engine request.
-                send.cancel()
+                # Still waiting for engine headers.
+                await _drop_upstream(send)
                 return self._stream_cut_short(path, abort, deadline, idle_bound)
             try:
                 upstream = send.result()
             except self._transport_errors as exc:
                 return self._engine_unavailable(replica, exc)
             if upstream.status_code != 200:
-                return await self._engine_error_reply(upstream, path, abort, deadline)
+                return await self._engine_error_reply(
+                    request, upstream, path, abort, deadline
+                )
             relaying = True
             # The error count resets when the stream ends cleanly (_relay), so
             # an engine that answers and then dies mid-stream still adds up.
@@ -2437,14 +2459,17 @@ class LLMApp(_EngineChecks, App):
 
     async def _engine_error_reply(
         self,
+        request: Request,
         upstream: Any,
         path: str,
         abort: asyncio.Event,
         deadline: Optional[float],
     ) -> Response:
         """Relay a non-200 stream reply, reading its body within the request
-        deadline and until shutdown, as the stream itself would be."""
+        deadline and until shutdown or disconnect, as the stream itself would
+        be."""
         read = asyncio.ensure_future(upstream.aread())
+        watcher = asyncio.ensure_future(_wait_for_disconnect(request))
         aborted = asyncio.ensure_future(abort.wait())
         remaining = _remaining(deadline)
         limit = (
@@ -2454,12 +2479,15 @@ class LLMApp(_EngineChecks, App):
         )
         try:
             await asyncio.wait(
-                {read, aborted}, timeout=limit, return_when=asyncio.FIRST_COMPLETED
+                {read, watcher, aborted},
+                timeout=limit,
+                return_when=asyncio.FIRST_COMPLETED,
             )
         except asyncio.CancelledError:
             self._count_if_cancelled()
             raise
         finally:
+            watcher.cancel()
             aborted.cancel()
             if not read.done():
                 read.cancel()
@@ -2469,10 +2497,13 @@ class LLMApp(_EngineChecks, App):
         if not read.cancelled():
             body = read.result()
             return self._engine_reply(body, upstream.status_code)
-        if abort.is_set() or _expired(deadline):
+        disconnected = watcher.done() and not watcher.cancelled()
+        if disconnected or abort.is_set() or _expired(deadline):
             # The engine already answered with this status, so it counts
             # toward engine_error_threshold even though the body is dropped.
             self._route()._count_engine_reply(upstream.status_code)
+            if disconnected:
+                return Response(status_code=499)
             return self._stream_cut_short(path, abort, deadline)
         return self._engine_reply(
             json.dumps(

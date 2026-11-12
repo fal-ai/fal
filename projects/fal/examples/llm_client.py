@@ -43,7 +43,7 @@ def main() -> None:
     # Streaming call that stops early. Closing the stream drops the connection,
     # which aborts the request in the engine and frees its KV cache. Streams
     # that LLMApp ends itself report finish_reason "deadline",
-    # "idle_timeout" or "shutdown".
+    # "idle_timeout", "shutdown", or "error" when the engine's stream breaks.
     stream = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": "Count from 1 to 500."}],

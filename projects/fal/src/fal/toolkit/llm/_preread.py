@@ -37,6 +37,16 @@ def _read_range(path: str, offset: int, length: int) -> int:
     done = 0
     buf = bytearray(min(_READ_BLOCK, length))
     view = memoryview(buf)
+    if not hasattr(os, "preadv"):
+        # Windows: no positional reads, so seek a private handle instead.
+        with open(path, "rb", buffering=0) as f:
+            f.seek(offset)
+            while done < length:
+                n = f.readinto(view[: min(len(buf), length - done)])
+                if not n:
+                    break
+                done += n
+        return done
     fd = os.open(path, os.O_RDONLY)
     try:
         while done < length:

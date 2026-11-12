@@ -3,7 +3,9 @@
 Runs ``--streams`` concurrent SSE streams spread over ``--procs`` processes
 for ``--duration`` seconds (each finished stream is replaced). Reports TTFT,
 per-chunk path latency (client receive time minus the engine's send stamp),
-throughput and errors as one JSON object.
+throughput and errors as one JSON object. Event throughput counts every
+stamped SSE event (finish and usage included); token throughput counts
+generated tokens only, from each stream's usage chunk.
 """
 
 from __future__ import annotations
@@ -18,11 +20,19 @@ from collections import Counter
 
 import uvloop
 
-TS = re.compile(rb'"ts":(\d+\.\d+)')
+# Numbers are anchored on the next delimiter so a read that ends inside the
+# digits does not match a truncated value now and the full one next read.
+TS = re.compile(rb'"ts": ?(\d+\.\d+)[,}]')
+CONTENT = re.compile(rb'"delta":\{"content":')
+USAGE = re.compile(rb'"completion_tokens": ?(\d+)[,}]')
+# Longer than any pattern above, so a match split across reads is still found.
+_TAIL = 40
 
 
 async def one(host, port, body, stats, lat, stop_at, sem):
     t_req = time.time()
+    content = 0
+    usage_tokens = None
     try:
         r, w = await asyncio.open_connection(host, port)
     except Exception as e:
@@ -59,15 +69,21 @@ async def one(host, port, body, stats, lat, stop_at, sem):
                     stats["ttft"].append(now - t_req)
                     first = False
                 buf2 = tail + data
-                n = 0
+                # Matches that end inside the carried tail were counted last read.
+                fresh = len(tail)
                 for m in TS.finditer(buf2):
-                    n += 1
+                    if m.end() <= fresh:
+                        continue
+                    stats["events"] += 1
                     stats["seen"] += 1
                     if stats["seen"] % stats["sample"] == 0:
                         lat.append(now - float(m.group(1)))
-                stats["chunks"] += n
+                content += sum(1 for m in CONTENT.finditer(buf2) if m.end() > fresh)
+                for m in USAGE.finditer(buf2):
+                    if m.end() > fresh:
+                        usage_tokens = int(m.group(1))
                 stats["bytes"] += len(data)
-                tail = buf2[-40:]
+                tail = buf2[-_TAIL:]
                 if b"[DONE]" in buf2[-200:]:
                     done = True
                 if buf2.endswith(b"0\r\n\r\n"):
@@ -84,6 +100,12 @@ async def one(host, port, body, stats, lat, stop_at, sem):
         stats["err"][type(e).__name__] += 1
     finally:
         w.close()
+        # Counted even for a broken stream, like its events.
+        stats["chunks"] += content
+        if usage_tokens is None:
+            # No usage chunk: every content chunk is full except the last.
+            usage_tokens = min(content * body["tokens_per_chunk"], body["n_tokens"])
+        stats["tokens"] += usage_tokens
 
 
 async def worker(host, port, body, stats, lat, stop_at):
@@ -95,6 +117,8 @@ async def run(a, n):
     stats = {
         "ttft": [],
         "chunks": 0,
+        "events": 0,
+        "tokens": 0,
         "bytes": 0,
         "ok": 0,
         "err": Counter(),
@@ -161,6 +185,8 @@ if __name__ == "__main__":
         errs.update(r["err"])
     wall = max(r["wall"] for r in res)
     chunks = sum(r["chunks"] for r in res)
+    events = sum(r["events"] for r in res)
+    tokens = sum(r["tokens"] for r in res)
     ok = sum(r["ok"] for r in res)
     out = {
         "label": a.label,
@@ -168,7 +194,8 @@ if __name__ == "__main__":
         "ok": ok,
         "errors": dict(errs),
         "chunks_per_s": round(chunks / wall),
-        "tok_per_s": round(chunks * a.tpc / wall),
+        "events_per_s": round(events / wall),
+        "tok_per_s": round(tokens / wall),
         "ttft_ms_p50": round(pct(ttft, 0.5) * 1e3, 2),
         "ttft_ms_p99": round(pct(ttft, 0.99) * 1e3, 2),
         "chunk_lat_ms_p50": round(pct(lat, 0.5) * 1e3, 2),

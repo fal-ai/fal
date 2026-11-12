@@ -311,9 +311,7 @@ def test_throughput_spans_every_served_stream_not_just_costed_ones(bench, monkey
 def test_straggler_does_not_move_per_task_cost_via_run_level(bench, monkeypatch):
     # The straggler guard has to hold where task_s_p50 is actually produced, not
     # only in the pure function: swapping the median for a mean must fail here.
-    healthy = run_level_with(
-        bench, monkeypatch, 2, True, [spec("stop", 10.0, 50)] * 4
-    )
+    healthy = run_level_with(bench, monkeypatch, 2, True, [spec("stop", 10.0, 50)] * 4)
     strag = run_level_with(
         bench,
         monkeypatch,
@@ -339,9 +337,7 @@ def test_forced_mode_counts_every_stream_despite_length_finishes(bench, monkeypa
 
 
 def test_a_fully_truncated_natural_level_reports_no_per_task_cost(bench, monkeypatch):
-    level = run_level_with(
-        bench, monkeypatch, 2, True, [spec("length", 90.0, 512)] * 2
-    )
+    level = run_level_with(bench, monkeypatch, 2, True, [spec("length", 90.0, 512)] * 2)
     assert level["costed_tasks"] == 0
     assert level["task_s_p50"] is None
     assert level["out_tokens_p50"] is None
@@ -421,3 +417,24 @@ def test_workload_key_separates_hardware_and_rate(bench):
     pricier = {**base, "gpu_hourly_usd": 5.0}
     assert bench.workload_key(base) != bench.workload_key(pricier)
     assert bench.workload_key(base) != bench.workload_key({**base, "machine": "H100"})
+
+
+def test_compare_announces_the_recomputed_per_task_price(bench, monkeypatch, capsys):
+    # The winner line must quote the same recomputed price the table shows,
+    # not a stale stored one.
+    row = priced_row(0.5, 40, 13.0)
+    row["levels"][0]["usd_per_task"] = 99.0
+    row["levels"][0]["agg_out_tok_s"] = 1000.0
+    row.update(
+        label="run",
+        natural=True,
+        engine_args=[],
+        max_tokens=512,
+        model="m",
+        machine="GPU-RTXPRO6000",
+    )
+    monkeypatch.setattr(bench, "load_rows", lambda: [row])
+    bench.cmd_compare(None)
+    out = capsys.readouterr().out
+    assert "99.0" not in out
+    assert f"best: run at ${bench.task_price(row)} per task" in out
