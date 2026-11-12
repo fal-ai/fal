@@ -11,13 +11,12 @@ import http.client
 import ipaddress
 import os
 import socket
+import ssl
 import tempfile
 import urllib.parse
 import warnings
 from dataclasses import dataclass
 from typing import Any, Callable
-
-from fal._tls import create_ssl_context
 
 DEFAULT_ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 DEFAULT_MAX_REDIRECT_HOPS = 5
@@ -248,7 +247,7 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
         server_hostname: str,
         timeout: float,
     ):
-        ssl_context = create_ssl_context()
+        ssl_context = ssl.create_default_context()
         super().__init__(
             target_ip,
             port=port,
@@ -282,9 +281,7 @@ def _open_connection(
 
     if parsed.scheme == "https":
         if target_ip is None:
-            return http.client.HTTPSConnection(
-                parsed.hostname, port, timeout=timeout, context=create_ssl_context()
-            )
+            return http.client.HTTPSConnection(parsed.hostname, port, timeout=timeout)
         return _PinnedHTTPSConnection(
             target_ip,
             port,

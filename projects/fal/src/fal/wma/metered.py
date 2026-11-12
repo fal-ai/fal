@@ -65,7 +65,6 @@ import urllib.parse
 import urllib.request
 from typing import Any, Callable, Dict, List, Mapping, Sequence
 
-from fal._tls import create_ssl_context
 from fal.compat import run_in_thread
 from fal.wma.ice import (
     DEFAULT_STUN_URL,
@@ -420,7 +419,7 @@ def validate_forwarded_ice_servers(
 
 
 # ---------------------------------------------------------------------------
-# Credential fetch (urllib with the SDK CA configuration)
+# Credential fetch (stdlib urllib; no third-party HTTP dep on the CPU apps)
 # ---------------------------------------------------------------------------
 
 
@@ -447,9 +446,7 @@ def _opener() -> urllib.request.OpenerDirector:
     """
     if _OPENER is not None:
         return _OPENER
-    return urllib.request.build_opener(
-        _NoRedirect(), urllib.request.HTTPSHandler(context=create_ssl_context())
-    )
+    return urllib.request.build_opener(_NoRedirect())
 
 
 def _http_json(url: str, *, method: str, body: bytes | None, kind: str) -> Any:

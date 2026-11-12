@@ -16,7 +16,6 @@ from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
 from urllib.response import addinfourl
 
-from fal._tls import create_ssl_context
 from fal._user_agent import USER_AGENT
 from fal.auth import AuthCredentials, fetch_auth_credentials
 from fal.exceptions.auth import UnauthenticatedException
@@ -98,7 +97,7 @@ def _maybe_retry_request(
         backoff_type="exponential",
         jitter=True,
         should_retry=_should_retry,
-    )(partial(urlopen, request, timeout=timeout, context=create_ssl_context()))
+    )(partial(urlopen, request, timeout=timeout))
 
     response = _urlopen_with_retry()
     try:
