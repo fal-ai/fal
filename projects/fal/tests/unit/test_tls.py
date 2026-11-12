@@ -1,4 +1,7 @@
+import os
 import ssl
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -68,3 +71,23 @@ def test_remote_grpc_credentials_honor_ssl_cert_file(monkeypatch, tmp_path):
     ssl_channel_credentials.assert_called_once_with(
         root_certificates=b"private CA bundle"
     )
+
+
+def test_serialized_modules_work_without_certifi():
+    # Plain function envs get fal code by pickle and may not install certifi.
+    code = """
+import sys
+sys.modules["certifi"] = None
+import fal.sdk, fal.auth, fal.toolkit.file.providers.fal
+from fal._tls import create_ssl_context, grpc_root_certificates
+assert create_ssl_context().verify_mode == 2
+assert grpc_root_certificates() is None
+"""
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k
+        not in ("SSL_CERT_FILE", "SSL_CERT_DIR", "GRPC_DEFAULT_SSL_ROOTS_FILE_PATH")
+    }
+
+    subprocess.run([sys.executable, "-c", code], check=True, env=env)
