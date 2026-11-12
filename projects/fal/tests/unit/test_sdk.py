@@ -564,6 +564,31 @@ def test_register_forwards_attach_to_deployment(attach_to_deployment):
     assert stub.register_request.attach_to_deployment is attach_to_deployment
 
 
+def test_register_sends_in_place_rolling_strategy():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+    environment = connection.define_environment(
+        "container",
+        image={"dockerfile_str": "FROM debian:bookworm-slim", "use_isolate": False},
+    )
+
+    list(
+        connection.register(
+            None,
+            [environment],
+            application_name="container-app",
+            deployment_strategy="rolling",
+            in_place=True,
+        )
+    )
+
+    assert (
+        stub.register_request.deployment_strategy
+        == isolate_proto.DeploymentStrategy.ROLLING_IN_PLACE
+    )
+
+
 def test_register_rejects_empty_retry_config():
     connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
     stub = RecordingStub()
