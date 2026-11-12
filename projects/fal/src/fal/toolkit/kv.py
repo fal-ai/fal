@@ -99,7 +99,7 @@ class KVStore:
             with _maybe_retry_request(request) as response:
                 result = json.load(response)
         except HTTPError as e:
-            if e.status == 404:
+            if method == "GET" and e.status == 404:
                 return None
             detail = None
             try:
