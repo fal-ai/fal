@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Any, Dict, Optional
 from urllib.error import HTTPError
 from urllib.parse import urlencode
@@ -8,7 +9,7 @@ from fal._user_agent import USER_AGENT
 from fal.toolkit.exceptions import KVStoreException
 from fal.toolkit.file.providers.fal import _maybe_retry_request, fal_v3_token_manager
 
-FAL_KV_HOST = "https://kv.fal.media"
+FAL_KV_HOST = os.getenv("FAL_KV_HOST") or "https://kv.fal.media"
 
 
 class KVStore:
@@ -98,7 +99,7 @@ class KVStore:
             with _maybe_retry_request(request) as response:
                 result = json.load(response)
         except HTTPError as e:
-            if e.status == 404:
+            if method == "GET" and e.status == 404:
                 return None
             detail = None
             try:
