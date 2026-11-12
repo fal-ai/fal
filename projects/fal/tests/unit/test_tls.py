@@ -6,8 +6,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import certifi
+import cloudpickle
 
-from fal._tls import create_ssl_context
+import fal
+from fal._tls import create_ssl_context, grpc_root_certificates
 from fal.sdk import RemoteCredentials
 
 
@@ -73,14 +75,20 @@ def test_remote_grpc_credentials_honor_ssl_cert_file(monkeypatch, tmp_path):
     )
 
 
-def test_serialized_modules_work_without_certifi():
-    # Plain function envs get fal code by pickle and may not install certifi.
+def test_pickled_tls_helpers_load_without_certifi():
+    # fal is pickled by value into runner envs that may not install certifi.
+    registered = "fal" in cloudpickle.list_registry_pickle_by_value()
+    cloudpickle.register_pickle_by_value(fal)
+    try:
+        payload = cloudpickle.dumps((create_ssl_context, grpc_root_certificates))
+    finally:
+        if not registered:
+            cloudpickle.unregister_pickle_by_value(fal)
     code = """
-import sys
+import pickle, ssl, sys
 sys.modules["certifi"] = None
-import fal.sdk, fal.auth, fal.toolkit.file.providers.fal
-from fal._tls import create_ssl_context, grpc_root_certificates
-assert create_ssl_context().verify_mode == 2
+create_ssl_context, grpc_root_certificates = pickle.loads(sys.stdin.buffer.read())
+assert create_ssl_context().verify_mode == ssl.CERT_REQUIRED
 assert grpc_root_certificates() is None
 """
     env = {
@@ -90,4 +98,4 @@ assert grpc_root_certificates() is None
         not in ("SSL_CERT_FILE", "SSL_CERT_DIR", "GRPC_DEFAULT_SSL_ROOTS_FILE_PATH")
     }
 
-    subprocess.run([sys.executable, "-c", code], check=True, env=env)
+    subprocess.run([sys.executable, "-c", code], input=payload, check=True, env=env)
