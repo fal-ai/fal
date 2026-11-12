@@ -11,23 +11,15 @@ import sys
 import threading
 import time
 import types
-from collections import OrderedDict
 from pathlib import Path
 
 import httpx
 import pytest
 import uvicorn
+from llm_helpers import FAKE, _free_port, _wait_for
 
-from fal.toolkit.llm import LLMApp, _app
+from fal.toolkit.llm import LLMApp, _routing
 from fal.toolkit.llm._app import _Replica, _split_devices, _with_port
-
-FAKE = str(Path(__file__).parent / "fake_engine.py")
-
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def _free_port_pair() -> int:
@@ -44,15 +36,6 @@ def _free_port_pair() -> int:
             continue
         return port
     raise RuntimeError("no free port pair")
-
-
-def _wait_for(path: Path, timeout: float = 5.0) -> bool:
-    end = time.time() + timeout
-    while time.time() < end:
-        if path.exists():
-            return True
-        time.sleep(0.1)
-    return False
 
 
 def _wait_until(check, timeout: float = 5.0) -> bool:
@@ -128,8 +111,6 @@ def _router(n: int) -> LLMApp:
 
     app = Router()
     app._replicas = [_Replica(app, i, 9000 + i) for i in range(n)]
-    app._sessions = OrderedDict()
-    app._response_routes = OrderedDict()
     return app
 
 
@@ -148,7 +129,7 @@ def test_sticky_sessions_and_least_inflight():
     assert app._pick_replica("b") is r1
     # No session id: least in flight, nothing remembered.
     assert app._pick_replica(None) is r0
-    assert len(app._sessions) == 2
+    assert len(app._router._sessions) == 2
 
 
 def test_hot_session_moves_off_an_overloaded_replica():
@@ -189,19 +170,19 @@ def test_app_class_pickles_by_value():
 
 
 def test_session_routes_are_bounded(monkeypatch):
-    monkeypatch.setattr(_app, "_SESSION_ROUTES_MAX", 3)
+    monkeypatch.setattr(_routing, "_SESSION_ROUTES_MAX", 3)
     app = _router(2)
     for i in range(10):
         app._pick_replica(f"s{i}")
-    assert len(app._sessions) == 3
+    assert len(app._router._sessions) == 3
 
 
 def test_response_routes_are_bounded(monkeypatch):
-    monkeypatch.setattr(_app, "_RESPONSE_ROUTES_MAX", 3)
+    monkeypatch.setattr(_routing, "_RESPONSE_ROUTES_MAX", 3)
     app = _router(2)
     for i in range(10):
         app._note_response(f"resp_{i}", app._replicas[i % 2])
-    assert list(app._response_routes) == ["resp_7", "resp_8", "resp_9"]
+    assert list(app._router._response_routes) == ["resp_7", "resp_8", "resp_9"]
     payload = {"previous_response_id": "resp_9"}
     assert app._continuation_replica("/v1/responses", payload) is app._replicas[1]
     assert app._continuation_replica("/v1/chat/completions", payload) is None
@@ -211,7 +192,7 @@ def test_response_routes_are_bounded(monkeypatch):
     # An engine that exited lost the conversation: route as usual.
     app._replicas[1].proc = types.SimpleNamespace(poll=lambda: 1)
     assert app._continuation_replica("/v1/responses", payload) is None
-    assert "resp_9" not in app._response_routes
+    assert "resp_9" not in app._router._response_routes
 
 
 def test_unhealthy_replica_is_routed_around():
@@ -236,7 +217,7 @@ def test_single_replica_needs_no_routing_state():
     app = One()
     app._replicas = [_Replica(app, 0, 9000)]
     assert app._pick_replica("a") is app._replicas[0]
-    assert not hasattr(app, "_sessions")
+    assert not app._router._sessions
 
 
 def test_replicas_must_split_the_gpus():

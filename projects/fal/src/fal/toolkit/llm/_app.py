@@ -1,5 +1,4 @@
 import asyncio
-import contextvars
 import hashlib
 import json
 import math
@@ -11,13 +10,11 @@ import sys
 import threading
 import time
 import warnings
-from collections import OrderedDict, deque
+from collections import deque
 from datetime import timezone
 from pathlib import Path
 from typing import (
     Any,
-    Awaitable,
-    Callable,
     ClassVar,
     Deque,
     Dict,
@@ -47,11 +44,6 @@ from fal.toolkit.llm._cache import (
 from fal.toolkit.llm._preread import DEFAULT_WORKERS, preread_weights
 from fal.toolkit.llm._presets import (
     AGENT_KV_CPU_OFFLOAD,
-    AGENT_PROFILE,
-    B200,
-    H100,
-    PROFILES,
-    RTX_PRO_6000,
     Machine,
     checkpoint_for,
     detect_gpu,
@@ -62,6 +54,20 @@ from fal.toolkit.llm._presets import (
     merge_engine_args,
     model_facts,
     short_gpu_type,
+)
+from fal.toolkit.llm._recipes import AGENT_PROFILE, B200, H100, PROFILES, RTX_PRO_6000
+from fal.toolkit.llm._routing import _Router
+from fal.toolkit.llm._stream import (
+    _FINISH_REASON_RE,
+    _RESPONSES_TERMINAL_RE,
+    _cached_tokens,
+    _drop_upstream,
+    _event_cut,
+    _parse_stream_usage,
+    _RelayResponse,
+    _sse_response_id,
+    _Stream,
+    _wait_for_disconnect,
 )
 from fal.toolkit.llm._upstream import UpstreamBusy, open_stream
 
@@ -115,15 +121,6 @@ _MEAN_METRICS = frozenset(
     )
 )
 _METRIC_RE = re.compile(r"^([^\s{]+)(?:\{[^}]*\})?\s+([0-9.eE+-]+|nan|NaN)$")
-# Session ids remembered for replica routing (least recently used dropped).
-_SESSION_ROUTES_MAX = 4096
-# Responses API ids remembered with the replica that created them, so a
-# ``previous_response_id`` continuation reaches the engine holding its state.
-_RESPONSE_ROUTES_MAX = 65536
-# Extra requests in flight a session's replica may hold over the least loaded
-# one before the session moves.
-_STICKY_SLACK = 4
-_STREAM_TAIL_BYTES = 8192
 _ENGINE_CONNECT_TIMEOUT_S = 30.0
 # An engine error body is small; a stalled one must not hold the request.
 _ERROR_BODY_TIMEOUT_S = 30.0
@@ -173,8 +170,6 @@ _FAIL_STOP_TIMEOUT_S = 5.0
 _ENGINE_STOP_BUDGET_S = 3.0
 _MAX_ENGINE_STOP_WAIT_S = 30.0
 _DRAIN_SLACK_S = 1.0
-# A forwarded chunk that already carries a non-null finish reason.
-_FINISH_REASON_RE = re.compile(rb'"finish_reason":\s*"')
 # Hint ids the runner can advertise: header-safe, at most 64 chars.
 _HINT_RE = re.compile(r"[A-Za-z0-9._:-]{1,64}")
 # Platform window between SIGTERM and SIGKILL when the app sets none.
@@ -206,53 +201,6 @@ def _torch_tag() -> str:
         return metadata.version("torch")
     except Exception:
         return "unknown"
-
-
-# ``"usage": {...}`` with one level of nesting, for a Responses API terminal
-# event whose start fell out of the stream tail (it carries the whole output).
-_USAGE_TAIL_RE = re.compile(r'"usage":\s*(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})')
-# Responses API stream events that end a response (no ``[DONE]`` follows).
-_RESPONSES_TERMINAL_RE = re.compile(
-    rb'"type":\s*"response\.(?:completed|incomplete|failed)"'
-)
-
-
-def _parse_stream_usage(tail: bytes) -> Optional[Dict[str, Any]]:
-    text = tail.decode("utf-8", errors="replace")
-    for raw in reversed(text.splitlines()):
-        line = raw.strip()
-        if line.startswith("data:") and '"usage"' in line:
-            try:
-                event = json.loads(line[5:])
-            except ValueError:
-                break
-            if not isinstance(event, dict):
-                break
-            # Chat and completions: top level. Responses: under ``response``.
-            usage = event.get("usage")
-            if usage is None and isinstance(event.get("response"), dict):
-                usage = event["response"].get("usage")
-            return usage if isinstance(usage, dict) else None
-    # The terminal Responses event can outgrow the tail and lose its start.
-    match = None
-    for match in _USAGE_TAIL_RE.finditer(text):
-        pass
-    if match:
-        try:
-            usage = json.loads(match.group(1))
-        except ValueError:
-            return None
-        return usage if isinstance(usage, dict) else None
-    return None
-
-
-def _cached_tokens(usage: Dict[str, Any]) -> int:
-    """Prompt tokens served from the prefix cache (chat or Responses shape)."""
-    for key in ("prompt_tokens_details", "input_tokens_details"):
-        details = usage.get(key)
-        if isinstance(details, dict):
-            return int(details.get("cached_tokens") or 0)
-    return 0
 
 
 def _hub_commit(
@@ -348,28 +296,6 @@ def _fit_pool_to_fd_limit(wanted: int) -> int:
         return min(wanted, 512)
 
 
-def _event_cut(buf: bytes) -> int:
-    """Length of the leading run of whole SSE events in ``buf`` (0 if none)."""
-    lf, crlf = buf.rfind(b"\n\n"), buf.rfind(b"\r\n\r\n")
-    return max(lf + 2 if lf >= 0 else 0, crlf + 4 if crlf >= 0 else 0)
-
-
-def _sse_response_id(events: bytes) -> Optional[str]:
-    """The ``response.id`` of the first Responses API event in ``events``
-    that has one."""
-    for line in events.splitlines():
-        if not line.startswith(b"data:"):
-            continue
-        try:
-            event = json.loads(line[5:])
-        except ValueError:
-            continue
-        response = event.get("response") if isinstance(event, dict) else None
-        if isinstance(response, dict) and isinstance(response.get("id"), str):
-            return response["id"]
-    return None
-
-
 def _expired(deadline: Optional[float]) -> bool:
     return deadline is not None and time.monotonic() >= deadline
 
@@ -408,121 +334,6 @@ def _shutting_down_response() -> JSONResponse:
         status_code=503,
         headers={"Retry-After": "1", "X-Fal-Needs-Retry": "true"},
     )
-
-
-class _RelayResponse(StreamingResponse):
-    """Streaming response that always runs ``cleanup``, even if never iterated.
-
-    Starlette skips the body generator when the client disconnects before the
-    first iteration, so cleanup cannot live in the generator's ``finally``.
-    """
-
-    def __init__(self, content: Any, cleanup: Callable[[], Awaitable[None]], **kw):
-        super().__init__(content, **kw)
-        self._cleanup = cleanup
-
-    async def __call__(self, scope, receive, send) -> None:
-        try:
-            await super().__call__(scope, receive, send)
-        finally:
-            # Unwinds a suspended generator; a no-op if it finished or never ran.
-            try:
-                aclose = getattr(self.body_iterator, "aclose", None)
-                if aclose is not None:
-                    await aclose()
-            finally:
-                await self._cleanup()
-
-
-class _Stream:
-    """An upstream streaming response and its once-only cleanup."""
-
-    def __init__(
-        self,
-        app: "LLMApp",
-        upstream: Any,
-        path: str,
-        abort: asyncio.Event,
-        replica: Optional["_Replica"] = None,
-    ) -> None:
-        self.app = app
-        self.upstream = upstream
-        self.path = path
-        self.abort = abort
-        self.replica = replica
-        self._recent: Deque[bytes] = deque()
-        self._recent_len = 0
-        self._settled = False
-        self._upstream_closed = False
-
-    @property
-    def tail(self) -> bytes:
-        """The last ``_STREAM_TAIL_BYTES`` bytes relayed."""
-        return b"".join(self._recent)[-_STREAM_TAIL_BYTES:]
-
-    @tail.setter
-    def tail(self, value: bytes) -> None:
-        self._recent = deque([value])
-        self._recent_len = len(value)
-
-    def feed(self, chunk: bytes) -> None:
-        # Keeps whole chunks instead of re-slicing one tail buffer per chunk,
-        # which copied the full tail for every few-hundred-byte event.
-        self._recent.append(chunk)
-        self._recent_len += len(chunk)
-        while len(self._recent) > 1 and (
-            self._recent_len - len(self._recent[0]) >= _STREAM_TAIL_BYTES
-        ):
-            self._recent_len -= len(self._recent.popleft())
-
-    async def close(self) -> None:
-        # Bookkeeping runs once; the upstream close is retried by the next
-        # owner if a cancelled scope (client disconnect) interrupted it.
-        if not self._settled:
-            self._settled = True
-            self.app._inflight.discard(self.abort)
-            if self.replica is not None:
-                self.replica.inflight -= 1
-            self.app._count_if_cancelled()
-            try:
-                # Inside the try: a parser bug must not skip the upstream close.
-                usage = _parse_stream_usage(self.tail)
-                if usage:
-                    self.app.record_usage(self.path, usage)
-            except Exception as exc:
-                # A subclass hook must not keep the engine request alive.
-                print(f"[llm-app] record_usage failed: {exc!r}")
-        if not self._upstream_closed:
-            # Closing the upstream connection makes the engine abort the
-            # request, which also covers client disconnects and shutdown.
-            # Shielded: on a client disconnect this runs in a cancelled scope,
-            # and an interrupted httpx close cannot be retried (the response
-            # is marked closed first), which with httpcore < 1.0 left the
-            # engine connection open. The shield covers anyio scope
-            # cancellation (Starlette's task group on ASGI spec 2.3), not a
-            # second native task cancel.
-            with anyio.CancelScope(shield=True):
-                await self.upstream.aclose()
-            self._upstream_closed = True
-
-
-async def _drop_upstream(send: "asyncio.Future[Any]") -> None:
-    """Cancel a pending upstream open and close the response if it won the
-    race. Cancelling closes the connection, which aborts the engine request."""
-    send.cancel()
-    with anyio.CancelScope(shield=True):
-        await asyncio.wait({send})
-        if not send.cancelled() and send.exception() is None:
-            await send.result().aclose()
-
-
-async def _wait_for_disconnect(request: Request) -> None:
-    # Blocking receive instead of Request.is_disconnected(): the latter polls
-    # with a cancelled scope, which can miss the event.
-    while True:
-        message = await request.receive()
-        if message["type"] == "http.disconnect":
-            return
 
 
 def _parse_metrics(text: str) -> Dict[str, float]:
@@ -1344,18 +1155,11 @@ class LLMApp(_EngineChecks, App):
         self._boot: Dict[str, Any] = {}
         self._usage_totals: Dict[str, int] = {}
         self._inflight: Set[asyncio.Event] = set()
-        self._replicas = [
-            _Replica(self, i, self.engine_port + i) for i in range(self.engine_replicas)
-        ]
-        # Session id digest -> replica index, least recently used first.
-        self._sessions: OrderedDict[bytes, int] = OrderedDict()
-        # Responses API id -> index of the replica that created it.
-        self._response_routes: OrderedDict[str, int] = OrderedDict()
-        # The replica the current request was routed to: set in _proxy, read
-        # where the engine call is made (tasks copy the context). Made here,
-        # not at module level: a ContextVar cannot be pickled with the class.
-        self._route_var: contextvars.ContextVar[Optional[_Replica]] = (
-            contextvars.ContextVar("llm_app_route", default=None)
+        self._router = _Router(
+            [
+                _Replica(self, i, self.engine_port + i)
+                for i in range(self.engine_replicas)
+            ]
         )
         self._recent_prefixes: Deque[str] = deque(
             maxlen=min(100, max(1, self.prefix_hint_max))
@@ -2182,73 +1986,31 @@ class LLMApp(_EngineChecks, App):
             body["replicas"] = self._replica_report(per_replica)
         return JSONResponse(body)
 
+    @property
+    def _replicas(self) -> List[_Replica]:
+        # AttributeError before setup, so ``getattr(self, "_replicas", ...)``
+        # falls back to its default.
+        return self._router.replicas
+
+    @_replicas.setter
+    def _replicas(self, replicas: List[_Replica]) -> None:
+        self._router = _Router(replicas)
+
     def _route(self) -> _Replica:
         """The replica the current request was routed to. Outside ``_proxy``
         (a subclass calling the engine directly) that is the first one."""
-        return self._route_var.get() or self._replicas[0]
+        return self._router.current()
 
     def _pick_replica(self, session: Optional[str]) -> _Replica:
-        """The replica that served ``session`` before, if it is still usable
-        and not far busier than the rest; else the usable one with the fewest
-        requests in flight."""
-        replicas = self._replicas
-        if len(replicas) == 1:
-            return replicas[0]
-        # With none usable the runner is failing its health check; any reply
-        # (likely a 5xx) beats queueing here until it is replaced.
-        usable = [r for r in replicas if r.usable()] or replicas
-        choice = min(usable, key=lambda r: (r.inflight, r.index))
-        key = None
-        if session is not None:
-            # A digest bounds the memory a long id can take.
-            key = hashlib.blake2b(session.encode(), digest_size=16).digest()
-            index = self._sessions.get(key)
-            if index is not None and replicas[index] in usable:
-                sticky = replicas[index]
-                # A hot session id (say a constant ``user``) must not pile
-                # every request onto one engine: past the least load plus the
-                # larger of that load and the slack, it moves and loses its
-                # cached prefix.
-                slack = max(_STICKY_SLACK, choice.inflight)
-                if sticky.inflight <= choice.inflight + slack:
-                    self._sessions.move_to_end(key)
-                    return sticky
-        if key is not None:
-            self._sessions[key] = choice.index
-            self._sessions.move_to_end(key)
-            while len(self._sessions) > _SESSION_ROUTES_MAX:
-                self._sessions.popitem(last=False)
-        return choice
+        return self._router.pick(session)
 
     def _continuation_replica(
         self, path: str, payload: Dict[str, Any]
     ) -> Optional[_Replica]:
-        """The replica that created ``previous_response_id``, if known. It is
-        used even when busy or unhealthy: the engine keeps the conversation in
-        memory, so any other replica would answer that the id is not found."""
-        if path != "/v1/responses" or len(self._replicas) == 1:
-            return None
-        previous = payload.get("previous_response_id")
-        if not isinstance(previous, str):
-            return None
-        index = self._response_routes.get(previous)
-        if index is None:
-            return None
-        replica = self._replicas[index]
-        if replica.proc is not None and replica.proc.poll() is not None:
-            # The engine exited and its in-memory state went with it.
-            del self._response_routes[previous]
-            return None
-        self._response_routes.move_to_end(previous)
-        return replica
+        return self._router.continuation(path, payload)
 
     def _note_response(self, response_id: Any, replica: _Replica) -> None:
-        if not isinstance(response_id, str) or len(self._replicas) == 1:
-            return
-        self._response_routes[response_id] = replica.index
-        self._response_routes.move_to_end(response_id)
-        while len(self._response_routes) > _RESPONSE_ROUTES_MAX:
-            self._response_routes.popitem(last=False)
+        self._router.note_response(response_id, replica)
 
     def _add_extra_routes(self, app: Any) -> None:
         super()._add_extra_routes(app)
@@ -2364,7 +2126,7 @@ class LLMApp(_EngineChecks, App):
         replica = self._continuation_replica(path, payload) or self._pick_replica(
             self._session_id(payload, request.headers)
         )
-        self._route_var.set(replica)
+        self._router.set_current(replica)
 
         abort = asyncio.Event()
         self._inflight.add(abort)
@@ -2420,7 +2182,7 @@ class LLMApp(_EngineChecks, App):
             relaying = True
             # The error count resets when the stream ends cleanly (_relay), so
             # an engine that answers and then dies mid-stream still adds up.
-            stream = _Stream(self, upstream, path, abort, replica)
+            stream = _Stream(self._settle_stream, upstream, path, abort, replica)
             return _RelayResponse(
                 self._relay(stream, path, payload.get("n") in (None, 1), deadline),
                 stream.close,
@@ -2495,7 +2257,12 @@ class LLMApp(_EngineChecks, App):
                 await asyncio.wait({read})
                 await upstream.aclose()
         if not read.cancelled():
-            body = read.result()
+            try:
+                body = read.result()
+            except self._transport_errors as exc:
+                # The engine dropped the connection mid-body: same reply as
+                # one that could not be reached at all.
+                return self._engine_unavailable(self._route(), exc)
             return self._engine_reply(body, upstream.status_code)
         disconnected = watcher.done() and not watcher.cancelled()
         if disconnected or abort.is_set() or _expired(deadline):
@@ -2549,6 +2316,7 @@ class LLMApp(_EngineChecks, App):
         partial = b""
         done_sent = False
         finished = False
+        seam = b""
         # Responses ids are noted from the first event that carries one.
         creator = stream.replica
         want_id = path == "/v1/responses" and len(self._replicas) > 1
@@ -2607,10 +2375,27 @@ class LLMApp(_EngineChecks, App):
                 try:
                     chunk = read.result()
                 except StopAsyncIteration:
+                    # A clean EOF is a success only once the stream reached
+                    # its terminal event. After a real finish with one choice
+                    # only [DONE] is missing; anything else was cut short and
+                    # ends like a broken stream (partial event dropped).
+                    if not done_sent and partial.strip() == b"data: [DONE]":
+                        # The terminator arrived without its blank line.
+                        done_sent, partial = True, b"data: [DONE]\n\n"
+                    complete = done_sent or (finished and single_choice)
                     if stream.replica is not None:
-                        stream.replica._count_engine_reply(200)
-                    if partial:
-                        yield partial
+                        stream.replica._count_engine_reply(200 if complete else 502)
+                    if done_sent:
+                        if partial:
+                            yield partial
+                    elif complete:
+                        yield b"data: [DONE]\n\n"
+                    else:
+                        print(
+                            f"[llm-app] {path} stream from {self.engine} ended "
+                            "before its terminal event"
+                        )
+                        yield self._finish_chunk(path, "error")
                     return
                 except self._transport_errors as exc:
                     # Headers were sent, so the client learns of it in-band:
@@ -2645,8 +2430,11 @@ class LLMApp(_EngineChecks, App):
                             want_id = False
                     if path == "/v1/responses":
                         # No [DONE] here: the terminal event ends the stream.
-                        if _RESPONSES_TERMINAL_RE.search(out):
+                        # An oversized event is forwarded in pieces, so the
+                        # search spans the seam with the previous piece.
+                        if _RESPONSES_TERMINAL_RE.search(seam + out):
                             done_sent = finished = True
+                        seam = out[-64:]
                     elif not finished:
                         finished = bool(_FINISH_REASON_RE.search(out))
                     yield out
@@ -2658,6 +2446,22 @@ class LLMApp(_EngineChecks, App):
                 elif not pending.cancelled():
                     pending.exception()  # retrieved, so asyncio does not warn
             await stream.close()
+
+    def _settle_stream(self, stream: _Stream) -> None:
+        """Bookkeeping when a relayed stream ends: in-flight counts, the cancel
+        count and usage. Runs once per stream, before the upstream close."""
+        self._inflight.discard(stream.abort)
+        if stream.replica is not None:
+            stream.replica.inflight -= 1
+        self._count_if_cancelled()
+        try:
+            # Inside the try: a parser bug must not escape into the relay.
+            usage = _parse_stream_usage(stream.tail)
+            if usage:
+                self.record_usage(stream.path, usage)
+        except Exception as exc:
+            # A subclass hook must not keep the engine request alive.
+            print(f"[llm-app] record_usage failed: {exc!r}")
 
     def _count_deadline_abort(self) -> None:
         self._usage_totals["deadline_aborts"] = (

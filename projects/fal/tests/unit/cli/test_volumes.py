@@ -76,6 +76,27 @@ def test_weights_pull_forwards_options(monkeypatch, fake_client):
     ]
 
 
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["volumes", "weights", "--team", "acme", "--host", "h.example", "pull", "o/m"],
+        ["volumes", "weights", "pull", "o/m", "--team", "acme", "--host", "h.example"],
+    ],
+)
+def test_weights_pull_keeps_team_and_host_in_either_position(argv):
+    args = parse_args(argv)
+    assert args.team == "acme"
+    assert args.host == "h.example"
+
+
+def test_weights_pull_team_and_host_defaults():
+    from fal.flags import GRPC_HOST
+
+    args = parse_args(["volumes", "weights", "pull", "o/m"])
+    assert args.team is None
+    assert args.host == GRPC_HOST
+
+
 def test_weights_pull_rejects_dest_outside_data():
     from fal.cli.parser import FalParserExit
 

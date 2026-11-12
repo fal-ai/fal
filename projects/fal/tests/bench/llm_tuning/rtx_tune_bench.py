@@ -345,7 +345,7 @@ async def run_level(
 
 
 def usd_per_task(task_s_p50, streams, gpu_hourly, num_gpus):
-    """What one task costs at this concurrency.
+    """Estimated cost of one task at this concurrency.
 
     Cost per 1M output tokens measures serving efficiency. It cannot see a
     change that makes each task need fewer tokens, which is what capping
@@ -357,7 +357,9 @@ def usd_per_task(task_s_p50, streams, gpu_hourly, num_gpus):
     straggler does, so one stream timing out at 900 s against a 10 s median
     turned a healthy $0.00035 into $0.0325, a 93x move with no change in the
     engine. The median is the same number as the wall-clock form on a healthy
-    level and does not move when one request hangs.
+    level and does not move when one request hangs. It is an estimate for
+    comparing configurations, not amortized run spend: by design it leaves out
+    the GPU time stragglers hold.
     """
     if not task_s_p50 or not streams:
         return None
@@ -645,7 +647,7 @@ def cmd_compare(_args):
         header = (
             f"{'label':<22}{'floor':<7}"
             f"{f'ttft95@{FLOOR_LEVEL}':>9}{f'tok/s@{FLOOR_LEVEL}':>9}"
-            f"{'agg@max':>9}{'$/1M':>8}{'$/task':>12}{'at':>5}"
+            f"{'agg@max':>9}{'$/1M':>8}{'est $/task':>12}{'at':>5}"
         )
         print(header)
         print("-" * len(header))

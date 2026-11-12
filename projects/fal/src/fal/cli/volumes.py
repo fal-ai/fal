@@ -1,3 +1,4 @@
+import argparse
 import posixpath
 
 from fal.api.client import SyncServerlessClient
@@ -132,6 +133,13 @@ def _add_weights_parser(subparsers, parents):
         default=DEFAULT_MACHINE_TYPE,
         help=f"CPU machine type (default {DEFAULT_MACHINE_TYPE}).",
     )
+    # `weights` and `pull` both define --host/--team. argparse copies every
+    # attribute of the child namespace onto the parent, so child defaults would
+    # overwrite `volumes weights --team acme pull`. Suppressed defaults leave
+    # the parent's value in place unless the option is given after `pull`.
+    for action in pull._actions:
+        if action.dest in ("host", "team"):
+            action.default = argparse.SUPPRESS
     pull.set_defaults(func=_weights_pull, parser=pull)
 
 
