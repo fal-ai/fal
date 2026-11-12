@@ -2,6 +2,7 @@ import io
 import json
 import os
 import struct
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import isolate_proto
@@ -9,7 +10,19 @@ import pytest
 
 from fal.cli.main import parse_args
 from fal.cli.parser import FalParserExit
-from fal.cli.runners import _exec, _get_tty_size, _gpus, _shell_session
+from fal.cli.runners import (
+    FINISHED_LOG_GRACE,
+    FOLLOW_STREAM_OVERLAP,
+    RestRunnerInfo,
+    _exec,
+    _follow_start,
+    _get_logs,
+    _get_runner_info,
+    _get_tty_size,
+    _gpus,
+    _resolve_log_window,
+    _shell_session,
+)
 
 if os.name != "nt":
     import fcntl
@@ -344,3 +357,257 @@ def test_interactive_shell_errors_on_windows(_mock_client_cls):
     args.console.print.assert_called_once_with(
         "[red]Error:[/] Interactive runner shell is not supported on Windows."
     )
+
+
+_T0 = datetime(2026, 11, 6, 5, 55, 7, tzinfo=timezone.utc)
+
+
+def test_log_window_ignores_started_at_for_live_runner():
+    # started_at lags the setup logs for live runners, so it must not clamp.
+    info = RestRunnerInfo(started_at=_T0, ended_at=None)
+    since = _T0 - timedelta(hours=1)
+
+    assert _resolve_log_window(None, None, info) == (None, None)
+    assert _resolve_log_window(since, None, info) == (since, None)
+
+
+def test_log_window_bounds_stopped_runner_by_finished_at_with_grace():
+    info = RestRunnerInfo(started_at=_T0, ended_at=_T0 + timedelta(minutes=5))
+
+    since, until = _resolve_log_window(None, None, info)
+
+    assert since is None
+    assert until == _T0 + timedelta(minutes=5) + FINISHED_LOG_GRACE
+
+
+def test_log_window_keeps_explicit_until_and_orders_bounds():
+    info = RestRunnerInfo(started_at=_T0, ended_at=_T0 + timedelta(minutes=5))
+    until = _T0 + timedelta(hours=1)
+
+    assert _resolve_log_window(None, until, info)[1] == until
+    assert _resolve_log_window(until, _T0, info) == (_T0, until)
+
+
+@pytest.mark.parametrize("key", ["finished_at", "ended_at"])
+@patch("fal.cli.runners.httpx.Client")
+def test_get_runner_info_reads_finished_or_ended_at(mock_httpx_client, key):
+    resp = MagicMock(status_code=200)
+    resp.json.return_value = {
+        "started_at": "2026-11-06T05:55:07.178320Z",
+        key: "2026-11-06T06:00:00Z",
+    }
+    mock_httpx_client.return_value.__enter__.return_value.get.return_value = resp
+
+    info = _get_runner_info(MagicMock(), "rid")
+
+    assert info.started_at == _T0.replace(microsecond=178320)
+    assert info.ended_at == datetime(2026, 11, 6, 6, 0, tzinfo=timezone.utc)
+
+
+def _history_lines(n):
+    # History is served newest first.
+    return [
+        {"timestamp": (_T0 + timedelta(seconds=i)).isoformat(), "message": str(i)}
+        for i in reversed(range(n))
+    ]
+
+
+@patch("fal.cli.runners._iter_logs")
+def test_get_logs_latest_and_oldest_lines(mock_iter):
+    mock_iter.side_effect = lambda *a, **k: iter(_history_lines(10))
+
+    latest = [x["message"] for x in _get_logs(MagicMock(), {}, None, None, 3)]
+    oldest = [
+        x["message"] for x in _get_logs(MagicMock(), {}, None, None, 3, oldest=True)
+    ]
+
+    assert latest == ["9", "8", "7"]
+    assert oldest == ["2", "1", "0"]
+
+
+@patch("fal.cli.runners._stream_logs")
+@patch("fal.cli.runners._iter_logs")
+@patch("fal.cli.runners._get_runner_info")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_follow_replays_latest_lines_then_streams_after_them(
+    _client, mock_info, mock_iter, mock_stream
+):
+    mock_info.return_value = RestRunnerInfo(started_at=_T0, ended_at=None)
+    mock_iter.side_effect = lambda *a, **k: iter(_history_lines(150))
+    mock_stream.return_value = iter([])
+
+    args = parse_args(["runners", "logs", "rid", "--follow", "--json"])
+    args.console = MagicMock()
+    args.func(args)
+
+    printed = [json.loads(c[0][0]) for c in args.console.print.call_args_list]
+    assert len(printed) == 100
+    assert printed[0]["message"] == "50" and printed[-1]["message"] == "149"
+    # No clamp to started_at on the history replay; the stream overlaps it.
+    assert mock_iter.call_args[0][2] is None
+    stream_since = mock_stream.call_args[0][2]
+    assert stream_since == _T0 + timedelta(seconds=149) - FOLLOW_STREAM_OVERLAP
+
+
+@patch("fal.cli.runners._stream_logs")
+@patch("fal.cli.runners._iter_logs")
+@patch("fal.cli.runners._get_runner_info")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_follow_stream_skips_lines_already_replayed(
+    _client, mock_info, mock_iter, mock_stream
+):
+    mock_info.return_value = RestRunnerInfo(started_at=_T0, ended_at=None)
+    history = _history_lines(5)
+    mock_iter.side_effect = lambda *a, **k: iter(history)
+    late = {"timestamp": (_T0 + timedelta(seconds=2.5)).isoformat(), "message": "late"}
+    # The overlap window re-sends lines 3 and 4 plus one that arrived late.
+    mock_stream.return_value = iter([history[1], late, history[0]])
+
+    args = parse_args(["runners", "logs", "rid", "--follow", "--json"])
+    args.console = MagicMock()
+    args.func(args)
+
+    printed = [
+        json.loads(c[0][0])["message"] for c in args.console.print.call_args_list
+    ]
+    assert printed == ["0", "1", "2", "3", "4", "late"]
+
+
+@patch("fal.cli.runners._stream_logs")
+@patch("fal.cli.runners._iter_logs")
+@patch("fal.cli.runners._get_runner_info")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_follow_with_zero_lines_replays_nothing(
+    _client, mock_info, mock_iter, mock_stream
+):
+    mock_info.return_value = RestRunnerInfo(started_at=_T0, ended_at=None)
+    mock_iter.side_effect = lambda *a, **k: iter(_history_lines(10))
+    mock_stream.return_value = iter([])
+
+    args = parse_args(["runners", "logs", "rid", "--follow", "-n", "0"])
+    args.console = MagicMock()
+    args.func(args)
+
+    args.console.print.assert_not_called()
+    # Only new lines: the stream starts now, with no overlap into history.
+    stream_since = mock_stream.call_args[0][2]
+    assert stream_since > datetime.now(timezone.utc) - timedelta(seconds=5)
+
+
+@patch("fal.cli.runners._stream_logs")
+@patch("fal.cli.runners._iter_logs")
+@patch("fal.cli.runners._get_runner_info")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_follow_overlap_never_reaches_before_the_replay(
+    _client, mock_info, mock_iter, mock_stream
+):
+    # 100 replayed lines span 10s, well inside the 30s overlap.
+    mock_info.return_value = RestRunnerInfo(started_at=_T0, ended_at=None)
+    dense = [
+        {
+            "timestamp": (_T0 + timedelta(milliseconds=100 * i)).isoformat(),
+            "message": str(i),
+        }
+        for i in reversed(range(300))
+    ]
+    mock_iter.side_effect = lambda *a, **k: iter(dense)
+    mock_stream.return_value = iter([])
+
+    args = parse_args(["runners", "logs", "rid", "--follow", "--json"])
+    args.console = MagicMock()
+    args.func(args)
+
+    assert mock_stream.call_args[0][2] == _T0 + timedelta(seconds=20)
+
+
+@patch("fal.cli.runners._stream_logs")
+@patch("fal.cli.runners._iter_logs")
+@patch("fal.cli.runners._get_runner_info")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_follow_dedupe_matches_reformatted_timestamps_and_keeps_repeats(
+    _client, mock_info, mock_iter, mock_stream
+):
+    mock_info.return_value = RestRunnerInfo(started_at=_T0, ended_at=None)
+    ts = _T0 + timedelta(seconds=1)
+    mock_iter.side_effect = lambda *a, **k: iter(
+        [{"timestamp": ts.isoformat(), "message": "dot"}]
+    )
+    # Same line in another timestamp format, then a genuine repeat.
+    zulu = ts.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    mock_stream.return_value = iter(
+        [
+            {"timestamp": zulu, "message": "dot"},
+            {"timestamp": zulu, "message": "dot"},
+        ]
+    )
+
+    args = parse_args(["runners", "logs", "rid", "--follow", "--json"])
+    args.console = MagicMock()
+    args.func(args)
+
+    assert len(args.console.print.call_args_list) == 2
+
+
+def test_follow_start_survives_unparseable_timestamps():
+    replay = [{"timestamp": "not-a-time", "message": "x"}]
+    start = _follow_start(replay, 100)
+    assert start <= datetime.now(timezone.utc) - FOLLOW_STREAM_OVERLAP
+
+
+def test_follow_rejects_oldest_lines():
+    args = parse_args(["runners", "logs", "rid", "--follow", "-n", "+5"])
+    args.console = MagicMock()
+    args.parser = MagicMock()
+    args.parser.error.side_effect = SystemExit(2)
+    with patch("fal.cli.runners.SyncServerlessClient"), patch(
+        "fal.cli.runners._get_runner_info",
+        return_value=RestRunnerInfo(started_at=_T0, ended_at=None),
+    ):
+        with pytest.raises(SystemExit):
+            args.func(args)
+    assert "--follow" in args.parser.error.call_args[0][0]
+
+
+@patch("fal.cli.runners._stream_logs")
+@patch("fal.cli.runners._iter_logs")
+@patch("fal.cli.runners._get_runner_info")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_follow_with_since_skips_replay(_client, mock_info, mock_iter, mock_stream):
+    mock_info.return_value = RestRunnerInfo(started_at=_T0, ended_at=None)
+    mock_stream.return_value = iter([])
+
+    args = parse_args(["runners", "logs", "rid", "--follow", "--since", "1h"])
+    args.console = MagicMock()
+    args.func(args)
+
+    mock_iter.assert_not_called()
+    assert mock_stream.call_args[0][2] is not None
+
+
+@pytest.mark.parametrize(
+    ("extra", "expect_since"), [([], False), (["--since", "1h"], True)]
+)
+@patch("fal.cli.runners._stream_logs")
+@patch("fal.cli.runners._iter_logs")
+@patch("fal.cli.runners._get_runner_info")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_follow_finished_runner_reads_history(
+    _client, mock_info, mock_iter, mock_stream, extra, expect_since
+):
+    past = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    mock_info.return_value = RestRunnerInfo(
+        started_at=past, ended_at=past + timedelta(minutes=5)
+    )
+    mock_iter.side_effect = lambda *a, **k: iter(_history_lines(150))
+
+    args = parse_args(["runners", "logs", "rid", "--follow", "--json", *extra])
+    args.console = MagicMock()
+    args.func(args)
+
+    mock_stream.assert_not_called()
+    # One JSON object per line, oldest first, like a live --follow.
+    logs = [json.loads(c[0][0]) for c in args.console.print.call_args_list]
+    assert len(logs) == (150 if expect_since else 100)
+    assert logs[-1]["message"] == "149"
+    assert logs[0]["message"] == ("0" if expect_since else "50")
+    assert (mock_iter.call_args[0][2] is not None) == expect_since
