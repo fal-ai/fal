@@ -455,10 +455,6 @@ class QueueBlockingApp(fal.App, keep_alive=300, max_concurrency=1, max_multiplex
 class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "XS"
 
-    @fal.endpoint("/fail")
-    def fail(self) -> Output:
-        raise Exception("this app is designed to fail!")
-
     @fal.endpoint("/app-exception")
     def app_exception(self) -> Output:
         raise AppException(message="this app is designed to fail", status_code=401)
