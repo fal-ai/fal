@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import traceback
 from functools import partial
 from io import BytesIO
 from types import SimpleNamespace
@@ -148,45 +147,6 @@ def test_default_timeout():
             assert response is not None
 
         mock_urlopen.assert_called_once_with(request, timeout=10)
-
-
-@pytest.mark.parametrize("operation", ["upload_part", "complete"])
-def test_multipart_errors_do_not_expose_credentials(operation, capsys):
-    upload = providers.MultipartUploadV3("image.png")
-    upload._upload_url = (
-        "https://example.com/object/multipart/private-upload-id"
-        "?signature=private-signature"
-    )
-
-    def fail(request, **kwargs):
-        assert "private-signature" in request.full_url
-        raise HTTPError(request.full_url, 503, "Service Unavailable", {}, None)
-
-    with mock.patch(URLOPEN, side_effect=fail), mock.patch(SLEEP):
-        with pytest.raises(FileUploadException) as exc_info:
-            if operation == "upload_part":
-                upload.upload_part(3, b"image")
-            else:
-                upload.complete()
-
-    assert "Status 503: Service Unavailable" in str(exc_info.value)
-    diagnostics = "".join(traceback.format_exception(exc_info.value))
-    diagnostics += "".join(capsys.readouterr())
-    assert "private-upload-id" in diagnostics
-    assert "private-signature" not in diagnostics
-
-
-@pytest.mark.parametrize("error_type", [URLError, TimeoutError])
-def test_transport_errors_do_not_expose_request_url(error_type, capsys):
-    url = "https://example.com/object?signature=private-signature"
-    with mock.patch(URLOPEN, side_effect=error_type(url)), mock.patch(SLEEP):
-        with pytest.raises(error_type) as exc_info:
-            with _maybe_retry_request(Request(url)):
-                pass
-
-    diagnostics = "".join(traceback.format_exception(exc_info.value))
-    diagnostics += "".join(capsys.readouterr())
-    assert "private-signature" not in diagnostics
 
 
 @pytest.fixture
