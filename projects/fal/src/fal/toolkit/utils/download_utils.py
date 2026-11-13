@@ -226,8 +226,9 @@ def download_file(
         temp_path.unlink(missing_ok=True)
         error_target = target_path or target_dir_path
         raise DownloadError(
-            f"Failed to download {_redact_url(url)} to {error_target}"
-        ) from e
+            f"Failed to download {_redact_url(url)} to {error_target}: "
+            f"{type(e).__name__}"
+        ) from None
 
     return target_path
 
