@@ -202,6 +202,9 @@ def test_upload_errors_do_not_expose_credentials(
     def fail(request, **kwargs):
         if responses:
             return responses.pop()
+        assert "private-upload-id" in request.full_url
+        if repository_type is not providers.InternalMultipartUploadV3:
+            assert "private-signature" in request.full_url
         raise HTTPError(request.full_url, 503, upload_url, {}, None)
 
     with mock.patch(URLOPEN, side_effect=fail) as mock_urlopen:
