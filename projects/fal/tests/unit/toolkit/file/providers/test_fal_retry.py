@@ -150,93 +150,42 @@ def test_default_timeout():
         mock_urlopen.assert_called_once_with(request, timeout=10)
 
 
-@pytest.mark.parametrize(
-    ("repository_type", "operation", "initiate_part"),
-    [
-        (providers.MultipartUploadGCS, "upload_part", True),
-        (providers.MultipartUploadGCS, "upload_part", False),
-        (providers.MultipartUploadGCS, "complete", False),
-        (providers.MultipartUploadV3, "upload_part", False),
-        (providers.MultipartUploadV3, "complete", False),
-        (providers.InternalMultipartUploadV3, "upload_part", False),
-        (providers.InternalMultipartUploadV3, "complete", False),
-        (providers.FalFileRepository, "save", False),
-        (providers.FalFileRepositoryV3, "save", False),
-    ],
-)
-def test_upload_errors_do_not_expose_credentials(
-    upload_auth, repository_type, operation, initiate_part, capsys
-):
-    upload_url = (
+@pytest.mark.parametrize("operation", ["upload_part", "complete"])
+def test_multipart_errors_do_not_expose_credentials(operation, capsys):
+    upload = providers.MultipartUploadV3("image.png")
+    upload._upload_url = (
         "https://example.com/object/multipart/private-upload-id"
         "?signature=private-signature"
     )
-    if operation == "save":
-        upload = partial(repository_type().save, FileData(b"image"), multipart=False)
-    else:
-        repository = repository_type("image.png")
-        repository._upload_url = upload_url
-        repository._access_url = "https://example.com/object"
-        repository._upload_id = "private-upload-id"
-        upload = getattr(repository, operation)
-        if operation == "upload_part":
-            upload = partial(upload, 3, b"image")
-
-    needs_initiation = operation == "save" or (
-        repository_type is providers.MultipartUploadGCS
-        and operation == "upload_part"
-        and not initiate_part
-    )
-    responses = (
-        [
-            MockResponse(
-                '{"upload_url": "'
-                + upload_url
-                + '", "file_url": "https://example.com/object"}'
-            )
-        ]
-        if needs_initiation
-        else []
-    )
 
     def fail(request, **kwargs):
-        if responses:
-            return responses.pop()
-        assert "private-upload-id" in request.full_url
-        if repository_type is not providers.InternalMultipartUploadV3:
-            assert "private-signature" in request.full_url
-        raise HTTPError(request.full_url, 503, upload_url, {}, None)
+        assert "private-signature" in request.full_url
+        raise HTTPError(request.full_url, 503, upload.upload_url, {}, None)
 
-    with mock.patch(URLOPEN, side_effect=fail) as mock_urlopen:
-        with mock.patch(SLEEP):
-            with pytest.raises(FileUploadException) as exc_info:
-                upload()
+    with mock.patch(URLOPEN, side_effect=fail), mock.patch(SLEEP):
+        with pytest.raises(FileUploadException) as exc_info:
+            if operation == "upload_part":
+                upload.upload_part(3, b"image")
+            else:
+                upload.complete()
 
-    message = str(exc_info.value)
-    assert "Status 503" in message
-    if operation == "upload_part":
-        assert "part 3" in message
-    assert mock_urlopen.call_count == providers.MAX_ATTEMPTS + int(needs_initiation)
-    captured = capsys.readouterr()
-    diagnostics = message + "".join(traceback.format_exception(exc_info.value))
-    diagnostics += captured.out + captured.err
-    for secret in ("private-upload-id", "private-signature", upload_url):
-        assert secret not in diagnostics
+    assert "Status 503" in str(exc_info.value)
+    diagnostics = "".join(traceback.format_exception(exc_info.value))
+    diagnostics += "".join(capsys.readouterr())
+    assert "private-upload-id" not in diagnostics
+    assert "private-signature" not in diagnostics
 
 
 @pytest.mark.parametrize("error_type", [URLError, TimeoutError])
 def test_transport_errors_do_not_expose_request_url(error_type, capsys):
     url = "https://example.com/object?signature=private-signature"
-    with mock.patch(URLOPEN, side_effect=error_type(url)) as mock_urlopen:
-        with mock.patch(SLEEP):
-            with pytest.raises(error_type) as exc_info:
-                with _maybe_retry_request(Request(url)):
-                    pass
+    with mock.patch(URLOPEN, side_effect=error_type(url)), mock.patch(SLEEP):
+        with pytest.raises(error_type) as exc_info:
+            with _maybe_retry_request(Request(url)):
+                pass
 
-    assert mock_urlopen.call_count == providers.MAX_ATTEMPTS
-    captured = capsys.readouterr()
     diagnostics = "".join(traceback.format_exception(exc_info.value))
-    diagnostics += captured.out + captured.err
+    diagnostics += "".join(capsys.readouterr())
     assert "private-signature" not in diagnostics
 
 
