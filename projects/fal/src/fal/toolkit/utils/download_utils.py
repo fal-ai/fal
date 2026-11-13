@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 
 from fal.toolkit.utils.ssrf import (
     SafeResponse,
+    SSRFConnectionError,
     SSRFError,
     SSRFHTTPStatusError,
     _ssrf_safe_get_to_file,
@@ -56,7 +57,9 @@ def _redact_url(url: str) -> str:
     try:
         parts = urllib.parse.urlsplit(url)
     except ValueError:
-        return url.split("?", 1)[0].split("#", 1)[0]
+        return "<invalid URL>"
+    if parts.scheme == "data":
+        return "data:<redacted>"
     netloc = parts.netloc.rpartition("@")[2]
     return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
@@ -214,6 +217,10 @@ def download_file(
         raise DownloadError(
             f"Failed to get remote file properties for {_redact_url(url)}"
         ) from e
+    except SSRFConnectionError as e:
+        temp_path.unlink(missing_ok=True)
+        # Connection failures can chain exceptions containing the signed URL.
+        raise DownloadError(str(e)) from None
     except SSRFError as e:
         temp_path.unlink(missing_ok=True)
         if str(e).startswith("File body exceeded"):
@@ -286,11 +293,13 @@ def _download_file_python(
 
                 if total_size:
                     progress_msg = (
-                        f"Downloading {url} ... {received_size / total_size:.2%}"
+                        f"Downloading {_redact_url(url)} ... "
+                        f"{received_size / total_size:.2%}"
                     )
                 else:
                     progress_msg = (
-                        f"Downloading {url} ... {received_size / ONE_MB:.2f} MB"
+                        f"Downloading {_redact_url(url)} ... "
+                        f"{received_size / ONE_MB:.2f} MB"
                     )
                 print(progress_msg, end="\r\n")
 

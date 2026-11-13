@@ -3,7 +3,6 @@ import functools
 import inspect
 import random
 import time
-import traceback
 from typing import Any, Callable, Literal, Optional
 
 BackoffType = Literal["exponential", "fixed"]
@@ -47,8 +46,7 @@ def retry(
                         retries += 1
                         print(f"Retrying {retries} of {max_retries}...")
                         if retries == max_retries:
-                            print(f"Max retries reached. Raising exception: {e}")
-                            traceback.print_exc()
+                            print(f"Max retries reached. Raising {type(e).__name__}.")
                             raise
 
                         await asyncio.sleep(_compute_delay(retries))
@@ -68,8 +66,7 @@ def retry(
                     retries += 1
                     print(f"Retrying {retries} of {max_retries}...")
                     if retries == max_retries:
-                        print(f"Max retries reached. Raising exception: {e}")
-                        traceback.print_exc()
+                        print(f"Max retries reached. Raising {type(e).__name__}.")
                         raise
 
                     time.sleep(_compute_delay(retries))
