@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import Optional
 
+from fal._tls import create_ssl_context
 from fal.auth import auth0, local
 from fal.config import Config
 from fal.exceptions import FalServerlessException
@@ -179,7 +180,7 @@ def _fetch_teams(bearer_token: str) -> list[dict]:
         headers={"Authorization": bearer_token},
     )
     try:
-        with urlopen(request, timeout=30) as response:
+        with urlopen(request, timeout=30, context=create_ssl_context()) as response:
             return json.load(response)
     except HTTPError as exc:
         raise FalServerlessException("Failed to fetch teams") from exc
@@ -199,7 +200,7 @@ def current_user_info(headers: dict[str, str]) -> dict:
         headers=headers,
     )
     try:
-        with urlopen(request, timeout=30) as response:
+        with urlopen(request, timeout=30, context=create_ssl_context()) as response:
             return json.load(response)
     except HTTPError as exc:
         raise FalServerlessException("Failed to fetch user info") from exc
