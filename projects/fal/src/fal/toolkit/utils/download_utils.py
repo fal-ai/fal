@@ -7,11 +7,12 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 from contextlib import suppress
 from email.message import Message
 from pathlib import Path, PurePath
 from tempfile import TemporaryDirectory, mkstemp
-from urllib.parse import urlparse, urlsplit, urlunsplit
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from fal.toolkit.utils.ssrf import (
@@ -53,11 +54,11 @@ def _hash_url(url: str) -> str:
 
 def _redact_url(url: str) -> str:
     try:
-        parts = urlsplit(url)
+        parts = urllib.parse.urlsplit(url)
     except ValueError:
         return url.split("?", 1)[0].split("#", 1)[0]
     netloc = parts.netloc.rpartition("@")[2]
-    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+    return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
 def _headers(request_headers: dict[str, str] | None = None) -> dict[str, str]:
