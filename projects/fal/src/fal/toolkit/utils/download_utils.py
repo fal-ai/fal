@@ -11,7 +11,7 @@ from contextlib import suppress
 from email.message import Message
 from pathlib import Path, PurePath
 from tempfile import TemporaryDirectory, mkstemp
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from fal.toolkit.utils.ssrf import (
@@ -49,6 +49,15 @@ def _hash_url(url: str) -> str:
         A string representing the hashed URL.
     """
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+
+def _redact_url(url: str) -> str:
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url.split("?", 1)[0].split("#", 1)[0]
+    netloc = parts.netloc.rpartition("@")[2]
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
 def _headers(request_headers: dict[str, str] | None = None) -> dict[str, str]:
@@ -188,9 +197,12 @@ def download_file(
             return target_path
 
         if force:
-            print(f"File already exists. Forcing download of {url} to {target_path}")
+            print(
+                "File already exists. Forcing download of "
+                f"{_redact_url(url)} to {target_path}"
+            )
         else:
-            print(f"Downloading {url} to {target_path}")
+            print(f"Downloading {_redact_url(url)} to {target_path}")
 
         os.replace(temp_path, target_path)
     except DownloadError:
@@ -198,17 +210,23 @@ def download_file(
         raise
     except SSRFHTTPStatusError as e:
         temp_path.unlink(missing_ok=True)
-        raise DownloadError(f"Failed to get remote file properties for {url}") from e
+        raise DownloadError(
+            f"Failed to get remote file properties for {_redact_url(url)}"
+        ) from e
     except SSRFError as e:
         temp_path.unlink(missing_ok=True)
         if str(e).startswith("File body exceeded"):
             error_target = target_path or target_dir_path
-            raise DownloadError(f"Failed to download {url} to {error_target}") from e
+            raise DownloadError(
+                f"Failed to download {_redact_url(url)} to {error_target}"
+            ) from e
         raise DownloadError(str(e)) from e
     except Exception as e:
         temp_path.unlink(missing_ok=True)
         error_target = target_path or target_dir_path
-        raise DownloadError(f"Failed to download {url} to {error_target}") from e
+        raise DownloadError(
+            f"Failed to download {_redact_url(url)} to {error_target}"
+        ) from e
 
     return target_path
 
