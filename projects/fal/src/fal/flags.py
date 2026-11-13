@@ -47,9 +47,9 @@ if not TEST_MODE:
         assert GRPC_HOST.startswith(
             "api"
         ), "FAL_HOST must start with 'api' (use FAL_GRPC_HOST to override)"
-    elif not ALLOW_UNTRUSTED_GRPC_HOST and not _is_trusted_grpc_host(GRPC_HOST):
+    if not ALLOW_UNTRUSTED_GRPC_HOST and not _is_trusted_grpc_host(GRPC_HOST):
         raise ValueError(
-            f"FAL_GRPC_HOST={GRPC_HOST!r} is not a fal host "
+            f"gRPC host {GRPC_HOST!r} is not a fal host "
             f"({', '.join(TRUSTED_GRPC_HOST_DOMAINS)}). "
             "Set FAL_ALLOW_UNTRUSTED_GRPC_HOST=1 to connect to it anyway."
         )
