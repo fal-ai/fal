@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from urllib.parse import urlsplit
+import urllib.parse
 
 from fal.config import Config
 
@@ -35,7 +35,7 @@ ALLOW_UNTRUSTED_GRPC_HOST = bool_envvar("FAL_ALLOW_UNTRUSTED_GRPC_HOST")
 
 
 def _is_trusted_grpc_host(host: str) -> bool:
-    hostname = urlsplit(f"//{host}").hostname or ""
+    hostname = urllib.parse.urlsplit(f"//{host}").hostname or ""
     return any(
         hostname == domain or hostname.endswith(f".{domain}")
         for domain in TRUSTED_GRPC_HOST_DOMAINS
