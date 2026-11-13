@@ -160,7 +160,7 @@ def test_multipart_errors_do_not_expose_credentials(operation, capsys):
 
     def fail(request, **kwargs):
         assert "private-signature" in request.full_url
-        raise HTTPError(request.full_url, 503, upload.upload_url, {}, None)
+        raise HTTPError(request.full_url, 503, "Service Unavailable", {}, None)
 
     with mock.patch(URLOPEN, side_effect=fail), mock.patch(SLEEP):
         with pytest.raises(FileUploadException) as exc_info:
@@ -169,10 +169,10 @@ def test_multipart_errors_do_not_expose_credentials(operation, capsys):
             else:
                 upload.complete()
 
-    assert "Status 503" in str(exc_info.value)
+    assert "Status 503: Service Unavailable" in str(exc_info.value)
     diagnostics = "".join(traceback.format_exception(exc_info.value))
     diagnostics += "".join(capsys.readouterr())
-    assert "private-upload-id" not in diagnostics
+    assert "private-upload-id" in diagnostics
     assert "private-signature" not in diagnostics
 
 

@@ -24,6 +24,7 @@ from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file._upload_policy import _request_id
 from fal.toolkit.file.types import FileData, FileRepository, Reservation
+from fal.toolkit.utils.download_utils import _redact_url
 from fal.toolkit.utils.retry import retry
 
 _FAL_CDN_V3 = "https://v3.fal.media"
@@ -367,8 +368,8 @@ class FalFileRepositoryBase(FileRepository):
             return result["file_url"]
         except HTTPError as e:
             raise FileUploadException(
-                f"Error uploading file. Status {e.status}"
-            ) from None
+                f"Error uploading file. Status {e.status}: {e.reason}"
+            )
 
 
 class MultipartUploadGCS:
@@ -455,8 +456,10 @@ class MultipartUploadGCS:
                 upload_url = result["upload_url"]
         except HTTPError as exc:
             raise FileUploadException(
-                f"Error initiating part {part_number}. Status {exc.status}"
-            ) from None
+                f"Error initiating part {part_number} to "
+                f"{_redact_url(initiate_upload_url)}. "
+                f"Status {exc.status}: {exc.reason}"
+            )
 
         req = Request(
             upload_url,
@@ -474,8 +477,9 @@ class MultipartUploadGCS:
                 )
         except HTTPError as exc:
             raise FileUploadException(
-                f"Error uploading part {part_number}. Status {exc.status}"
-            ) from None
+                f"Error uploading part {part_number} to {_redact_url(upload_url)}. "
+                f"Status {exc.status}: {exc.reason}"
+            )
 
     def complete(self) -> str:
         url = self.upload_url + "/complete"
@@ -498,8 +502,9 @@ class MultipartUploadGCS:
                 pass
         except HTTPError as e:
             raise FileUploadException(
-                f"Error completing upload. Status {e.status}"
-            ) from None
+                f"Error completing upload {_redact_url(url)}. "
+                f"Status {e.status}: {e.reason}"
+            )
 
         return self.access_url
 
@@ -746,8 +751,9 @@ class MultipartUploadV3:
                 )
         except HTTPError as exc:
             raise FileUploadException(
-                f"Error uploading part {part_number}. Status {exc.status}"
-            ) from None
+                f"Error uploading part {part_number} to {_redact_url(url)}. "
+                f"Status {exc.status}: {exc.reason}"
+            )
 
     def complete(self) -> str:
         parsed = urlparse(self.upload_url)
@@ -768,8 +774,9 @@ class MultipartUploadV3:
                 pass
         except HTTPError as e:
             raise FileUploadException(
-                f"Error completing upload. Status {e.status}"
-            ) from None
+                f"Error completing upload {_redact_url(url)}. "
+                f"Status {e.status}: {e.reason}"
+            )
 
         return self.access_url
 
@@ -919,8 +926,9 @@ class InternalMultipartUploadV3:
                 )
         except HTTPError as exc:
             raise FileUploadException(
-                f"Error uploading part {part_number}. Status {exc.status}"
-            ) from None
+                f"Error uploading part {part_number} to {_redact_url(url)}. "
+                f"Status {exc.status}: {exc.reason}"
+            )
 
     def complete(self) -> str:
         url = f"{self.access_url}/multipart/{self.upload_id}/complete"
@@ -939,8 +947,9 @@ class InternalMultipartUploadV3:
                 pass
         except HTTPError as e:
             raise FileUploadException(
-                f"Error completing upload. Status {e.status}"
-            ) from None
+                f"Error completing upload {_redact_url(url)}. "
+                f"Status {e.status}: {e.reason}"
+            )
 
         return self.access_url
 
@@ -1120,8 +1129,8 @@ class FalFileRepositoryV3(FileRepository):
                 pass
         except HTTPError as e:
             raise FileUploadException(
-                f"Error uploading file. Status {e.status}"
-            ) from None
+                f"Error uploading file. Status {e.status}: {e.reason}"
+            )
 
         return file_url
 

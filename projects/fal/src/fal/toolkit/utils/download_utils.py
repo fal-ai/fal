@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 
 from fal.toolkit.utils.ssrf import (
     SafeResponse,
+    SSRFConnectionError,
     SSRFError,
     SSRFHTTPStatusError,
     _ssrf_safe_get_to_file,
@@ -214,17 +215,20 @@ def download_file(
     except SSRFHTTPStatusError as e:
         temp_path.unlink(missing_ok=True)
         raise DownloadError(
-            f"Failed to get remote file properties for {_redact_url(url)} "
-            f"(HTTP {e.status_code})"
-        ) from None
+            f"Failed to get remote file properties for {_redact_url(url)}"
+        ) from e
+    except SSRFConnectionError as e:
+        temp_path.unlink(missing_ok=True)
+        # Connection failures can chain exceptions containing the signed URL.
+        raise DownloadError(str(e)) from None
     except SSRFError as e:
         temp_path.unlink(missing_ok=True)
         if str(e).startswith("File body exceeded"):
             error_target = target_path or target_dir_path
             raise DownloadError(
                 f"Failed to download {_redact_url(url)} to {error_target}"
-            ) from None
-        raise DownloadError(str(e)) from None
+            ) from e
+        raise DownloadError(str(e)) from e
     except Exception as e:
         temp_path.unlink(missing_ok=True)
         error_target = target_path or target_dir_path
