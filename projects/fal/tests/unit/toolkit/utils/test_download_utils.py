@@ -1,5 +1,6 @@
 import os
 import subprocess
+import traceback
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,12 @@ import pytest
 import fal.toolkit.utils.download_utils as download_utils
 from fal.toolkit import clone_repository, download_file, download_model_weights
 from fal.toolkit.utils.download_utils import _filename_from_response, _hash_url
-from fal.toolkit.utils.ssrf import SafeResponse
+from fal.toolkit.utils.ssrf import (
+    SafeResponse,
+    SSRFConnectionError,
+    SSRFError,
+    SSRFHTTPStatusError,
+)
 
 # data: URLs exercise the whole cache and force logic without any network.
 SAMPLE_URL = "data:text/plain,hello"
@@ -71,6 +77,62 @@ def test_download_model_weights_caches_per_url_unless_forced(persistent_dirs):
 
     assert download_model_weights(SAMPLE_URL).read_bytes() == b"stale"
     assert download_model_weights(SAMPLE_URL, force=True).read_bytes() == b"hello"
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_download_output_redacts_credentials(tmp_path, monkeypatch, capsys, force):
+    url = "https://user:private-password@example.com/file?identity=private-token#private-fragment"
+
+    def get_to_file(request_url, path, **kwargs):
+        assert request_url == url
+        Path(path).write_bytes(b"hello")
+        return SafeResponse(200, headers={"content-length": "5"})
+
+    monkeypatch.setattr(download_utils, "_ssrf_safe_get_to_file", get_to_file)
+    assert download_file(url, tmp_path, force=force).read_bytes() == b"hello"
+    captured = capsys.readouterr()
+    assert "https://example.com/file" in captured.out
+    for secret in ("private-password", "private-token", "private-fragment"):
+        assert secret not in captured.out + captured.err
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        SSRFHTTPStatusError(403),
+        SSRFError("File body exceeded 5 bytes during download"),
+        SSRFConnectionError("All validated addresses failed"),
+        OSError("download failed"),
+    ],
+)
+def test_download_errors_do_not_expose_exception_chains(
+    tmp_path, monkeypatch, capsys, error
+):
+    url = "https://user:private-password@example.com/file?identity=private-token#private-fragment"
+
+    def get_to_file(*args, **kwargs):
+        try:
+            raise OSError(url)
+        except OSError as cause:
+            raise error from cause
+
+    monkeypatch.setattr(download_utils, "_ssrf_safe_get_to_file", get_to_file)
+    with pytest.raises(download_utils.DownloadError) as exc_info:
+        download_file(url, tmp_path)
+
+    captured = capsys.readouterr()
+    diagnostics = "".join(traceback.format_exception(exc_info.value))
+    diagnostics += captured.out + captured.err
+    for secret in ("private-password", "private-token", "private-fragment"):
+        assert secret not in diagnostics
+    assert not list(tmp_path.iterdir())
+
+
+def test_data_url_output_does_not_include_file_body(tmp_path, capsys):
+    url = "data:text/plain,private-content"
+    assert download_file(url, tmp_path).read_bytes() == b"private-content"
+    captured = capsys.readouterr()
+    assert "private-content" not in captured.out + captured.err
 
 
 def _git(cwd: Path, *args: str) -> str:

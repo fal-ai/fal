@@ -56,7 +56,9 @@ def _redact_url(url: str) -> str:
     try:
         parts = urllib.parse.urlsplit(url)
     except ValueError:
-        return url.split("?", 1)[0].split("#", 1)[0]
+        return "<invalid URL>"
+    if parts.scheme == "data":
+        return "data:<redacted>"
     netloc = parts.netloc.rpartition("@")[2]
     return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
@@ -212,16 +214,17 @@ def download_file(
     except SSRFHTTPStatusError as e:
         temp_path.unlink(missing_ok=True)
         raise DownloadError(
-            f"Failed to get remote file properties for {_redact_url(url)}"
-        ) from e
+            f"Failed to get remote file properties for {_redact_url(url)} "
+            f"(HTTP {e.status_code})"
+        ) from None
     except SSRFError as e:
         temp_path.unlink(missing_ok=True)
         if str(e).startswith("File body exceeded"):
             error_target = target_path or target_dir_path
             raise DownloadError(
                 f"Failed to download {_redact_url(url)} to {error_target}"
-            ) from e
-        raise DownloadError(str(e)) from e
+            ) from None
+        raise DownloadError(str(e)) from None
     except Exception as e:
         temp_path.unlink(missing_ok=True)
         error_target = target_path or target_dir_path
@@ -286,11 +289,13 @@ def _download_file_python(
 
                 if total_size:
                     progress_msg = (
-                        f"Downloading {url} ... {received_size / total_size:.2%}"
+                        f"Downloading {_redact_url(url)} ... "
+                        f"{received_size / total_size:.2%}"
                     )
                 else:
                     progress_msg = (
-                        f"Downloading {url} ... {received_size / ONE_MB:.2f} MB"
+                        f"Downloading {_redact_url(url)} ... "
+                        f"{received_size / ONE_MB:.2f} MB"
                     )
                 print(progress_msg, end="\r\n")
 

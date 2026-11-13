@@ -14,13 +14,41 @@ def test_retry_success():
     assert successful_function() == "Success"
 
 
-def test_retry_failure():
-    @retry(max_retries=3, base_delay=1, backoff_type="fixed")
-    def failing_function():
-        raise ValueError("Test error")
+def test_retry_failure(capsys):
+    error = ValueError("https://example.com/file?identity=private-token")
 
-    with pytest.raises(ValueError, match="Test error"):
+    @retry(max_retries=3, base_delay=0, backoff_type="fixed")
+    def failing_function():
+        raise error
+
+    with pytest.raises(ValueError) as exc_info:
         failing_function()
+
+    assert exc_info.value is error
+    captured = capsys.readouterr()
+    assert "Retrying 3 of 3" in captured.out
+    assert "ValueError" in captured.out
+    assert "private-token" not in captured.out + captured.err
+    assert "Traceback" not in captured.out + captured.err
+
+
+@pytest.mark.asyncio
+async def test_retry_async_failure_does_not_log_exception(capsys):
+    error = ValueError("https://example.com/file?identity=private-token")
+
+    @retry(max_retries=2, base_delay=0)
+    async def failing_function():
+        raise error
+
+    with pytest.raises(ValueError) as exc_info:
+        await failing_function()
+
+    assert exc_info.value is error
+    captured = capsys.readouterr()
+    assert "Retrying 2 of 2" in captured.out
+    assert "ValueError" in captured.out
+    assert "private-token" not in captured.out + captured.err
+    assert "Traceback" not in captured.out + captured.err
 
 
 @mock.patch("time.sleep")
