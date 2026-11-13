@@ -20,8 +20,10 @@ from .volumes import (
     VolumeAlreadyExistsError,
     VolumeControlPlaneUnavailableError,
     VolumeException,
+    VolumeInUseError,
     VolumeInvalidMountPathError,
     VolumeInvalidNameError,
+    VolumeLimitExceededError,
     VolumeNotFoundError,
     VolumeUnresolvableError,
 )
@@ -44,6 +46,8 @@ __all__ = [
     "VolumeNotFoundError",
     "VolumeUnresolvableError",
     "VolumeAlreadyExistsError",
+    "VolumeLimitExceededError",
+    "VolumeInUseError",
     "VolumeAccountNotEligibleError",
     "VolumeControlPlaneUnavailableError",
 ]
