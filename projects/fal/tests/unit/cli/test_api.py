@@ -5,7 +5,7 @@ import httpx
 import pytest
 import rich
 
-from fal.cli.api import _api, _format_log, _response_detail
+from fal.cli.api import _api, _format_log, _parse_params, _response_detail
 from fal.cli.main import parse_args
 from fal.sdk import Credentials
 
@@ -289,3 +289,68 @@ def test_response_detail_falls_back_to_body_text():
         _response_detail(httpx.Response(422, json={"detail": [{"loc": ["prompt"]}]}))
         == '[{"loc": ["prompt"]}]'
     )
+
+
+@pytest.mark.parametrize(
+    ("params", "expected"),
+    [
+        (["prompt=hi"], {"prompt": "hi"}),
+        (["n=3"], {"n": "3"}),
+        (["n:=3"], {"n": 3}),
+        (
+            ["ratio:=0.5", "flag:=true", "empty:=null"],
+            {"ratio": 0.5, "flag": True, "empty": None},
+        ),
+        (['texts:=["a", "b"]'], {"texts": ["a", "b"]}),
+        (['items:=[{"id": "a", "text": "x"}]'], {"items": [{"id": "a", "text": "x"}]}),
+        (['opts:={"k": 1}'], {"opts": {"k": 1}}),
+        (["nested[a][b]=v", "nested[a][c]:=2"], {"nested": {"a": {"b": "v", "c": 2}}}),
+        (["tags[]=x", "tags[]=y"], {"tags": ["x", "y"]}),
+    ],
+)
+def test_parse_params(params, expected):
+    assert _parse_params(params) == expected
+
+
+def test_parse_params_keeps_equals_signs_in_values():
+    # Base64 padding and URL query strings both contain "=".
+    params = [
+        "image_url=data:image/png;base64,iVBORw0KGgo=",
+        "url=https://x.test/?a=1&b=2",
+    ]
+
+    assert _parse_params(params) == {
+        "image_url": "data:image/png;base64,iVBORw0KGgo=",
+        "url": "https://x.test/?a=1&b=2",
+    }
+
+
+def test_parse_params_rejects_invalid_json():
+    with pytest.raises(ValueError, match="Invalid JSON for 'texts'"):
+        _parse_params(["texts:=[a, b]"])
+
+
+def test_parse_params_rejects_missing_separator():
+    with pytest.raises(ValueError, match="Invalid parameter 'prompt'"):
+        _parse_params(["prompt"])
+
+
+def test_json_params_reach_the_request_body(capsys):
+    sent = []
+
+    class RecordingQueue(FakeQueue):
+        def _handle(self, request):
+            if request.method == "POST":
+                sent.append(json.loads(request.content))
+            return super()._handle(request)
+
+    queue = RecordingQueue(
+        response=httpx.Response(200, json={"ok": True}), status_logs=[_log("done")]
+    )
+    args = parse_args(["api", "owner/app", 'texts:=["a", "b"]', "k:=2", "s=2"])
+    with patch("fal.apps._get_http_client", return_value=queue.client()), patch(
+        "fal.apps.get_credentials", return_value=Credentials()
+    ):
+        _api(args)
+
+    assert sent == [{"texts": ["a", "b"], "k": 2, "s": "2"}]
