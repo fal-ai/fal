@@ -3501,9 +3501,46 @@ possible.</p></li>
 <section id="module-fal.flags">
 <span id="fal-flags-module"></span><h2>fal.flags module<a class="headerlink" href="#module-fal.flags" title="Link to this heading">¶</a></h2>
 <dl class="py function">
+<dt class="sig sig-object py" id="fal.flags.api_label_index">
+<span class="sig-prename descclassname"><span class="pre">fal.flags.</span></span><span class="sig-name descname"><span class="pre">api_label_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.flags.api_label_index" title="Link to this definition">¶</a></dt>
+<dd><p>Position of the <cite>api</cite> label in a host, or 0 when it has none.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="fal.flags.bool_envvar">
 <span class="sig-prename descclassname"><span class="pre">fal.flags.</span></span><span class="sig-name descname"><span class="pre">bool_envvar</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.flags.bool_envvar" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.flags.insert_label">
+<span class="sig-prename descclassname"><span class="pre">fal.flags.</span></span><span class="sig-name descname"><span class="pre">insert_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.flags.insert_label" title="Link to this definition">¶</a></dt>
+<dd><p>Insert <cite>label</cite> into <cite>host</cite> at <cite>index</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.flags.swap_api_label">
+<span class="sig-prename descclassname"><span class="pre">fal.flags.</span></span><span class="sig-name descname"><span class="pre">swap_api_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replacement</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.flags.swap_api_label" title="Link to this definition">¶</a></dt>
+<dd><p>Swap the <cite>api</cite> label of a host for <cite>replacement</cite>.</p>
+<p>One DNS label names the service, so the REST host is the gRPC host with
+that label swapped. The label is not always the first one: an environment
+may put its own labels in front of it. A host with no <cite>api</cite> label is
+returned unchanged.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
 
 </section>
 <section id="module-fal.project">
