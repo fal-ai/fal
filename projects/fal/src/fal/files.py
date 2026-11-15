@@ -104,6 +104,16 @@ class FalFileSystem(AbstractFileSystem):
         abs_path = self._abspath(path)
         if abs_path in self.dircache:
             entries = self.dircache[abs_path]
+        elif abs_path == "/":
+            entries = [
+                {
+                    "name": f"/{root}",
+                    "size": 0,
+                    "type": "directory",
+                    "mtime": 0,
+                }
+                for root in STORAGE_ROOTS
+            ]
         else:
             entries = self._ls(abs_path)
         self.dircache[abs_path] = entries
