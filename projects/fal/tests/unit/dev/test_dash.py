@@ -859,7 +859,7 @@ def test_disks_show_free_space_and_warn_when_low():
     ]
     probe = _probe(system=_system(), disks=disks)
     text = _frame(_snapshot(probe=probe))
-    assert re.search(r"/work\+/ +3\.0 GB free", text)
+    assert re.search(r"/work, root disk +3\.0 GB free", text)
     assert re.search(r"/data +500\.0 GB free", text)
     assert "%" not in "".join(line for line in text.splitlines() if "free" in line)
 
@@ -1186,3 +1186,133 @@ def test_connections_panel_lists_secret_and_variable_names():
 
     assert "secrets" in text and "HF_TOKEN" in text
     assert "env vars" in text and "FOO, BAR" in text
+
+
+def _system_with(**changes):
+    return _probe(system={**_system(), **changes})
+
+
+def test_small_box_memory_is_shown_in_mib():
+    text = _frame(
+        _snapshot(_system_with(mem_used_bytes=128 * 2**20, mem_total_bytes=512 * 2**20))
+    )
+    assert re.search(r"ram .* 25% +128/512 MiB", text)
+    assert "/0 " not in text
+
+
+def test_mem_format_never_rounds_a_total_to_zero():
+    from fal.dev.dash.view import mem
+
+    assert mem(0.2 * 2**30, 2**30) == "0.2/1.0 GiB"
+    assert mem(2**20, 2**19) == "1/1 MiB"
+    assert mem(24 * 2**30, 128 * 2**30) == "24.0/128 GiB"
+
+
+def test_cpu_without_a_reading_says_so_and_one_core_is_singular():
+    unknown = _frame(_snapshot(_system_with(cpu_pct=None, cpus=1)))
+    assert re.search(r"cpu .* n/a +1 core, usage not reported", unknown)
+    known = _frame(_snapshot(_system_with(cpu_pct=0.0, cpus=1)))
+    assert re.search(r"cpu .* 0% +1 core\b", known)
+    assert "cores" not in known.split("net")[0].split("cpu")[1]
+
+
+def test_once_output_has_no_key_hints():
+    snapshot = _snapshot()
+    keys = _text(render(snapshot, FakeDashBox(), now=NOW))
+    once = _text(render(snapshot, FakeDashBox(), now=NOW, hints=False))
+    assert "hot restart" in keys
+    assert "hot restart" not in once and "q quit" not in once
+    assert "updated" in once  # the status line stays
+
+
+def test_print_once_hides_the_keys(capsys):
+    from fal.dev.dash import tui
+
+    box = FakeDashBox()
+    tui.print_once(box, Console(width=150, force_terminal=False, color_system=None))
+    out = capsys.readouterr().out
+    assert "fal dev" in out and "hot restart" not in out
+
+
+def test_header_carries_the_countdown_and_unsaved_state():
+    text = _frame(_snapshot())
+    header = text.split("Box")[0]
+    assert re.search(r"stops in 1m 00s|stops in \d+m", header)
+    assert "/work unsaved" in header
+
+
+def test_header_shows_the_hold_end_instead_of_the_countdown():
+    hold_until = NOW + 1800
+    probe = _probe(activity={"held": True, "hold_until": hold_until})
+    snapshot = _snapshot(probe)
+    clock = time.strftime("%H:%M:%S", time.localtime(hold_until))
+    frame = _frame(snapshot)
+    assert f"held until {clock}" in frame.split("Box")[0]
+    assert f"held until {clock}" in frame.splitlines()[-4:].__str__()
+    assert "stops in" not in frame.split("Box")[0]
+
+
+def test_work_panel_folds_the_snapshot_and_explains_unsaved():
+    text = _frame(_snapshot())
+    assert "snapshot  " not in text
+    assert re.search(r"last save +\d+m \d+s ago \(60\.0 MB, or restore\)", text)
+    expected = f"saved every {config.SAVE_INTERVAL_MINUTES} min and on fal dev down"
+    assert expected in " ".join(text.split())
+    clean = _frame(_snapshot(_probe(work={"dirty": False})))
+    assert "saved every" not in clean
+
+
+def test_top_processes_come_after_connections():
+    procs = [{"name": "python", "cpu_pct": 1.0, "rss_bytes": 2**20, "gpu_mib": None}]
+    text = _frame(_snapshot(_probe(system=_system(processes=procs))))
+    assert text.index("Connections") < text.index("Top processes")
+
+
+def test_owner_shows_only_when_it_differs_from_you():
+    box = FakeDashBox()
+    box.account = Account("team-x", False)
+    box.known_owner = "alice"
+    box._identity = "alice"
+    assert "owner" not in _frame(_snapshot(), box)
+    box._identity = "bob"
+    frame = _frame(_snapshot(), box)
+    assert "owner alice" in frame and "team-x" in frame
+    mine = FakeDashBox()
+    mine.account = Account("me", True)
+    mine.known_owner = mine._identity = "me"
+    assert "personal" not in _frame(_snapshot(), mine)
+
+
+def test_idle_panel_says_what_resets_the_timer_and_none_for_no_activity():
+    probe = _probe(idle_state={"last_active": None, "idle_minutes": 60, "reasons": []})
+    text = " ".join(_frame(_snapshot(probe)).split())
+    assert "timer reset by" in text and "terminal input" in text
+    assert "last activity none" in text
+    assert "last activity -" not in text
+
+
+def test_log_lines_end_in_an_ellipsis_and_huge_ones_collapse():
+    logs = [
+        {"timestamp": "2026-11-05T21:58:00Z", "level": "INFO", "message": "w" * 400},
+        {"timestamp": "2026-11-05T21:58:01Z", "level": "INFO", "message": "x" * 800},
+        {"timestamp": "2026-11-05T21:58:02Z", "level": "INFO", "message": "short"},
+    ]
+    text = _frame(_snapshot(logs=logs), width=100)
+    lines = [line for line in text.splitlines() if "w" * 20 in line]
+    assert lines and lines[0].rstrip(" \u2502|").endswith("...") or "\u2026" in lines[0]
+    assert "... (800 chars)" in text
+    assert "x" * 20 not in text
+    assert "short" in text
+
+
+def test_timestamps_are_hh_mm_ss():
+    from fal.dev.dash import view
+
+    assert re.fullmatch(r"\d\d:\d\d:\d\d", view._clock(NOW))
+    assert re.fullmatch(r"\d\d:\d\d:\d\d", view._log_clock("2026-11-05T21:58:00Z"))
+
+
+def test_footer_marks_an_active_hold():
+    probe = _probe(activity={"held": True, "hold_until": NOW + 600})
+    keys = _text(render(_snapshot(probe), FakeDashBox(), now=NOW))
+    assert "h hold 1h" in keys and "held until" in keys.splitlines()[-3]

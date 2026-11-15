@@ -50,6 +50,8 @@ while true; do
             echo pending > "$reqs_stamp"
         fi
         before=$(cksum < requirements.txt)
+        echo "[hot] installing requirements.txt ..."
+        install_start=$SECONDS
         if ! write_constraints || ! uv pip install -q --python .venv/bin/python -c "$constraints" -r requirements.txt; then
             echo "[hot] installing requirements.txt failed; fix it and save"
             # Never leave a half-built .venv for the server to run in.
@@ -57,6 +59,7 @@ while true; do
             while [ "$(cksum < requirements.txt 2>/dev/null)" = "$before" ]; do sleep 1; done
             continue
         fi
+        echo "[hot] requirements installed in $((SECONDS - install_start))s"
         [ -f "$reqs_stamp" ] && echo "$want" > "$reqs_stamp"
     fi
     py=python3

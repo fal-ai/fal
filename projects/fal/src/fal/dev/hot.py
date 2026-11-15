@@ -18,8 +18,9 @@ from typing import Callable, Protocol
 
 from fal.dev import config, files, state
 from fal.dev.box import Box, log
-from fal.dev.errors import DevError
+from fal.dev.errors import EXIT_TIMEOUT, DevError
 from fal.dev.loading import STATES, Loading
+from fal.dev.remote.hot_server import RESTART_FILES, clean_traceback
 from fal.dev.transport import post_json
 
 OUTPUT_DIR = "hot-out"
@@ -35,6 +36,12 @@ RETRY_MARKERS = ("[hot] loading the model", "[hot] restarting", "[hot] FULL REST
 READY_MARKER = "[hot] serving"
 # tqdm progress bars (weights, pipeline parts, denoising steps) in the box log.
 PROGRESS = re.compile(r"\d+%\|.*\||\d+(?:\.\d+)?(?:it/s|s/it)\]")
+# Python warnings and token notices that bury the load log; a failed load shows all.
+NOISE = re.compile(r"Warning\b|HF_TOKEN|warnings\.warn")
+RESTART_REASON = re.compile(r"FULL RESTART: (.+?); the weights reload")
+NOT_RUNNING = "the hot server is not running"
+STOPPED_HINT = f"{NOT_RUNNING}: start it with fal dev hot start"
+RAISED_HINT = "infer() raised (server still running; fix and save to retry)"
 
 
 class HotTokenRejected(DevError):
@@ -51,6 +58,7 @@ class RunResult:
     seconds: float
     restarted: str | None = None  # why the weights reloaded first, if they did
     path: Path | None = None  # where an image result was saved
+    root: str | None = None  # the project folder on the box, for relative paths
 
     @property
     def ok(self) -> bool:
@@ -67,12 +75,23 @@ class RunResult:
 
     @property
     def error(self) -> dict:
-        """{"message", "traceback"} for a failed request."""
+        """{"message", "short", "traceback"} for a failed request, as plain text."""
         try:
             info = json.loads(self.body)
-            return {"message": info.get("error"), "traceback": info.get("traceback")}
+            short = (
+                info.get("error") or info.get("restarting") or plain_error(self.body)
+            )
+            trace = clean_traceback(info.get("traceback"), self.root)
         except (ValueError, AttributeError):
-            return {"message": repr(self.body[:500]), "traceback": None}
+            short, trace = plain_error(self.body), None
+        short = str(short)
+        if NOT_RUNNING in short:
+            message = STOPPED_HINT
+        elif short == "infer() raised":
+            message = RAISED_HINT
+        else:
+            message = short
+        return {"message": message, "short": short, "traceback": trace}
 
 
 def remote_dir(local: str | None, remote: str | None) -> str:
@@ -82,6 +101,123 @@ def remote_dir(local: str | None, remote: str | None) -> str:
     if local:
         return f"{config.LOCAL_WORK}/{Path(local).resolve().name}"
     raise DevError("pass a local project folder or --dir <folder on the box>")
+
+
+def plain_error(body: bytes | str) -> str:
+    """A server answer as one line of plain text: its error field, never raw JSON."""
+    text = body.decode(errors="replace") if isinstance(body, bytes) else body
+    try:
+        info = json.loads(text)
+    except ValueError:
+        return text.strip()[:500]
+    if isinstance(info, dict):
+        for key in ("error", "detail", "message"):
+            if isinstance(info.get(key), (str, int)):
+                return str(info[key])[:500]
+    return str(info)[:500]
+
+
+def summarize_params(params: dict, limit: int = 160) -> str:
+    """The request params as one line of JSON, cut at `limit` characters."""
+    text = json.dumps(params, default=str) if params else "no params"
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def code_version(version: str | None) -> str:
+    """The version as "code v1 (1 reload since weights loaded)"."""
+    try:
+        n = int(version)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return f"code v{version}"
+    count = "no reloads" if n == 0 else f"{n} reload{'s' if n != 1 else ''}"
+    return f"code v{n} ({count} since weights loaded)"
+
+
+def weights_files(files: list[str]) -> list[str]:
+    """The files whose change reloads the weights (the server's rule: root only)."""
+    return [
+        f
+        for f in files
+        if Path(f).name in RESTART_FILES and Path(f).parent == Path(".")
+    ]
+
+
+def reload_note(files: list[str]) -> str:
+    """What a push of these files reloads, in the words every command uses."""
+    heavy = weights_files(files)
+    if heavy:
+        verb = "weights reload"
+        if "requirements.txt" in heavy:
+            verb = "requirements reinstall, weights reload"
+        return f"{', '.join(heavy)} changed: {verb}"
+    code = [f for f in files if f.endswith(".py")]
+    if not code:
+        return f"{', '.join(files[:3])} synced: not a .py file, nothing reloads"
+    names = ", ".join(code[:3]) + (
+        f" and {len(code) - 3} more" if len(code) > 3 else ""
+    )
+    return f"{names} changed: code reload, weights stay loaded"
+
+
+def restart_reason(lines: list[str]) -> str | None:
+    """Why the server restarted, from the newest FULL RESTART line of its log."""
+    for line in reversed(lines):
+        match = RESTART_REASON.search(line)
+        if match:
+            return match[1]
+    return None
+
+
+def clean_log(lines: list[str]) -> list[str]:
+    """Log lines without carriage-return redraws or progress bar repeats."""
+    cleaned: list[str] = []
+    for raw in lines:
+        line = raw.split("\r")[-1].rstrip() if "\r" in raw else raw.rstrip()
+        if not line.strip():
+            continue
+        if cleaned and PROGRESS.search(line) and PROGRESS.search(cleaned[-1]):
+            cleaned[-1] = line
+        else:
+            cleaned.append(line)
+    return cleaned
+
+
+def server_state(status: int, info: dict) -> tuple[str, str | None]:
+    """(state, detail) of the hot server from a /status answer.
+
+    State is ready, loading, restarting, failed (waiting for a fix), stopped or
+    unreachable (no answer from the box).
+    """
+    lines = info.get("log") or []
+    if status == 200:
+        if info.get("restarting"):
+            return "restarting", info["restarting"]
+        return ("ready" if info.get("ready") else "loading"), None
+    if status == 409:
+        if info.get("restarting"):
+            return "restarting", info["restarting"]
+        if waiting_for_fix(lines):
+            return "failed", None
+        if restarting(lines):
+            if "loading the model" in lines[_last(lines, RETRY_MARKERS)]:
+                return "loading", None
+            return "restarting", restart_reason(lines)
+        return "stopped", None
+    return "unreachable", plain_error(json.dumps(info))
+
+
+def quiet_load_lines(lines: list[str]) -> list[str]:
+    """Load log lines without Python warnings (and the source line shown under one)."""
+    shown: list[str] = []
+    after_warning = False
+    for line in lines:
+        noisy = bool(NOISE.search(line))
+        if noisy or (after_warning and line.startswith(" ") and "[hot]" not in line):
+            after_warning = noisy
+            continue
+        after_warning = False
+        shown.append(line)
+    return shown
 
 
 def new_log_lines(printed: list[str], lines: list[str]) -> list[str]:
@@ -213,6 +349,11 @@ class HotBox:
 
     # Called with (saved image path, response headers) after each image result.
     on_image: Callable[[Path, dict], None] | None = None
+    # The project folder on the box (set by commands that know it), so tracebacks
+    # show paths relative to the project.
+    remote: str | None = None
+    # The server process that was serving before a push that reloads the weights.
+    pid_before: int | None = None
 
     def __init__(self, box: Box) -> None:
         from fal import flags
@@ -243,12 +384,13 @@ class HotBox:
         try:
             return status, json.loads(body)
         except ValueError:
-            return status, {"error": body.decode(errors="replace")[:500]}
+            return status, {"error": plain_error(body)}
 
     def wait_ready(
         self,
         timeout: int = 1800,
         headline: str = "starting the hot server: loading weights",
+        after_pid: int | None = None,
     ) -> dict:
         """Poll until the server has loaded the model, printing its log as it goes."""
         with Loading(
@@ -257,11 +399,23 @@ class HotBox:
             headline=headline,
             expected=STATES["weights"][1],
         ) as wait:
-            info = self._wait_ready(timeout, wait)
+            info = self._wait_ready(timeout, wait, after_pid)
             wait.done()
             return info
 
-    def _wait_ready(self, timeout: int, wait) -> dict:
+    def server_pid(self) -> int | None:
+        """The pid of the serving hot server, None if it is not up."""
+        status, info = self.json("status")
+        return info.get("pid") if status == 200 and info.get("ready") else None
+
+    def wait_reload(self, headline: str) -> dict | None:
+        """After a push that reloads the weights: wait for the new server."""
+        before, self.pid_before = self.pid_before, None
+        if before is None:
+            return None
+        return self.wait_ready(headline=headline, after_pid=before)
+
+    def _wait_ready(self, timeout: int, wait, after_pid: int | None = None) -> dict:
         deadline = time.time() + timeout
         printed: list[str] | None = None
         network_errors = 0
@@ -288,7 +442,10 @@ class HotBox:
                 # Earlier requests and attempts were shown by earlier commands.
                 printed = lines[: len(lines) - len(attempt_lines(lines))]
             # Progress bars and blank lines only when the load failed.
-            for line in new_log_lines(printed, lines):
+            fresh = new_log_lines(printed, lines)
+            if not stuck:
+                fresh = quiet_load_lines(fresh)
+            for line in fresh:
                 if stuck or (line.strip() and not PROGRESS.search(line)):
                     wait.say(f"  {line}")
             printed = lines
@@ -298,7 +455,12 @@ class HotBox:
                     title="the hot server stopped",
                     fixes=[("fal dev hot start", "after you fix load.py")],
                 )
-            if status == 200 and info.get("ready") and not info.get("restarting"):
+            if (
+                status == 200
+                and info.get("ready")
+                and not info.get("restarting")
+                and (after_pid is None or info.get("pid") != after_pid)
+            ):
                 return info
             # 409: the server is not up yet; 502-504: the gateway has no answer.
             if status not in (200, 409, 502, 503, 504):
@@ -308,9 +470,12 @@ class HotBox:
             f"the hot server was not ready within {timeout}s",
             title="the model did not load",
             fixes=[("fal dev hot logs", "see what it is doing")],
+            code=EXIT_TIMEOUT,
         )
 
     def push(self, root: Path, remote: str, rels: list[str]) -> list[str]:
+        self.pid_before = None
+        before = self.server_pid() if weights_files(rels) else None
         contents = {}
         for rel in rels:
             try:
@@ -333,7 +498,10 @@ class HotBox:
             )
         if status != 200:
             raise DevError(f"sync failed ({status}): {info.get('error')}")
-        return info.get("written", [])
+        written = info.get("written", [])
+        if weights_files(written):
+            self.pid_before = before
+        return written
 
     def run(
         self,
@@ -349,22 +517,24 @@ class HotBox:
             try:
                 info = json.loads(body)
                 # The server says so, or has already exited to restart (port closed).
-                reason = info.get("restarting") or (
-                    restarting(info.get("log") or []) and "a restart is under way"
-                )
+                reason = info.get("restarting")
+                if not reason and restarting(info.get("log") or []):
+                    reason = restart_reason(info["log"]) or "a restart is under way"
             except (ValueError, AttributeError):
                 pass
         if reason:
             if on_restart:
                 on_restart(reason)
             else:
-                log(f"FULL RESTART ({reason}): the weights reload ...")
+                log(f"restarting ({reason}), waiting ...")
             info = self.wait_ready(headline=STATES["hot-restart"][0])
             if not on_restart:
                 log(f"model loaded in {info['load_seconds']}s")
             start = time.time()
             status, headers, body = self.post("infer", params, timeout=900)
-        result = RunResult(status, headers, body, time.time() - start, reason or None)
+        result = RunResult(
+            status, headers, body, time.time() - start, reason or None, root=self.remote
+        )
         if result.ok and result.is_image:
             name = f"{time.strftime('%H%M%S')}.png"
             result.path = Path(output) if output else Path(OUTPUT_DIR) / name
@@ -376,27 +546,28 @@ class HotBox:
         self, params: dict, output: str | None = None, edited_at: float | None = None
     ) -> bool:
         """Send one request; save an image result and print timings. True on success."""
+        log(f"sending {summarize_params(params)}")
         result = self.run(params, output)
         if not result.ok:
             error = result.error
             if error.get("traceback"):
-                log(error["traceback"])
-            log(f"error ({result.status}): {error['message']}")
+                log(error["traceback"].rstrip())
+            log(error["message"])
             return False
         headers = result.headers
         timing = (
-            f"code v{headers.get('x-hot-code-version')} | "
-            f"infer {headers.get('x-hot-infer-ms')} ms | "
-            f"round trip {result.seconds:.2f}s"
+            f"{code_version(headers.get('x-hot-code-version'))} | "
+            f"infer {headers.get('x-hot-infer-ms')} ms (model only) | "
+            f"round trip {result.seconds:.2f}s (infer + network + transfer)"
         )
         if edited_at:
             timing += f" | edit to result {time.time() - edited_at:.2f}s"
+        print(timing)
         if result.path:
-            print(f"{timing} | {result.path}")
             if self.on_image:
                 self.on_image(result.path, headers)
+            print(f"saved {result.path}")
         else:
-            print(timing)
             print(result.body.decode(errors="replace"))
         return True
 
@@ -409,6 +580,7 @@ class HotBox:
         view: WatchView,
     ) -> None:
         """Push each saved file; with run_params, send a request after each push."""
+        self.remote = remote
         known = scan(root)
         pending: set[str] = set()  # failed pushes, sent again with the next save
         view.watching(root, run_params is not None)
@@ -431,7 +603,16 @@ class HotBox:
             pending.clear()
             if not written:
                 continue  # saved without changes
-            view.synced(written, time.time() - edited_at)
+            view.synced(written, time.time() - edited_at, reload_note(written))
+            if run_params is None:
+                try:
+                    self.wait_reload("reloading weights")
+                except HotTokenRejected:
+                    raise
+                except DevError as exc:
+                    view.lost(str(exc))
+            else:
+                self.pid_before = None  # the request rides out the restart itself
             if run_params is not None:
                 try:
                     result = self.run(run_params, output, on_restart=view.restarting)
@@ -444,7 +625,9 @@ class WatchView(Protocol):
     """What `hot sync --watch` reports as you save (see fal.dev.cli.watch_view)."""
 
     def watching(self, root: Path, run: bool) -> None: ...
-    def synced(self, files: list[str], after_save: float) -> None: ...
+    def synced(
+        self, files: list[str], after_save: float, note: str | None = None
+    ) -> None: ...
     def sync_failed(self, files: list[str], error: str) -> None: ...
     def restarting(self, reason: str) -> None: ...
     def ran(self, result: RunResult, edited_at: float) -> None: ...

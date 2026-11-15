@@ -12,6 +12,7 @@ from fal.cli.parser import FalParserExit
 from fal.dev import config, state
 from fal.dev.cli import box as box_commands
 from fal.dev.cli.common import default_name, remember_name, resolve_name
+from fal.dev.errors import DevError
 from fal.sdk import RunnerState
 
 pytestmark = pytest.mark.usefixtures("dev_account")
@@ -115,22 +116,30 @@ def test_dev_hot_subcommands_take_only_their_flags(monkeypatch):
     "flags",
     [["--prompt", "a fox"], ["-p", "a=1"], ["-o", "x.png"], ["--watch", "-p", "a=1"]],
 )
-def test_dev_hot_sync_rejects_request_flags_without_watch_run(flags, capsys):
+def test_dev_hot_sync_rejects_request_flags_without_run(flags):
     from fal.dev.cli import hot as hot_commands
+    from fal.dev.errors import DevError
 
     args = parse_args(["dev", "hot", "sync", "./proj", *flags])
-    with pytest.raises(FalParserExit):
+    with pytest.raises(DevError, match="only works with --run") as caught:
         hot_commands.cmd_sync(args)
-    assert "only apply with --watch --run" in capsys.readouterr().err
+    assert caught.value.code == 2
 
 
-def test_dev_hot_sync_rejects_run_without_watch(capsys):
+def test_dev_hot_sync_run_without_watch_is_allowed(monkeypatch):
     from fal.dev.cli import hot as hot_commands
 
+    class Reached(Exception):
+        pass
+
+    def stop(args):
+        raise Reached
+
+    # Past the flag check, the command goes on to find its box.
+    monkeypatch.setattr(hot_commands, "get_box", stop)
     args = parse_args(["dev", "hot", "sync", "./proj", "--run"])
-    with pytest.raises(FalParserExit):
+    with pytest.raises(Reached):
         hot_commands.cmd_sync(args)
-    assert "--run needs --watch" in capsys.readouterr().err
 
 
 def test_dev_exec_help_explains_shell_syntax_and_background_jobs(capsys):
@@ -274,7 +283,9 @@ def test_dev_shell_and_exec_open_a_session_on_the_boxs_runner(monkeypatch, fake_
     )
     execs = []
     monkeypatch.setattr(
-        box_commands.execute, "run", lambda *args: execs.append(args) or 0
+        box_commands.execute,
+        "run",
+        lambda *args, **kwargs: execs.append(args) or 0,
     )
     shell = parse_args(["dev", "shell"])
     shell.console = MagicMock()
@@ -294,19 +305,20 @@ def test_dev_logs_follow_the_live_runner(monkeypatch, fake_box):
     tail_lines = [{"message": "a"}, {"message": "b"}]
     fake_box.logs.return_value = tail_lines
     shown = MagicMock()
-    monkeypatch.setattr(box_commands, "LogPrinter", lambda console: shown)
-    printed = []
+    monkeypatch.setattr(box_commands, "_LinePrinter", lambda console, full: shown)
+    followed = []
     monkeypatch.setattr(
-        box_commands, "print_logs", lambda *args, **kw: printed.append((args, kw))
+        box_commands,
+        "_stream_logs",
+        lambda *args: followed.append(args) or iter(()),
     )
     args = parse_args(["dev", "logs"])
     args.console = MagicMock()
 
     box_commands.cmd_logs(args)
 
-    ((follow_args, follow_kwargs),) = printed
-    assert follow_args == (fake_box.client, "r1", args.console)
-    assert follow_kwargs["follow"] is True and follow_kwargs["since"] is not None
+    ((_, query, since, until),) = followed
+    assert query == {"job_id": "r1"} and since is not None and until is None
     # The tail is the newest lines the API returned, oldest first.
     assert [c.args[0] for c in shown.print.call_args_list] == tail_lines
     fake_box.logs.assert_called_once()
@@ -331,7 +343,7 @@ def test_dev_logs_all_picks_the_latest_started_not_the_shortest_lived(
 
     printed = []
     monkeypatch.setattr(
-        box_commands, "print_logs", lambda *args, **kw: printed.append(args)
+        box_commands, "_print_history", lambda *args: printed.append(args)
     )
     # The first runner lived 22 s; the latest lived 13 min: uptime sorts them wrong.
     fake_box.runners.return_value = [
@@ -358,7 +370,10 @@ def test_dev_logs_all_picks_the_latest_started_not_the_shortest_lived(
 def test_dev_logs_all_reads_the_runner_that_is_still_around(monkeypatch, fake_box):
     printed = []
     monkeypatch.setattr(
-        box_commands, "print_logs", lambda *args, **kw: printed.append((args, kw))
+        box_commands, "_print_history", lambda *args: printed.append(args)
+    )
+    monkeypatch.setattr(
+        box_commands, "_follow", lambda *a: pytest.fail("--all does not follow")
     )
     fake_box.runners.return_value = [
         _runner("gone", RunnerState.TERMINATED, 5),
@@ -370,10 +385,9 @@ def test_dev_logs_all_reads_the_runner_that_is_still_around(monkeypatch, fake_bo
 
     box_commands.cmd_logs(args)
 
-    ((call_args, kwargs),) = printed
-    assert call_args[1] == "backing-off"
-    assert kwargs["follow"] is False
-    assert kwargs["since"] is not None
+    ((_, runner_id, _, since, _),) = printed
+    assert runner_id == "backing-off"
+    assert since is not None
 
 
 def test_dev_ssh_config_proxy_keeps_the_host_and_team(monkeypatch, capsys):
@@ -398,7 +412,7 @@ def _patch_get_box(monkeypatch, box):
     from fal.dev.cli import common
 
     monkeypatch.setattr(common, "resolve_account", lambda *a, **k: MagicMock())
-    monkeypatch.setattr(common, "announce", lambda account: None)
+    monkeypatch.setattr(common, "announce", lambda account, *a, **k: None)
     monkeypatch.setattr(common, "Box", lambda *a, **k: box)
     return common
 
@@ -471,10 +485,11 @@ def test_ssh_proxy_reports_the_failure_reason_on_stderr(monkeypatch, capsys):
     monkeypatch.setattr(box_commands, "get_box", lambda *a, **k: box)
     monkeypatch.setattr(box_commands, "_cleanup_on_hangup", lambda: None)
 
-    code = box_commands.cmd_ssh_proxy(parse_args(["dev", "ssh-proxy", "--name", "k"]))
+    args = parse_args(["dev", "ssh-proxy", "--name", "k"])
 
-    assert code == 1
-    assert "ssh-proxy failed: fal API unreachable" in capsys.readouterr().err
+    assert args.func(args) == 1
+    err = capsys.readouterr().err
+    assert "error: fal dev ssh-proxy failed: fal API unreachable" in err
 
 
 def test_ssh_proxy_leaves_dev_errors_to_the_error_panel(monkeypatch):
@@ -492,15 +507,17 @@ def test_ssh_proxy_leaves_dev_errors_to_the_error_panel(monkeypatch):
 def test_dev_hold_off_rejects_hours(monkeypatch):
     args = parse_args(["dev", "hold", "--off", "2"])
     monkeypatch.setattr(box_commands, "get_box", lambda a: pytest.fail("no box"))
-    with pytest.raises(FalParserExit):
+    with pytest.raises(DevError, match="--off takes no hours") as caught:
         box_commands.cmd_hold(args)
+    assert caught.value.code == 2
 
 
 def test_dev_hold_without_hours_or_off_is_a_usage_error(monkeypatch):
     args = parse_args(["dev", "hold"])
     monkeypatch.setattr(box_commands, "get_box", lambda a: pytest.fail("no box"))
-    with pytest.raises(FalParserExit):
+    with pytest.raises(DevError, match="say how many hours") as caught:
         box_commands.cmd_hold(args)
+    assert caught.value.code == 2
 
 
 def test_dev_list_status_and_destroy_parse(monkeypatch):
@@ -785,7 +802,7 @@ def test_deploy_help_says_secrets_are_team_level(capsys):
         parse_args(["dev", "deploy", "--help"])
 
     out = " ".join(capsys.readouterr().out.split())
-    assert "Secrets are team-level" in out
+    assert "--secret NAME gives the box a team secret" in out
     assert "fal secrets set NAME=value" in out
     assert "sees only the names you list" in out
     assert "—" not in out

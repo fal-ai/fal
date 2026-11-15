@@ -7,6 +7,7 @@ run's cost when this login may read it).
 from __future__ import annotations
 
 import time
+from datetime import timedelta
 
 from rich.console import Group, RenderableType
 from rich.table import Table
@@ -14,7 +15,7 @@ from rich.text import Text
 
 from fal.console.icons import get_inline_separator_icon
 from fal.dev import config
-from fal.dev.box import Box
+from fal.dev.box import LIVE_STATES, Box
 from fal.dev.dash.model import IDLE_WARNING_SECONDS, Poller, Snapshot, idle_view
 from fal.dev.dash.view import STATE_STYLES, ago, duration
 from fal.dev.errors import DevError
@@ -34,7 +35,31 @@ def snapshot(box: Box) -> Snapshot:
             title="could not read the box's state",
             fixes=[("fal dev status", "try again")],
         )
+    _correct_uptime(box, snap)
     return snap
+
+
+def _correct_uptime(box: Box, snap: Snapshot) -> None:
+    """Replace the platform's uptime with the time since the runner's start.
+
+    The listing's uptime restarts when the runner changes state, so a runner that
+    has been up for minutes can report seconds. The runner's start time does not.
+    """
+    runner = snap.state.runner if snap.state else None
+    if runner is None or runner.state not in LIVE_STATES:
+        return
+    try:
+        from fal.cli.runners import _get_runner_info
+
+        started = _get_runner_info(
+            box.client._create_rest_client(), runner.runner_id
+        ).started_at
+    except Exception:
+        return
+    if started is None:
+        return
+    fetched = snap.state_at or time.time()
+    runner.uptime = timedelta(seconds=max(0.0, fetched - started.timestamp()))
 
 
 def _box_now(snap: Snapshot, now: float) -> float:
@@ -62,6 +87,27 @@ def _machine(snap: Snapshot) -> str:
     return f"1x {machine_type}" if config.is_gpu(machine_type) else machine_type
 
 
+def _countdown(seconds: float) -> str:
+    """'56m' for a countdown: seconds only matter in the last minute."""
+    if seconds < 60:
+        return f"{max(0, int(seconds))}s"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m"
+    return duration(seconds // 60 * 60)
+
+
+def _other_owner(box: Box) -> str | None:
+    """The box's owner when it is not you; None if it is yours or unknown."""
+    owner = box.owner()
+    if not owner:
+        return None
+    try:
+        me = box.owner_identity()
+    except Exception:
+        me = None
+    return None if me == owner else owner
+
+
 def _idle(snap: Snapshot, now: float, *, short: bool = False) -> Text:
     """'stops itself after 60 min idle (in 38m)', or why it will not."""
     if not snap.probe:
@@ -77,7 +123,7 @@ def _idle(snap: Snapshot, now: float, *, short: bool = False) -> Text:
     style = "bold red" if view.remaining_seconds < IDLE_WARNING_SECONDS else ""
     left = duration(view.remaining_seconds)
     if short:
-        return Text(f"idle stop in {left}", style=style)
+        return Text(f"idle stop in {_countdown(view.remaining_seconds)}", style=style)
     text = Text(f"stops itself after {view.idle_minutes} min idle ")
     text.append(f"(in {left})", style=style or MUTED)
     return text
@@ -135,7 +181,7 @@ def status_line(snap: Snapshot, box: Box, now: float | None = None) -> Text:
         Text(box.app, style="bold"),
         Text(code.upper(), style=f"bold {STATE_STYLES.get(code, '')}"),
     ]
-    if owner := box.owner():
+    if owner := _other_owner(box):
         parts.append(Text(f"owner {owner}", style=MUTED))
     if code == "starting":
         runner = state.runner if state else None
@@ -172,9 +218,18 @@ def status_line(snap: Snapshot, box: Box, now: float | None = None) -> Text:
 
 
 def ready_card(
-    snap: Snapshot, box: Box, waited: float | None = None, now: float | None = None
+    snap: Snapshot,
+    box: Box,
+    waited: float | None = None,
+    now: float | None = None,
+    *,
+    total: float | None = None,
+    already_running: bool = False,
 ) -> RenderableType:
-    """What `fal dev up` ends with: the box, its cost and idle rule, how to connect."""
+    """What `fal dev up` ends with: the box, its cost and idle rule, how to connect.
+
+    `waited` is the runner's start, `total` the whole command (deploy included).
+    """
     now = time.time() if now is None else now
     runner = snap.state.runner if snap.state else None
     sep = f" {get_inline_separator_icon()} "
@@ -185,7 +240,7 @@ def ready_card(
     if runner:
         machine.append(f"{sep}runner {runner.runner_id}", style=MUTED)
     facts.add_row("machine", machine)
-    if owner := box.owner():
+    if owner := _other_owner(box):
         facts.add_row("owner", Text(owner))
     if cost := _cost(snap):
         facts.add_row("cost", cost)
@@ -203,9 +258,7 @@ def ready_card(
     commands.add_column(style=MUTED)
     commands.add_row("shell", "fal dev shell", "")
     commands.add_row("watch", "fal dev dash", "usage, idle shutdown, logs")
-    commands.add_row(
-        "editor", f"ssh {box.app}", "after: fal dev ssh-config >> ~/.ssh/config"
-    )
+    commands.add_row("editor", f"ssh {box.app}", "after: fal dev ssh-config --install")
     commands.add_row("hot", "fal dev hot start ./project", "keep a model loaded")
     commands.add_row("stop", "fal dev down", "saves /work, stops billing")
 
@@ -213,9 +266,18 @@ def ready_card(
         f"  {box.name}  ", style="bold default"
     )
     title.append("READY", style="bold green")
-    subtitle = (
-        Text(f"ready in {format_elapsed(waited)}", style=MUTED) if waited else None
-    )
+    subtitle = None
+    if already_running:
+        subtitle = Text("already running", style=MUTED)
+    elif total and waited and int(total) != int(waited):
+        subtitle = Text(
+            f"ready in {format_elapsed(total)} (runner {format_elapsed(waited)})",
+            style=MUTED,
+        )
+    elif waited or total:
+        subtitle = Text(
+            f"ready in {format_elapsed(waited or total or 0.0)}", style=MUTED
+        )
     return panel(
         Group(facts, Text(""), commands),
         title,

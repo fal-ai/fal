@@ -97,14 +97,17 @@ class LoopView:
             Text.assemble(("model ", MUTED), model),
         )
         then = "sync it and run a request" if run else "sync it"
+        reloads = Text(
+            " (load.py, requirements.txt reload weights)", style=MUTED, no_wrap=True
+        )
         title = Text.styled("fal dev hot", style="bold cyan")
         subtitle = Text("the box keeps running", style=MUTED)
         self.console.print(
             panel(
                 _stack(
-                    Text.assemble(("watching ", MUTED), _short(root)),
+                    Text.assemble(("watching ", MUTED), _short(root) + "/", reloads),
                     facts,
-                    Text(f"save a file to {then}; Ctrl-C stops watching", style=MUTED),
+                    Text(f"save a file to {then}; ctrl-c to stop", style=MUTED),
                 ),
                 title,
                 subtitle=subtitle,
@@ -112,11 +115,15 @@ class LoopView:
             )
         )
 
-    def synced(self, files: list[str], after_save: float) -> None:
+    def synced(
+        self, files: list[str], after_save: float, note: str | None = None
+    ) -> None:
         names = ", ".join(files)
         self._event(
             "sync", "cyan", Text(names), Text(f"{after_save:.2f}s after save", MUTED)
         )
+        if note:
+            self.console.print(Text(f"{' ' * 18}{note}", style=MUTED), crop=True)
 
     def _detail(self, text: str, hint: str) -> None:
         """An error's full text and what happens next, under its event line."""
@@ -169,8 +176,15 @@ class LoopView:
         self.failing = True
         error = result.error
         summary = exception_line(error["traceback"]) or error["message"] or ""
-        what = error["message"] or "the request failed"
-        self._event("error", ERROR, Text(f"{result.status}"), Text(what))
+        what = (error["short"] if error["traceback"] else error["message"]) or (
+            "the request failed"
+        )
+        row: list[Text | str] = [Text(what, "bold")]
+        if where := failing_line(error["traceback"]):
+            row.append(Text(where[0], "cyan"))
+        if error["traceback"] and summary:
+            row.append(Text(summary))
+        self._event("error", ERROR, *row)
         # A long exception does not fit a title: the type there, the rest below.
         title = summary
         if len(summary) > TITLE_CHARS:

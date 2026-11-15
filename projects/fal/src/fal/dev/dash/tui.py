@@ -119,7 +119,7 @@ def print_once(
     controls = controls or box_controls(box)
     poller = controls.poller(box)
     poller.prime()
-    console.print(controls.render(poller.snapshot, box))
+    console.print(controls.render(poller.snapshot, box, hints=False))
 
 
 def run_dashboard(

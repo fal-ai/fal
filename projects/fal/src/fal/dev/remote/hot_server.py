@@ -26,6 +26,7 @@ import importlib
 import io
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -40,6 +41,7 @@ SKIP_DIRS = {".venv", "__pycache__", ".git", "node_modules"}
 POLL_SECONDS = 0.25
 
 LOG: collections.deque[str] = collections.deque(maxlen=200)
+FRAME = re.compile(r'^(\s*File ")([^"]+)(", line \d+.*)$')
 
 
 def log(message: str) -> None:
@@ -63,6 +65,34 @@ def innermost(exc: BaseException) -> str:
         exc = inner
     message = " ".join(str(exc).split()) or "(no message)"
     return f"{type(exc).__name__}: {message[:300]}"
+
+
+def clean_traceback(text: str | None, root: str | Path | None = None) -> str | None:
+    """A traceback without this server's own frames, paths relative to the project.
+
+    The server calling infer() is not the user's code, so its frames only add noise.
+    """
+    if not text:
+        return text
+    prefix = f"{str(root).rstrip(os.sep)}{os.sep}" if root else None
+    kept: list[str] = []
+    skipping = False
+    for line in text.splitlines():
+        match = FRAME.match(line)
+        if match:
+            skipping = Path(match[2]).name == "hot_server.py"
+            if skipping:
+                continue
+            path = match[2]
+            if prefix and path.startswith(prefix):
+                path = path[len(prefix) :]
+            kept.append(f"{match[1]}{path}{match[3]}")
+            continue
+        if skipping and line.startswith("    "):
+            continue  # the source line (and ^^^^ marker) of a dropped frame
+        skipping = False
+        kept.append(line)
+    return "\n".join(kept) + "\n"
 
 
 def scan(root: Path) -> dict[str, float]:
@@ -98,6 +128,7 @@ class Project:
         self.last_reload: dict = {}
         self.reload_reported = True  # the next result reports last_reload once
         self.last_infer: dict = {}
+        self.last_error: dict = {}  # the newest failed infer(), until one succeeds
         self.restart_reason: str | None = None
 
     def load(self) -> None:
@@ -117,7 +148,7 @@ class Project:
             self.error = None
         except Exception:
             self.infer = None
-            self.error = traceback.format_exc()
+            self.error = clean_traceback(traceback.format_exc(), self.root)
             log(f"infer.py failed to import:\n{self.error}")
 
     def _reload_code(self, changed: list[str]) -> None:
@@ -197,13 +228,18 @@ class Project:
                     ),
                     "traceback": self.error,
                 }
+                self.last_error = {
+                    "at": time.time(),
+                    "message": ((self.error or "").strip().splitlines() or [""])[-1],
+                }
                 return 422, "application/json", json.dumps(body).encode(), {}
             start = time.time()
             try:
                 result = self.infer(self.state, **params)
                 cuda_sync()
-            except Exception:
-                tb = traceback.format_exc()
+            except Exception as exc:
+                tb = clean_traceback(traceback.format_exc(), self.root)
+                self.last_error = {"at": time.time(), "message": innermost(exc)}
                 log(f"infer() raised:\n{tb}")
                 return (
                     422,
@@ -213,6 +249,7 @@ class Project:
                 )
             infer_ms = (time.time() - start) * 1000
             self.last_infer = {"at": time.time(), "ms": round(infer_ms)}
+            self.last_error = {}
             # Under the lock: the code this request ran, not a reload after it.
             headers = {
                 "X-Hot-Infer-Ms": f"{infer_ms:.0f}",
@@ -240,6 +277,7 @@ class Project:
             "last_reload": self.last_reload,
             "last_infer": self.last_infer,
             "error": self.error,
+            "last_error": self.last_error,
             "restarting": self.restart_reason,
             "pid": os.getpid(),
             "log": list(LOG)[-40:],

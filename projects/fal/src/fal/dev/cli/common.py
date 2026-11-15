@@ -4,14 +4,52 @@ from __future__ import annotations
 
 import contextlib
 import getpass
+import json
 import os
 import re
 from pathlib import Path
+from typing import Sequence
 
 from fal.dev import config, state
 from fal.dev.box import Box, log
 from fal.dev.cli.parser import box_name
+from fal.dev.errors import EXIT_USAGE, DevError
 from fal.dev.team import announce, resolve_account
+
+
+def err_console(args):
+    """Where status chatter goes: stderr, so stdout keeps only data.
+
+    `fal dev` sets `args.err` when a command runs; without it, the console.
+    """
+    return getattr(args, "err", None) or args.console
+
+
+def emit_json(args, data) -> None:
+    """Print one result object on stdout."""
+    args.console.print_json(json.dumps(data))
+
+
+def usage_error(args, message: str, fixes: Sequence[tuple[str, str]] = ()) -> DevError:
+    """A usage mistake the parser could not see, with the command's own usage.
+
+    Raise the result: `raise usage_error(args, "...", [("fal dev hold 4", "...")])`.
+    """
+    from fal.cli.parser import _find_parser
+
+    usage = None
+    func = getattr(args, "func", None)
+    parser = getattr(args, "parser", None)
+    if func is not None and parser is not None:
+        found = _find_parser(parser, func)
+        if found is not None and hasattr(found, "format_usage"):
+            usage = found.format_usage()
+    return DevError(
+        message,
+        fixes=fixes,
+        code=EXIT_USAGE,
+        usage=usage if isinstance(usage, str) else None,
+    )
 
 
 def default_name() -> str:
@@ -61,7 +99,7 @@ def get_box(
         args.team, config.app_name(name), args.host, remember=remember_team
     )
     if not quiet:
-        announce(account)
+        announce(account, name, verbose=getattr(args, "verbose", False) is True)
     box = Box(name, host=args.host, account=account)
     if remember and args.name and not creates and args.name != remembered_name(args):
         # Best effort: a failed lookup leaves the folder as it was.

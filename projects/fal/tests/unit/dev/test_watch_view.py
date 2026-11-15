@@ -108,8 +108,8 @@ def test_error_panel_on_a_terminal_and_plain_otherwise():
     plain = Console(record=True, width=100, force_terminal=False)
     error_panel.show(exc, plain)
     assert plain.export_text().splitlines() == [
-        "Error: the box restarted since this command began",
-        "  try: fal dev up  (if it is not running)",
+        "error: the box restarted: the box restarted since this command began",
+        "try: fal dev up  (if it is not running)",
     ]
 
 
@@ -142,7 +142,7 @@ def test_watch_pushes_a_save_runs_it_and_reports(tmp_path, monkeypatch):
         def watching(self, root, run):
             events.append(("watching", run))
 
-        def synced(self, files, after_save):
+        def synced(self, files, after_save, note=None):
             events.append(("synced", files))
 
         def ran(self, result, edited_at):
@@ -196,7 +196,7 @@ def test_watch_survives_a_failing_view(tmp_path, monkeypatch):
         def watching(self, root, run):
             pass
 
-        def synced(self, files, after_save):
+        def synced(self, files, after_save, note=None):
             pass
 
         def ran(self, result, edited_at):
@@ -255,3 +255,28 @@ def test_long_sync_and_network_errors_keep_their_hint():
     assert "sent again with the next save" in text
     assert "the next save retries" in text
     assert "Read timed out" in text
+
+
+def test_header_names_what_reloads_weights():
+    console = _console()
+    _view(console).watching(Path("klein"), run=True)
+    text = console.export_text()
+    assert "watching klein/ (load.py, requirements.txt reload weights)" in text
+    assert "ctrl-c to stop" in text
+
+
+def test_synced_row_says_what_reloads():
+    console = _console()
+    _view(console).synced(
+        ["infer.py"], 0.2, "infer.py changed: code reload, weights stay loaded"
+    )
+    text = console.export_text()
+    assert "infer.py changed: code reload, weights stay loaded" in text
+
+
+def test_failed_run_is_one_error_row_with_location_and_exception():
+    console = _console()
+    _view(console).ran(_failure(), edited_at=0)
+    row = console.export_text().splitlines()[0]
+    assert "error" in row and "infer() raised" in row
+    assert "infer.py:14" in row and "NameError: name 'sepia'" in row

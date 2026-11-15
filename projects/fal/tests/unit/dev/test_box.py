@@ -137,8 +137,10 @@ def test_run_reuses_its_connection_and_rebuilds_it_once_after_expiry(monkeypatch
 
 def test_require_runner():
     assert make_box([make_runner("r1")]).require_runner() == "r1"
-    with pytest.raises(DevError, match="not running"):
+    with pytest.raises(DevError, match="is stopped"):
         make_box([]).require_runner()
+    with pytest.raises(DevError, match="starting, not ready"):
+        make_box([make_runner("r1", state=RunnerState.PENDING)]).require_runner()
     with pytest.raises(DevError, match="shutting down"):
         make_box([make_runner("r1")], min_concurrency=0).require_runner()
 

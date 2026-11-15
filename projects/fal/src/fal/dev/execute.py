@@ -13,16 +13,24 @@ as activity while the command runs (see remote/signals.py).
 
 from __future__ import annotations
 
+import contextlib
+import os
 import secrets
 import sys
+import threading
 
 from fal.dev import config
+from fal.dev.errors import DevError
 from fal.dev.remote.signals import EXEC_TAG
 
 # How long the wrapper outlives the command so its markers can drain; the client
 # cancels as soon as it has both.
 LINGER_SECONDS = 15
 TRUNCATED_EXIT = 75
+# The shell's "command not found".
+NOT_FOUND_EXIT = 127
+# Piped input is read whole before the command starts (see `run`).
+MAX_STDIN_BYTES = 64 * 1024 * 1024
 
 _SCRIPT = (
     EXEC_TAG
@@ -31,7 +39,7 @@ marker=$1$2; shift 2
 # Your secrets and variables; the watchdog's key never reaches your command.
 [ -r {env_file} ] && . {env_file}
 unset {admin_key}
-"$@"
+{run}
 status=$?
 printf '%s%s\\n' "$marker" "$status"
 printf '%s%s\\n' "$marker" "$status" >&2
@@ -41,10 +49,16 @@ exit "$status"
 )
 
 
-def wrap(command: list[str]) -> tuple[list[str], bytes]:
-    """The wrapped command to run on the box, and the marker it will print."""
+def wrap(command: list[str], stdin_bytes: int | None = None) -> tuple[list[str], bytes]:
+    """The wrapped command to run on the box, and the marker it will print.
+
+    With `stdin_bytes`, the command reads exactly that many bytes of input and
+    then sees end of input.
+    """
     marker = f"__fal_dev_exec_{secrets.token_hex(8)}:"
+    run_line = '"$@"' if stdin_bytes is None else f'head -c {stdin_bytes} | "$@"'
     script = _SCRIPT.format(
+        run=run_line,
         linger=LINGER_SECONDS,
         env_file=config.USER_ENV_FILE,
         admin_key=config.ADMIN_KEY_SECRET,
@@ -54,6 +68,13 @@ def wrap(command: list[str]) -> tuple[list[str], bytes]:
     half = len(marker) // 2
     wrapped = ["sh", "-c", script, "sh", marker[:half], marker[half:], *command]
     return wrapped, marker.encode()
+
+
+def not_found_note(machine_type: str | None) -> str:
+    """The line after exit 127: the command is missing on the box, not on the laptop."""
+    if machine_type and not config.is_gpu(machine_type):
+        return "(command not found on the box; this is a CPU box)"
+    return "(command not found on the box)"
 
 
 def _partial_marker(data: bytes, marker: bytes) -> int:
@@ -107,22 +128,66 @@ class MarkerFilter:
 
 
 def run(
-    client, runner_id: str, command: list[str], console, stdout=None, stderr=None
+    client,
+    runner_id: str,
+    command: list[str],
+    console,
+    stdout=None,
+    stderr=None,
+    stdin: bool = False,
 ) -> int:
     """Run `command` on the runner.
 
-    Returns its exit code, or TRUNCATED_EXIT if output was lost.
+    Returns its exit code, or TRUNCATED_EXIT if output was lost. With `stdin`,
+    piped local input is read whole and forwarded. The runner stream does not
+    pass on the end of input, so the box side reads exactly that many bytes and
+    then closes the command's input itself.
     """
+    if stdin:
+        data = sys.stdin.buffer.read(MAX_STDIN_BYTES + 1)
+        if len(data) > MAX_STDIN_BYTES:
+            raise DevError(
+                f"-i forwards at most {MAX_STDIN_BYTES // (1024 * 1024)} MiB of input",
+                fixes=[("fal dev cp FILE :/work/", "copy a large file instead")],
+            )
+        with _stdin_from(data):
+            return _run(client, runner_id, command, console, stdout, stderr, data)
+    return _run(client, runner_id, command, console, stdout, stderr, None)
+
+
+@contextlib.contextmanager
+def _stdin_from(data: bytes):
+    """Stand `data` in for sys.stdin, as a pipe the shell session can read."""
+    read_fd, write_fd = os.pipe()
+
+    def feed() -> None:
+        with os.fdopen(write_fd, "wb") as pipe:
+            with contextlib.suppress(BrokenPipeError):
+                pipe.write(data)
+
+    feeder = threading.Thread(target=feed, daemon=True)
+    feeder.start()
+    original = sys.stdin
+    sys.stdin = os.fdopen(read_fd, "r")
+    try:
+        yield
+    finally:
+        sys.stdin.close()
+        sys.stdin = original
+
+
+def _run(client, runner_id, command, console, stdout, stderr, data) -> int:
     from fal.cli.runners import shell_session
 
-    wrapped, marker = wrap(command)
+    stdin = data is not None
+    wrapped, marker = wrap(command, len(data) if stdin else None)
     out = MarkerFilter(stdout or sys.stdout.buffer, marker)
     err = MarkerFilter(stderr or sys.stderr.buffer, marker)
     shell_session(
         client,
         runner_id,
         wrapped,
-        interactive=False,
+        interactive=stdin,
         remote_tty=False,
         console=console,
         stdout=out,

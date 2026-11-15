@@ -63,14 +63,22 @@ KEY_HINTS = [
     ("q", "quit", False),
 ]
 FOOTER_LINES = 3
+CLOCK_FORMAT = "%H:%M:%S"
 LOGS_SHOWN = 8  # minimum, and the whole tail when there is no screen
 SPARK_WIDTH = 30
 # Free space below these turns a disk row yellow, then red.
 DISK_LOW_BYTES = (20 * 2**30, 5 * 2**30)
 NETWORK_VOLUME_BYTES = 2**50
 PROCESS_NAME_WIDTH = 20
+# A log line longer than this is replaced by its length: it is data, not a message.
+LOG_LINE_MAX_CHARS = 500
 # Lines the platform logs for every runner exec, including the dashboard's own probes.
 NOISE_PREFIXES = ("Skipping authentication for /Isolate/",)
+# What the box's watchdog counts as activity (also in `fal dev dash --help`).
+IDLE_RESETS = (
+    "terminal input, SSH or editor clients, GPU use of "
+    f"{config.GPU_BUSY_PCT:g}% or more, Claude sessions, /hot requests, holds"
+)
 NOT_RUNNING_HINTS = {
     "stopped": "The box is stopped. Start it with `fal dev up`.",
     "failed": "The box failed to start; see its logs.",
@@ -100,6 +108,17 @@ def size(num_bytes: float) -> str:
             )
         num_bytes /= 1024
     return f"{num_bytes:.1f} TB"
+
+
+def mem(used: float, total: float) -> str:
+    """ "used/total" in one unit: MiB for a total under 1 GiB, else GiB.
+
+    A total is never shown as 0: GiB totals under 10 keep a decimal.
+    """
+    if total < 2**30:
+        return f"{used / 2**20:.0f}/{max(total / 2**20, 1):.0f} MiB"
+    digits = 0 if total >= 10 * 2**30 else 1
+    return f"{used / 2**30:.1f}/{total / 2**30:.{digits}f} GiB"
 
 
 def ago(then: float | None, now: float) -> str:
@@ -176,6 +195,64 @@ def _estimate(cost: Cost) -> Text:
     )
 
 
+def _who_segments(box: Box) -> list[Text]:
+    """The account, and the owner when it is someone else.
+
+    On your own personal box neither says anything you do not know. `known_owner`
+    and the cached identity are read without touching the network.
+    """
+    owner = box.known_owner
+    me = getattr(box, "_identity", None)
+    elsewhere = bool(owner and me and owner != me)
+    segments = []
+    if elsewhere or not box.account.personal:
+        segments.append(Text(str(box.account), style=MUTED))
+    if elsewhere:
+        segments.append(Text(f"owner {owner}", style=WARNING))
+    return segments
+
+
+def _decision_segments(snapshot: Snapshot, now: float) -> list[Text]:
+    """What decides whether the box lives and whether work is safe: the idle
+    shutdown countdown (or the hold) and the unsaved state of /work.
+
+    Empty for a box whose probe has no idle or /work section (an app box).
+    """
+    probe = snapshot.probe
+    if not (_live(snapshot) and probe and "activity" in probe and "work" in probe):
+        return []
+    box_now = _box_clock(snapshot, now)
+    segments = []
+    activity = probe["activity"]
+    view = idle_view(probe, box_now)
+    if activity["held"] and activity["hold_until"]:
+        until = _local_time(snapshot, activity["hold_until"], now)
+        segments.append(Text(f"held until {_clock(until)}", style=ACCENT))
+    elif view.watchdog == "off":
+        segments.append(Text("auto-stop off", style=f"bold {ERROR}"))
+    elif view.remaining_seconds is not None:
+        low = view.remaining_seconds < 300
+        segments.append(
+            Text(
+                f"stops in {duration(view.remaining_seconds)}",
+                style=f"bold {ERROR}" if low else "",
+            )
+        )
+    dirty = probe["work"]["dirty"]
+    if dirty is not None:
+        segments.append(
+            Text("/work unsaved", style=WARNING)
+            if dirty
+            else Text("/work saved", style=SUCCESS)
+        )
+    return segments
+
+
+def _local_time(snapshot: Snapshot, box_epoch: float, now: float) -> float:
+    """A box-clock time as local epoch, so it prints in the viewer's time zone."""
+    return box_epoch + (now - _box_clock(snapshot, now))
+
+
 def header(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
     state = snapshot.state
     if state is None:
@@ -190,10 +267,10 @@ def header(snapshot: Snapshot, box: Box, now: float) -> RenderableType:
             style=f"bold {STATE_STYLES[state.code]}",
         ),
         Text(box.app),
-        Text(str(box.account), style=MUTED),
-        *([Text(f"owner {owner}", style=MUTED)] if (owner := box.known_owner) else []),
+        *_who_segments(box),
         Text(machine_type),
         Text(f"up {duration(_uptime(snapshot, now))}"),
+        *_decision_segments(snapshot, now),
     ]
     if _live(snapshot) and snapshot.cost and not snapshot.cost_hidden:
         segments.append(_cost(snapshot.cost, snapshot.cost_stale))
@@ -307,9 +384,7 @@ def gpu_panel(probe: dict, history: dict | None = None) -> RenderableType | None
             Text(f"{prefix}vram", style=MUTED),
             _bar(vram),
             Text(f"{round(vram) if vram is not None else '-':>3}%"),
-            Text(
-                f"{used / 1024:.1f}/{total / 1024:.0f} GiB" if vram is not None else "-"
-            ),
+            Text(mem(used * 2**20, total * 2**20) if vram is not None else "-"),
             Text(""),
         )
         table.add_row(
@@ -368,7 +443,7 @@ def _add_system_rows(table: Table, probe: dict) -> None:
             else Text(f"{size(free)} free", style=style)
         )
         table.add_row(
-            Text("+".join(disk["paths"]), style=MUTED),
+            Text(", ".join(_disk_name(p) for p in disk["paths"]), style=MUTED),
             Text(""),
             Text(""),
             label,
@@ -376,16 +451,31 @@ def _add_system_rows(table: Table, probe: dict) -> None:
         )
 
 
+def _disk_name(path: str) -> str:
+    return "root disk" if path == "/" else path
+
+
 def _add_cpu_ram_net_rows(table: Table, system: dict) -> None:
     cpu = system.get("cpu_pct")
     cpus = system.get("cpus")
-    table.add_row(
-        Text("cpu", style=MUTED),
-        _bar(cpu),
-        Text(f"{round(cpu) if cpu is not None else '-':>3}%"),
-        Text(f"{cpus:g} cores" if cpus else "", style=MUTED),
-        Text(""),
-    )
+    cores = f"{cpus:g} core{'' if cpus == 1 else 's'}" if cpus else ""
+    if cpu is None:
+        # The box did not report usage (no cgroup counters); not the same as idle.
+        table.add_row(
+            Text("cpu", style=MUTED),
+            _bar(None),
+            Text("n/a"),
+            Text(f"{cores}, usage not reported" if cores else "", style=MUTED),
+            Text(""),
+        )
+    else:
+        table.add_row(
+            Text("cpu", style=MUTED),
+            _bar(cpu),
+            Text(f"{round(cpu):>3}%"),
+            Text(cores, style=MUTED),
+            Text(""),
+        )
     used = system.get("mem_used_bytes")
     total = system.get("mem_total_bytes")
     pct = used / total * 100 if used is not None and total else None
@@ -393,11 +483,7 @@ def _add_cpu_ram_net_rows(table: Table, system: dict) -> None:
         Text("ram", style=MUTED),
         _bar(pct),
         Text(f"{round(pct) if pct is not None else '-':>3}%"),
-        Text(
-            f"{used / 2**30:.1f}/{total / 2**30:.0f} GiB"
-            if used is not None and total
-            else "-"
-        ),
+        Text(mem(used, total) if used is not None and total else "-"),
         Text(""),
     )
     if "net_in_bps" in system:
@@ -458,15 +544,23 @@ def idle_panel(
     if view.active_now:
         rows.append(("active now", Text(", ".join(view.active_now), style=SUCCESS)))
     else:
-        reason = "; ".join(str(r) for r in view.reasons) or "-"
-        rows.append(("last activity", f"{reason}, {ago(view.last_active, box_now)}"))
+        reason = "; ".join(str(r) for r in view.reasons)
+        if reason and view.last_active:
+            last = f"{reason}, {ago(view.last_active, box_now)}"
+        else:
+            last = reason or (
+                ago(view.last_active, box_now) if view.last_active else "none"
+            )
+        rows.append(("last activity", last))
     hold_until = activity["hold_until"]
     if activity["held"]:
         left = duration(hold_until - box_now)
-        hold = Text(f"until {_clock(hold_until)} ({left} left)", style=ACCENT)
+        local_until = _local_time(snapshot, hold_until, now)
+        hold = Text(f"until {_clock(local_until)} ({left} left)", style=ACCENT)
     else:
         hold = Text("none", style=MUTED)
     rows.append(("hold", hold))
+    rows.append(("timer reset by", Text(IDLE_RESETS, style=MUTED)))
     return _panel(_kv(rows), "Idle shutdown")
 
 
@@ -483,7 +577,8 @@ def watchdog_banner(probe: dict, view: IdleView) -> RenderableType | None:
 
 
 def _clock(epoch: float | None) -> str:
-    return datetime.fromtimestamp(epoch).strftime("%H:%M") if epoch else "-"
+    """HH:MM:SS local time, the one timestamp form in the dash."""
+    return datetime.fromtimestamp(epoch).strftime(CLOCK_FORMAT) if epoch else "-"
 
 
 def connections_panel(probe: dict, box_now: float) -> RenderableType:
@@ -552,14 +647,18 @@ def work_panel(probe: dict, box_now: float) -> RenderableType:
         unsaved = Text("unknown", style=MUTED)
     else:
         unsaved = Text("yes", style=WARNING) if dirty else Text("no", style=SUCCESS)
+    if dirty:
+        unsaved += Text(
+            f" {get_inline_separator_icon()} saved every "
+            f"{config.SAVE_INTERVAL_MINUTES} min and on fal dev down",
+            style=MUTED,
+        )
+    saved = ago(work["last_save"], box_now) if work["last_save"] else "none yet"
+    if snap:
+        saved += f" ({size(snap['size'])}"
+        saved += ", or restore)" if work["last_save"] else ")"
     rows: list[tuple[str, RenderableType | str]] = [
-        (
-            "snapshot",
-            f"{size(snap['size'])}, written {ago(snap['mtime'], box_now)}"
-            if snap
-            else "none yet",
-        ),
-        ("last save", ago(work["last_save"], box_now) + " (or restore)"),
+        ("last save", saved),
         ("unsaved changes", unsaved),
     ]
     if lease:
@@ -589,7 +688,7 @@ def _log_clock(stamp: str) -> str:
         return stamp[:8]
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone().strftime("%H:%M:%S")
+    return parsed.astimezone().strftime(CLOCK_FORMAT)
 
 
 def logs_panel(snapshot: Snapshot, shown: int = LOGS_SHOWN) -> RenderableType:
@@ -598,7 +697,7 @@ def logs_panel(snapshot: Snapshot, shown: int = LOGS_SHOWN) -> RenderableType:
         for log in snapshot.logs
         if not str(log.get("message", "")).startswith(NOISE_PREFIXES)
     ]
-    body = Text()
+    lines = []
     for log in logs[-shown:]:
         level = str(log.get("level", "")).upper()
         style = (
@@ -608,14 +707,18 @@ def logs_panel(snapshot: Snapshot, shown: int = LOGS_SHOWN) -> RenderableType:
             if level == "WARNING"
             else ""
         )
-        body += Text(f"{_log_clock(str(log.get('timestamp', '')))} ", style=MUTED)
-        body += Text(
-            str(log.get("message", "")), style=style, overflow="ellipsis", no_wrap=True
-        )
-        body += "\n"
-    body.rstrip()
-    if not logs:
-        body = Text("no recent logs", style=MUTED)
+        message = " ".join(str(log.get("message", "")).split("\n"))
+        if len(message) > LOG_LINE_MAX_CHARS:
+            message = f"... ({len(message)} chars)"
+        line = Text(f"{_log_clock(str(log.get('timestamp', '')))} ", style=MUTED)
+        line.append(message, style=style)
+        # One row each; a long line ends in "..." instead of being cut.
+        line.no_wrap = True
+        line.overflow = "ellipsis"
+        lines.append(line)
+    body: RenderableType = (
+        Group(*lines) if lines else Text("no recent logs", style=MUTED)
+    )
     title = Text.styled("Logs", style=TITLE) + Text(
         f"  last {LOG_MINUTES} min", style=f"default {MUTED}"
     )
@@ -644,15 +747,27 @@ class WithLogs:
         yield logs_panel(self.snapshot, shown)
 
 
-def footer(snapshot: Snapshot, now: float) -> RenderableType:
+def _held_until(snapshot: Snapshot, now: float) -> float | None:
+    """Local epoch when an active hold ends, if the probe shows one."""
+    activity = (snapshot.probe or {}).get("activity") or {}
+    if activity.get("held") and activity.get("hold_until"):
+        return _local_time(snapshot, activity["hold_until"], now)
+    return None
+
+
+def footer(snapshot: Snapshot, now: float, hints: bool = True) -> RenderableType:
+    """Keys, the action message and the status line; `hints=False` leaves out
+    the keys, for output where nothing reads them (--once, a pipe)."""
     live = _live(snapshot)
-    hints = Text(" ", no_wrap=True, overflow="ellipsis")
+    keys = Text(" ", no_wrap=True, overflow="ellipsis")
     for i, (key, label, needs_runner) in enumerate(KEY_HINTS):
         usable = live or not needs_runner
         if i:
-            hints += Text("   ")
-        hints += Text(key, style=f"bold {ACCENT}" if usable else MUTED)
-        hints += Text(f" {label}", style="" if usable else MUTED)
+            keys += Text("   ")
+        keys += Text(key, style=f"bold {ACCENT}" if usable else MUTED)
+        keys += Text(f" {label}", style="" if usable else MUTED)
+    if (held := _held_until(snapshot, now)) is not None:
+        keys += Text(f"   held until {_clock(held)}", style=ACCENT)
     status = []
     if snapshot.probe_at and snapshot.probe_ms is not None:
         status.append(
@@ -672,7 +787,7 @@ def footer(snapshot: Snapshot, now: float) -> RenderableType:
     )
     # The action message comes before the status line, which may be cut short.
     return Group(
-        hints,
+        *([keys] if hints else []),
         Text(message, style=f"bold {ACCENT}", overflow="ellipsis", no_wrap=True),
         line,
     )
@@ -709,7 +824,7 @@ def body(
         if "hot-restart" in snapshot.since:
             parts.append(hot_restart_panel(snapshot, now, animate))
         box_now = _box_clock(snapshot, now)
-        optional = [processes_panel(probe), hot_panel(probe, box_now)]
+        optional = [hot_panel(probe, box_now)]
         gpu = gpu_panel(probe, snapshot.history)
         system = system_panel(probe, snapshot.history)
         panels = [
@@ -720,6 +835,7 @@ def body(
             # /work before Connections: it is what `d` acts on.
             work_panel(probe, box_now),
             connections_panel(probe, box_now),
+            *([processes] if (processes := processes_panel(probe)) else []),
         ]
     # Two panels per row when the terminal is wide enough, else stacked.
     parts.append(Columns(panels, equal=True))
@@ -733,14 +849,16 @@ def render(
     *,
     screen: bool = False,
     animate: bool = False,
+    hints: bool = True,
 ) -> RenderableType:
     """One frame; on a full screen the footer stays visible when the body is cut.
 
     `animate` draws dust and spinners in loading states (loading's switches).
+    `hints=False` drops the key bar from output that is not interactive.
     """
     now = time.time() if now is None else now
     frame = body(snapshot, box, now, animate)
-    bottom = footer(snapshot, now)
+    bottom = footer(snapshot, now, hints)
     if not screen:
         return Group(frame, bottom)
     layout = Layout()

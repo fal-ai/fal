@@ -13,7 +13,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from fal.dev.errors import DevError
+from fal.dev.errors import EXIT_USAGE, DevError
 
 # Overrides on the command line win over the ssh-config entry.
 SCP_OPTIONS = (
@@ -49,13 +49,16 @@ def plan(src: str, dst: str) -> CopyPlan:
                 ("fal dev cp :/work/out.mp4 .", "download"),
                 ("fal dev cp ./data :/data/x", "upload"),
             ],
+            code=EXIT_USAGE,
         )
     remote, local = (src, dst) if src_remote else (dst, src)
     remote = remote[1:]
     if not remote:
-        raise DevError("the path after ':' is empty; use ':/path' on the box")
+        raise DevError(
+            "the path after ':' is empty; use ':/path' on the box", code=EXIT_USAGE
+        )
     if not local:
-        raise DevError("the local path is empty")
+        raise DevError("the local path is empty", code=EXIT_USAGE)
     # scp reads `name:path` as a remote host, so keep a colon out of the first part.
     if ":" in local.split("/", 1)[0]:
         local = f"./{local}"
@@ -130,6 +133,21 @@ def downloaded_path(copy: CopyPlan) -> str | None:
             return None
         return str(Path(copy.local) / name)
     return copy.local
+
+
+def uploaded_path(copy: CopyPlan) -> str:
+    """The remote path an upload was aimed at.
+
+    A destination ending in '/' is a folder, so the source lands inside it. A
+    destination that already is a folder on the box also receives the source inside
+    it (scp's rule); the laptop cannot tell without asking the box, so that case
+    is documented in the help rather than detected.
+    """
+    if copy.remote.endswith("/"):
+        name = Path(copy.local.rstrip("/")).name
+        if name and name not in (".", ".."):
+            return copy.remote + name
+    return copy.remote
 
 
 def find_scp() -> str:

@@ -398,3 +398,238 @@ def test_wait_ready_keeps_lines_of_an_attempt_that_ended_between_polls(monkeypat
         "[hot] restarting",
         "n1",
     ]
+
+
+def test_reload_note_classifies_like_the_server():
+    assert hot.reload_note(["infer.py"]) == (
+        "infer.py changed: code reload, weights stay loaded"
+    )
+    assert hot.reload_note(["load.py"]) == "load.py changed: weights reload"
+    assert "requirements reinstall, weights reload" in hot.reload_note(
+        ["infer.py", "requirements.txt"]
+    )
+    # Only the project root counts, as in the server.
+    assert "code reload" in hot.reload_note(["pkg/load.py"])
+    assert "nothing reloads" in hot.reload_note(["config.json"])
+    assert hot.weights_files(["a.py", "load.py", "sub/load.py"]) == ["load.py"]
+
+
+def test_clean_log_collapses_progress_redraws_and_carriage_returns():
+    bar = "Loading weights: {}%|##| {}/4 [00:00<00:00, 8.1it/s]"
+    lines = [
+        "[hot] loading",
+        "",
+        bar.format(25, 1),
+        bar.format(50, 2),
+        "old\rLoading: 100%|##| 4/4 [00:01<00:00, 3.0it/s]",
+        "[hot] model loaded",
+    ]
+    assert hot.clean_log(lines) == [
+        "[hot] loading",
+        "Loading: 100%|##| 4/4 [00:01<00:00, 3.0it/s]",
+        "[hot] model loaded",
+    ]
+
+
+def test_quiet_load_lines_drops_warnings_and_their_source_line():
+    lines = [
+        "[hot] loading the model",
+        "/x/diffusers.py:3: FutureWarning: torch_dtype is deprecated",
+        "  deprecate('torch_dtype')",
+        "Note: HF_TOKEN is not set",
+        "[hot] model loaded",
+    ]
+    assert hot.quiet_load_lines(lines) == [
+        "[hot] loading the model",
+        "[hot] model loaded",
+    ]
+
+
+def test_server_state_reads_status_and_log():
+    assert hot.server_state(200, {"ready": True}) == ("ready", None)
+    assert hot.server_state(200, {"restarting": "load.py changed"}) == (
+        "restarting",
+        "load.py changed",
+    )
+    serving = "[hot] serving /work/x"
+    restart = "[hot] FULL RESTART: load.py changed; the weights reload"
+    assert hot.server_state(409, {"log": [serving, restart]}) == (
+        "restarting",
+        "load.py changed",
+    )
+    assert hot.server_state(409, {"log": [serving]})[0] == "stopped"
+    assert (
+        hot.server_state(409, {"log": ["[hot] load.load() failed: x"]})[0] == "failed"
+    )
+    assert hot.server_state(0, {"error": "down"}) == ("unreachable", "down")
+
+
+def test_code_version_explains_reloads():
+    assert hot.code_version("0") == "code v0 (no reloads since weights loaded)"
+    assert hot.code_version("1") == "code v1 (1 reload since weights loaded)"
+    assert hot.code_version("3") == "code v3 (3 reloads since weights loaded)"
+
+
+def test_run_result_error_is_plain_text_without_server_frames():
+    tb = (
+        "Traceback (most recent call last):\n"
+        '  File "/usr/lib/hot_server.py", line 9, in run\n'
+        "    result = self.infer(self.state, **params)\n"
+        '  File "/work/klein/infer.py", line 14, in infer\n'
+        "    image = sepia(image)\n"
+        "NameError: name 'sepia' is not defined\n"
+    )
+    body = json.dumps({"error": "infer() raised", "traceback": tb}).encode()
+    error = hot.RunResult(422, {}, body, 0.1, root="/work/klein").error
+    assert error["message"] == (
+        "infer() raised (server still running; fix and save to retry)"
+    )
+    assert "hot_server" not in error["traceback"]
+    assert 'File "infer.py", line 14' in error["traceback"]
+    stopped = json.dumps({"error": "the hot server is not running (x)"}).encode()
+    assert (
+        hot.RunResult(409, {}, stopped, 0.1)
+        .error["message"]
+        .startswith("the hot server is not running: start it")
+    )
+    assert (
+        hot.RunResult(502, {}, b'{"detail": "bad gateway"}', 0).error["message"]
+        == "bad gateway"
+    )
+
+
+def test_clean_traceback_in_the_server_module():
+    from fal.dev.remote.hot_server import clean_traceback
+
+    tb = (
+        "Traceback (most recent call last):\n"
+        '  File "/srv/hot_server.py", line 1, in run\n'
+        "    x()\n"
+        "    ^^^\n"
+        '  File "/work/p/pkg/util.py", line 2, in f\n'
+        "    1/0\n"
+        "ZeroDivisionError: division by zero\n"
+    )
+    out = clean_traceback(tb, "/work/p")
+    assert "hot_server" not in out and "x()" not in out
+    assert 'File "pkg/util.py", line 2, in f' in out
+    assert out.endswith("ZeroDivisionError: division by zero\n")
+    assert clean_traceback(None) is None
+
+
+def test_request_echoes_params_labels_timings_and_ends_with_the_path(capsys, tmp_path):
+    box = _hot_box(
+        [
+            (
+                200,
+                {
+                    "content-type": "image/png",
+                    "x-hot-code-version": "1",
+                    "x-hot-infer-ms": "571",
+                },
+                b"PNG",
+            )
+        ]
+    )
+    box.remote = None
+    box.on_image = None
+    out = tmp_path / "o.png"
+    assert box.request({"prompt": "a red fox"}, str(out))
+    captured = capsys.readouterr()
+    assert '"prompt": "a red fox"' in captured.err
+    lines = captured.out.splitlines()
+    assert "code v1 (1 reload since weights loaded)" in lines[0]
+    assert "(model only)" in lines[0] and "round trip" in lines[0]
+    assert lines[-1] == f"saved {out}"
+
+
+def test_a_failed_request_says_the_server_is_still_running(capsys):
+    body = json.dumps({"error": "infer() raised", "traceback": "NameError: x\n"})
+    box = _hot_box([(422, {}, body.encode())])
+    box.remote = None
+
+    assert box.request({}) is False
+    err = capsys.readouterr().err
+    assert "infer() raised (server still running; fix and save to retry)" in err
+    assert "error (422)" not in err
+
+
+def test_wait_ready_after_a_pid_ignores_the_old_server(monkeypatch):
+    box = _waiting_box(
+        monkeypatch,
+        [
+            (200, {"ready": True, "pid": 7}),
+            (409, {"log": []}),
+            (200, {"ready": True, "pid": 9}),
+        ],
+    )
+    said = _Said()
+    assert box._wait_ready(60, said, after_pid=7)["pid"] == 9
+
+
+def test_a_push_of_load_py_remembers_the_serving_process(tmp_path):
+    (tmp_path / "load.py").write_text("x")
+    box = _hot_box(
+        [
+            (200, {}, b'{"ready": true, "pid": 5}'),
+            (200, {}, b'{"written": ["load.py"]}'),
+        ]
+    )
+    box.json = hot.HotBox.json.__get__(box)
+    assert box.push(tmp_path, "/work/x", ["load.py"]) == ["load.py"]
+    assert box.pid_before == 5
+    box.post = MagicMock(return_value=(200, {}, b'{"written": ["infer.py"]}'))
+    (tmp_path / "infer.py").write_text("x")
+    box.push(tmp_path, "/work/x", ["infer.py"])
+    assert box.pid_before is None
+
+
+def _cli_args(argv):
+    import io
+
+    from rich.console import Console
+
+    from fal.cli.main import parse_args
+
+    args = parse_args(argv)
+    args.console = Console(file=io.StringIO())
+    err = io.StringIO()
+    args.err = Console(file=err, width=200)
+    return args, err
+
+
+def test_hot_status_waits_briefly_then_shows_the_state_it_finds(monkeypatch):
+    from fal.dev.cli import hot as cli_hot
+
+    fake = MagicMock()
+    fake.json.side_effect = [
+        (409, {"restarting": "load.py changed"}),
+        (409, {"restarting": "load.py changed"}),
+    ]
+    fake.wait_ready.side_effect = DevError("timed out waiting for the hot server")
+    args, _ = _cli_args(["dev", "hot", "status"])
+
+    assert cli_hot._wait_if_restarting(args, fake) == (
+        409,
+        {"restarting": "load.py changed"},
+    )
+    assert fake.wait_ready.call_args.kwargs["timeout"] == 30
+
+
+def test_watch_keeps_watching_after_a_broken_first_reload(monkeypatch):
+    from fal.dev.cli import hot as cli_hot
+
+    fake = MagicMock()
+    fake.wait_reload.side_effect = DevError("the hot server stopped on an error")
+    fake.json.return_value = (200, {})
+    monkeypatch.setattr(cli_hot.hot, "HotBox", lambda box: fake)
+    monkeypatch.setattr(cli_hot, "get_box", lambda args: object())
+    monkeypatch.setattr(cli_hot.preview, "HotPreview", lambda args: None)
+    monkeypatch.setattr(cli_hot, "_project", lambda args: ("/l", "/r"))
+    monkeypatch.setattr(cli_hot, "_push", lambda *a: [])
+    monkeypatch.setattr(cli_hot, "LoopView", lambda *a, **k: "view")
+    args, err = _cli_args(["dev", "hot", "sync", "--watch"])
+
+    assert cli_hot.cmd_sync(args) == 0
+    fake.watch.assert_called_once()
+    assert "stopped on an error; fix it and save again" in err.getvalue()

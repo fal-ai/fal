@@ -4,36 +4,54 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from rich.console import Console
 from rich.markup import escape
 from rich.prompt import Confirm, Prompt
+from rich.text import Text
 
 from fal.api.client import SyncServerlessClient
-from fal.cli.runners import LogPrinter, print_logs, shell_session
+from fal.cli.runners import LogPrinter, _iter_logs, _stream_logs, shell_session
 from fal.cli.runners import _get_runner_info as get_runner_info
 from fal.dev import config, execute, inventory, state
 from fal.dev import copy as file_copy
-from fal.dev.box import FINAL_STATES, newest_first, newest_live, ssh_config
+from fal.dev.box import (
+    FINAL_STATES,
+    install_ssh_config,
+    newest_first,
+    newest_live,
+    ssh_config,
+)
 from fal.dev.cli.common import (
+    emit_json,
+    err_console,
     get_box,
     note_new_box,
     remember_name,
     remembered_name,
     resolve_name,
+    usage_error,
 )
+from fal.dev.cli.error_panel import warn
 from fal.dev.dash.view import duration
-from fal.dev.errors import DevError
+from fal.dev.errors import EXIT_NO_BOX, EXIT_USAGE, DevError
 from fal.dev.guard import warn_if_foreign
-from fal.dev.loading import STATES, runner_phase
+from fal.dev.loading import STATES, format_elapsed, runner_phase
 from fal.dev.steps import Steps
 from fal.dev.team import announce, confirm_deploy, resolve_account
+
+
+def _json(args) -> bool:
+    return getattr(args, "json", False) is True
 
 
 def _interrupt(signum, frame):
@@ -77,8 +95,33 @@ def cmd_deploy(args):
     print(message)
 
 
+def _host(args) -> str | None:
+    return getattr(args, "host", None)
+
+
+def _last_start_seconds(box, args) -> float | None:
+    """How long this box's runner took to start last time, if remembered here."""
+    app = getattr(box, "app", None)
+    if not isinstance(app, str):
+        return None
+    seconds = state.load_box(app, _host(args)).get("last_start_seconds")
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+        return None
+    return float(seconds) if 0 < seconds < 3600 else None
+
+
+def _record_use(box, args, start_seconds: float | None = None) -> None:
+    """Remember when this box was last used here, and how long its start took."""
+    values: dict = {"last_used_at": time.time()}
+    if start_seconds:
+        values["last_start_seconds"] = round(start_seconds)
+    with contextlib.suppress(Exception):
+        state.update_box(box.app, _host(args), **values)
+
+
 def _up_steps(box, args, first_deploy: bool, info) -> Steps:
     """The checklist for this run: only the steps that apply."""
+    last = _last_start_seconds(box, args)
     specs: list[tuple[str, str] | tuple[str, str, float | None]] = []
     if first_deploy:
         specs += [
@@ -87,14 +130,14 @@ def _up_steps(box, args, first_deploy: bool, info) -> Steps:
             ("deploy", "deploy"),
         ]
     specs += [
-        ("runner", "start runner", STATES["gpu-runner"][1]),
+        ("runner", "start runner", last or STATES["gpu-runner"][1]),
         ("ready", "ready"),
     ]
     types = getattr(info, "machine_types", None)
     machine = args.machine_type or (types[0] if types else None) or config.DEFAULT_GPU
     account = box.account
     team = "personal" if account.personal else str(account.team or "unnamed")
-    return Steps(
+    steps = Steps(
         specs,
         title=box.name,
         team=team,
@@ -102,11 +145,42 @@ def _up_steps(box, args, first_deploy: bool, info) -> Steps:
         hint="Ctrl-C cancels the start and stops billing",
         verbose=getattr(args, "verbose", False),
     )
+    if last:
+        steps.set_note("runner", f"last start took {format_elapsed(last)}")
+    return steps
+
+
+def _up_result(box, snap, waited, total, already_running) -> dict:
+    """The `up --json` object: the box and how long it took to come up."""
+    runner = snap.state.runner if snap and snap.state else None
+    account = box.account
+    return {
+        "name": box.name,
+        "app": box.app,
+        "team": account.team,
+        "personal": account.personal,
+        "state": "running",
+        "already_running": already_running,
+        "machine_type": getattr(runner, "machine_type", None),
+        "runner_id": getattr(runner, "runner_id", None),
+        "timings": {
+            "runner_seconds": None if waited is None else round(waited, 1),
+            "total_seconds": round(total, 1),
+        },
+    }
 
 
 def cmd_up(args):
+    started = time.monotonic()
     _cleanup_on_hangup()
+    if _json(args) and args.dash:
+        raise usage_error(
+            args,
+            "--json prints one result and exits; --dash keeps running",
+            [("fal dev up --json", "print the result and exit")],
+        )
     box = get_box(args, creates=True)
+    err = err_console(args)
     info = box.app_info()
     if info is None:
         note_new_box(args, box)
@@ -117,11 +191,16 @@ def cmd_up(args):
     box.progress = steps
     steps.open()
 
-    def on_wait(state: str) -> None:
-        steps.update("runner", runner_phase(state))
+    def on_wait(runner_state: str) -> None:
+        phase = (
+            "requesting a machine"
+            if runner_state == "requested"
+            else runner_phase(runner_state)
+        )
+        steps.update("runner", phase)
 
     def show_log() -> None:
-        steps.print_log(args.console)
+        steps.print_log(err)
 
     try:
         box.up(
@@ -136,15 +215,11 @@ def cmd_up(args):
     except KeyboardInterrupt:
         steps.fail("cancelled")
         if box.start_cancelled:
-            args.console.print("cancelled the start: the box scaled back to 0")
+            err.print("cancelled the start: the box scaled back to 0")
         elif box.start_cancelled is None and steps.started("runner"):
-            args.console.print(
-                "stopped waiting; the box was already up and keeps running"
-            )
+            err.print("stopped waiting; the box was already up and keeps running")
         else:
-            args.console.print(
-                "cancelled; check with: fal dev status, stop with: fal dev down"
-            )
+            err.print("cancelled; check with: fal dev status, stop with: fal dev down")
         return 130
     except BaseException as exc:
         steps.fail(str(exc).splitlines()[0] if str(exc) else None)
@@ -156,6 +231,10 @@ def cmd_up(args):
             if box.app_info() is not None:
                 remember_name(args, box.name)
     waited = steps.elapsed("runner")
+    already_running = getattr(box, "was_live", None) is True
+    # Only a real start says how long the next one takes.
+    fresh = getattr(box, "was_live", None) is False
+    _record_use(box, args, waited if fresh else None)
     if args.dash:
         steps.finish("ready")
         steps.done()
@@ -171,27 +250,47 @@ def cmd_up(args):
     steps.begin("ready", "reading the box")
     try:
         snap = summary.snapshot(box)
-        card = summary.ready_card(snap, box, waited)
+        total = time.monotonic() - started
+        if _json(args):
+            card = _up_result(box, snap, waited, total, already_running)
+        else:
+            card = summary.ready_card(
+                snap,
+                box,
+                waited,
+                total=total,
+                already_running=already_running,
+            )
     except KeyboardInterrupt:
         steps.fail("cancelled")
-        args.console.print("the box is up and billing; stop it with: fal dev down")
+        err.print("the box is up and billing; stop it with: fal dev down")
         return 130
     except Exception as exc:
         # The box is up: say so, and do not fail `fal dev up && fal dev shell`.
         steps.fail("could not read the box")
         if steps.verbose:
             show_log()
-        args.console.print(
+        err.print(
             f"the box is up and billing (could not read its details: {exc}); "
             "stop it with: fal dev down",
             markup=False,
         )
+        if _json(args):
+            emit_json(
+                args,
+                _up_result(
+                    box, None, waited, time.monotonic() - started, already_running
+                ),
+            )
         return None
     steps.finish("ready")
     steps.done()
     if steps.verbose:
         show_log()
-    args.console.print(card)
+    if _json(args):
+        emit_json(args, card)
+    else:
+        args.console.print(card)
     return None
 
 
@@ -250,22 +349,101 @@ def _confirm_down(box, args) -> None:
         return
     message = "; ".join(reasons)
     if not sys.stdin.isatty():
-        raise DevError(f"{message}. Pass --yes to stop it anyway")
-    print(f"warning: {message}.", file=sys.stderr)
-    if not Confirm.ask(
-        "Stop the box anyway?", default=False, console=Console(stderr=True)
-    ):
+        raise DevError(
+            f"{message}. Pass --yes to stop it anyway",
+            title="the box is busy",
+            fixes=[("fal dev down --yes", "stop it anyway")],
+        )
+    err = Console(stderr=True)
+    warn(f"{message}.", err)
+    if not Confirm.ask("Stop the box anyway?", default=False, console=err):
         raise DevError("cancelled")
 
 
+def _save_report(output: str | None) -> str:
+    """'/work saved (4.0K)' from the save script's report."""
+    import re
+
+    text = " ".join((output or "").split()).removeprefix("devbox-save:").strip()
+    found = re.search(r"saved \S+ \(([^)]+)\)", text)
+    if found:
+        return f"{config.LOCAL_WORK} saved ({found.group(1)})"
+    if "no changes" in text:
+        return f"{config.LOCAL_WORK} saved (no changes since the last save)"
+    return f"{config.LOCAL_WORK} saved" + (f" ({text})" if text else "")
+
+
+def _up_again(args) -> str:
+    name = getattr(args, "name", None)
+    return f"fal dev up --name {name}" if name else "fal dev up"
+
+
 def cmd_down(args):
+    began = time.monotonic()
     box = get_box(args)
+    err = err_console(args)
     _confirm_down(box, args)
-    box.down(args.no_save)
-    args.console.print(
-        "stopped. Your files on /data are kept. To delete the box itself: "
-        "fal dev destroy"
-    )
+    try:
+        saved = box.down(args.no_save)
+    except KeyboardInterrupt:
+        err.print(
+            "interrupted: the box may still be running; check with: fal dev status"
+        )
+        return 130
+    _record_use(box, args)
+    if _json(args):
+        emit_json(
+            args,
+            {
+                "name": box.name,
+                "app": box.app,
+                "state": "stopped",
+                # True once saved, False with --no-save, None if it was not running.
+                "saved": False if args.no_save else (None if saved is None else True),
+                "save_report": None
+                if args.no_save or saved is None
+                else _save_report(saved),
+                "kept": config.VOLUME_MOUNT,
+                "timings": {"total_seconds": round(time.monotonic() - began, 1)},
+            },
+        )
+        return None
+    if args.no_save:
+        work = f"{config.LOCAL_WORK} NOT saved (--no-save)"
+    elif saved is None:
+        work = f"{config.LOCAL_WORK}: nothing to save (the box was not running)"
+    else:
+        work = _save_report(saved)
+    for line in (
+        f"stopped {box.name}",
+        f"  {work}",
+        f"  {config.VOLUME_MOUNT} kept",
+        f"  start again: {_up_again(args)} (to delete it instead: fal dev destroy)",
+    ):
+        err.print(line, markup=False, highlight=False)
+    return None
+
+
+SIZE_SENTINEL = 2**62
+
+
+def _null_sentinels(value):
+    """A copy with byte counts above 2**62 (an 8 EiB 'unlimited' size) as null."""
+    if isinstance(value, dict):
+        return {
+            key: (
+                None
+                if key.endswith("_bytes")
+                and isinstance(item, (int, float))
+                and not isinstance(item, bool)
+                and item > SIZE_SENTINEL
+                else _null_sentinels(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_null_sentinels(item) for item in value]
+    return value
 
 
 def cmd_status(args):
@@ -278,7 +456,8 @@ def cmd_status(args):
 
         # Exit 0 for a stopped box: only a state that could not be read fails; probe
         # and cost errors are in the JSON's "errors" (`dash --json` exits 1 on them).
-        args.console.print_json(payload(box, snap))
+        data = _null_sentinels(json.loads(payload(box, snap)))
+        args.console.print_json(json.dumps(data))
         return
     args.console.print(summary.status_line(snap, box))
 
@@ -290,6 +469,30 @@ def _hold_text(row, now: float | None = None) -> str:
     return "-" if left is None else f"{duration(left)} left"
 
 
+LIST_STOPPED_SHOWN = 10
+STATE_ORDER = ("RUNNING", "STARTING", "STOPPING", "FAILED", "STOPPED", "UNKNOWN")
+
+
+def _recency(row, host) -> float:
+    """When this machine last used the box; 0 when it never did."""
+    value = state.load_box(row.app, host).get("last_used_at")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0.0
+    return float(value)
+
+
+def _ordered(rows, host):
+    """Running boxes first, then the rest by how recently this machine used them."""
+    return sorted(
+        rows, key=lambda r: (r.state != "RUNNING", -_recency(r, host), r.name)
+    )
+
+
+def _summary_line(rows) -> str:
+    counts = {code: sum(r.state == code for r in rows) for code in STATE_ORDER}
+    return ", ".join(f"{n} {code.lower()}" for code, n in counts.items() if n)
+
+
 def cmd_list(args):
     from rich.table import Table
 
@@ -297,26 +500,37 @@ def cmd_list(args):
     account = resolve_account(args.team, config.APP_PREFIX, args.host, remember=False)
     client = SyncServerlessClient(host=args.host, team=account.fal_team)
     mine = remembered_name(args)
-    rows = inventory.list_boxes(client, account, args.host)
+    rows = _ordered(inventory.list_boxes(client, account, args.host), args.host)
     if args.json:
         args.console.print_json(
             json.dumps([{**r.as_dict(), "remembered": r.name == mine} for r in rows])
         )
         return
-    announce(account)
+    announce(account, verbose=getattr(args, "verbose", False) is True)
     if not rows:
-        args.console.print(
+        err_console(args).print(
             f"no dev boxes in {account.runs_as} (for a team, pass --team <name>); "
             "create one with: fal dev up"
         )
         return
+    shown = rows
+    hidden = 0
+    if not getattr(args, "all", False):
+        stopped = [r for r in rows if r.state == "STOPPED"]
+        # This folder's box stays visible even when it is an old one.
+        keep = {r.name for r in stopped[:LIST_STOPPED_SHOWN]} | {mine}
+        shown = [r for r in rows if r.state != "STOPPED" or r.name in keep]
+        hidden = len(rows) - len(shown)
+    args.console.print(_summary_line(rows), markup=False)
     table = Table(box=None, pad_edge=False)
     for column in ("NAME", "STATE", "MACHINE", "UPTIME", "HOLD", "VOLUME"):
         table.add_column(column)
-    for row in rows:
-        marker = " *" if row.name == mine else ""
+    for row in shown:
+        name = Text(row.name)
+        if row.name == mine:
+            name = Text(f"{row.name}  <- this folder", style="bold cyan")
         table.add_row(
-            escape(row.name) + marker,
+            name,
             row.state,
             row.machine_type or "-",
             duration(row.uptime_seconds) if row.uptime_seconds is not None else "-",
@@ -324,8 +538,31 @@ def cmd_list(args):
             escape(row.volume),
         )
     args.console.print(table)
-    if mine in {r.name for r in rows}:
-        args.console.print("[dim]* this folder's box[/]")
+    if hidden:
+        err_console(args).print(
+            f"+{hidden} stopped (fal dev list --all)", markup=False, style="dim"
+        )
+
+
+def _live_runner_count(box) -> int | None:
+    try:
+        return sum(r.state not in FINAL_STATES for r in box.runners())
+    except Exception:
+        return None
+
+
+def _destroy_summary(box, runners: int | None) -> list[str]:
+    """The confirmation text: what goes, what stays, how to get a box back."""
+    count = "its runners" if runners is None else f"{runners} runner(s)"
+    volume = config.volume_name(box.name)
+    return [
+        f"Delete {box.app} of {box.account.runs_as}?",
+        f"  will delete: the app {box.app} and {count} "
+        f"(a running box loses {config.LOCAL_WORK} changes since its last save)",
+        f"  will keep:   volume {volume}, with {config.VOLUME_MOUNT} and the "
+        f"{config.LOCAL_WORK} snapshot (it cannot be deleted yet)",
+        f"  recreate with: fal dev up --name {box.name}",
+    ]
 
 
 def _confirm_destroy(box, args) -> None:
@@ -334,14 +571,8 @@ def _confirm_destroy(box, args) -> None:
     if not sys.stdin.isatty():
         raise DevError(f"pass --yes to delete {box.app} without a terminal to ask on")
     err = Console(stderr=True)
-    err.print(
-        f"This deletes {box.app} of {box.account.runs_as} and ends its runners. "
-        f"A running box loses "
-        f"changes in {config.LOCAL_WORK} since its last save. The "
-        f"{config.LOCAL_WORK} snapshot and the files on {config.VOLUME_MOUNT} stay on "
-        f"the volume {config.volume_name(box.name)}, which cannot be deleted yet.",
-        highlight=False,
-    )
+    for line in _destroy_summary(box, _live_runner_count(box)):
+        err.print(line, markup=False, highlight=False)
     typed = Prompt.ask(f"Type the box name ({box.name}) to confirm", console=err)
     if typed.strip() != box.name:
         raise DevError("cancelled")
@@ -350,20 +581,33 @@ def _confirm_destroy(box, args) -> None:
 def cmd_destroy(args):
     if args.yes and not args.name:
         # A remembered folder box must not be deleted without being named.
-        raise DevError("--yes needs --name: say which box to delete")
+        raise usage_error(
+            args,
+            "--yes needs --name: say which box to delete",
+            [("fal dev destroy --name <box> --yes", "name the box")],
+        )
     box = get_box(args, remember=False, remember_team=False)
     if not box.app.startswith(config.APP_PREFIX):
         raise DevError(f"refusing to delete {box.app!r}: not a dev box")
     if box.app_info() is None:
-        raise DevError(f"no box named {box.name} ({box.app}) exists")
+        raise DevError(
+            f"no box named {box.name} ({box.app}) exists",
+            title="no such box",
+            fixes=[
+                ("fal dev list", "see your boxes"),
+                (f"fal dev up --name {box.name}", "create it"),
+            ],
+            code=EXIT_NO_BOX,
+        )
     _confirm_destroy(box, args)
     killed, _ = box.destroy()
     with contextlib.suppress(OSError):
         state.forget_box(box.app, args.host)
     with contextlib.suppress(OSError):
         state.forget_name(Path.cwd(), box.name, args.host)
-    args.console.print(f"deleted {box.app}, killed {len(killed)} runner(s).")
-    args.console.print(
+    err = err_console(args)
+    err.print(f"deleted {box.app}, killed {len(killed)} runner(s).")
+    err.print(
         f"/data volume {config.volume_name(box.name)} is kept (no delete API yet); "
         f"`fal dev up --name {box.name}` reattaches it.",
         markup=False,
@@ -374,9 +618,15 @@ def cmd_destroy(args):
 def cmd_shell(args):
     box = get_box(args)
     warn_if_foreign(box, args)
+    runner_id = box.require_runner()
+    print(
+        "exit or ctrl-d to leave; the box keeps running (fal dev down to stop)",
+        file=sys.stderr,
+        flush=True,
+    )
     return shell_session(
         box.client,
-        box.require_runner(),
+        runner_id,
         None,
         interactive=True,
         remote_tty=True,
@@ -384,29 +634,96 @@ def cmd_shell(args):
     )
 
 
+def _machine_type(box) -> str | None:
+    """The running box's machine type; None when it cannot be read."""
+    try:
+        return box.state().machine_type
+    except Exception:
+        return None
+
+
 def cmd_exec(args):
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
-        args.parser.error("usage: fal dev exec -- <command>")
+        raise usage_error(
+            args,
+            "nothing to run: put the command after --",
+            [("fal dev exec -- nvidia-smi", "run a command on the box")],
+        )
+    stdin = getattr(args, "stdin", False)
+    if stdin and sys.stdin.isatty():
+        raise usage_error(
+            args,
+            "-i forwards piped input, and nothing is piped in",
+            [
+                ("echo hi | fal dev exec -i -- cat", "forward piped input"),
+                ("fal dev shell", "an interactive session"),
+            ],
+        )
     box = get_box(args)
     warn_if_foreign(box, args)
-    return execute.run(box.client, box.require_runner(), command, args.console)
+    code = execute.run(
+        box.client, box.require_runner(), command, args.console, stdin=stdin
+    )
+    if code == execute.NOT_FOUND_EXIT:
+        machine = _machine_type(box)
+        print(execute.not_found_note(machine), file=sys.stderr)
+    return code
 
 
 FOLLOW_BACKLOG_LINES = 20
 MAX_RUNNER_LOOKUPS = 20
+# The API only accepts a start time within the last 24 hours.
+LOG_WINDOW = timedelta(hours=23)
+LOG_LINE_MAX = 500
+LOG_LINE_KEEP = 200
 
 
-def _latest_runner(box, runners) -> str:
-    """The runner that started last: a live one, else the newest by start time.
+def _collapse(message, full: bool):
+    """A very long log line cut to its start, with its length."""
+    if full or not isinstance(message, str) or len(message) <= LOG_LINE_MAX:
+        return message
+    return f"{message[:LOG_LINE_KEEP]}... ({len(message)} chars, --full to show)"
 
-    A finished runner's uptime is its lifetime, so sorting by uptime would pick the
-    shortest-lived one, not the latest.
+
+class _LinePrinter(LogPrinter):
+    """The runners log printer, collapsing very long lines unless `full`."""
+
+    def __init__(self, console, full: bool = False) -> None:
+        super().__init__(console)
+        self.full = full
+        self.count = 0
+
+    def print(self, log: dict) -> None:
+        self.count += 1
+        if "message" in log:
+            log = {**log, "message": _collapse(log["message"], self.full)}
+        super().print(log)
+
+
+def _started_at(rest, runner_id: str):
+    try:
+        return get_runner_info(rest, runner_id).started_at
+    except Exception:
+        return None
+
+
+def _latest_runner(box, runners):
+    """The runner to read with --all and when it started (None if unknown).
+
+    A live runner first, then one still starting or backing off (it can have no log
+    yet), else the one that started last. A finished runner's uptime is its
+    lifetime, so sorting by uptime would pick the shortest-lived one, not the
+    latest.
     """
-    active = [r for r in runners if r.state not in FINAL_STATES]
-    if active:
-        return newest_first(active)[0].runner_id
     rest = box.client._create_rest_client()
+    live = newest_live(runners)
+    if live:
+        return live[0], _started_at(rest, live[0].runner_id)
+    # Still around (starting, backing off): its log is the one that matters.
+    around = newest_first([r for r in runners if r.state not in FINAL_STATES])
+    if around:
+        return around[0], _started_at(rest, around[0].runner_id)
     started = []
     failed = 0
     for runner in runners[:MAX_RUNNER_LOOKUPS]:
@@ -416,20 +733,52 @@ def _latest_runner(box, runners) -> str:
             failed += 1
             continue
         if at is not None:
-            started.append((at, runner.runner_id))
+            started.append((at, runner))
     if failed:
-        print(
+        warn(
             f"could not read the start time of {failed} runner(s); "
             "the log shown may not be the latest",
-            file=sys.stderr,
+            Console(stderr=True),
         )
     if not started:
-        return newest_first(runners)[0].runner_id
-    return max(started)[1]
+        return newest_first(runners)[0], None
+    at, runner = max(started, key=lambda item: item[0])
+    return runner, at
+
+
+def _clock(at) -> str:
+    return at.astimezone().strftime("%H:%M") if at else "?"
+
+
+def _print_history(box, runner_id, printer, since, tail) -> None:
+    """The runner's log up to now, oldest first: all of it, or the last `tail`."""
+    if tail is not None:
+        # The API's newest-first history, so a quiet box shows its latest lines.
+        for entry in box.logs(runner_id, tail, since):
+            printer.print(entry)
+        return
+    rest = box.client._create_rest_client()
+    info = get_runner_info(rest, runner_id)
+    if info.started_at is not None and since < info.started_at:
+        since = info.started_at
+    entries = list(_iter_logs(rest, {"job_id": runner_id}, since, info.ended_at))
+    for entry in reversed(entries):
+        printer.print(entry)
+
+
+def _follow(box, runner_id, printer, since) -> None:
+    rest = box.client._create_rest_client()
+    for entry in _stream_logs(rest, {"job_id": runner_id}, since, None):
+        printer.print(entry)
 
 
 def cmd_logs(args):
     box = get_box(args)
+    printer = _LinePrinter(args.console, getattr(args, "full", False))
+    tail = getattr(args, "tail", None)
+    # Taken before the history, so no line falls between the two reads.
+    now = datetime.now(timezone.utc)
+    since = now - LOG_WINDOW
     if not args.all:
         try:
             runner_id = box.require_runner()
@@ -438,51 +787,114 @@ def cmd_logs(args):
                 f"{str(exc).rstrip('. ')}. To read the last runner's log: "
                 "fal dev logs --all"
             ) from None
+        follow = not getattr(args, "no_follow", False)
         # The tail first, so a quiet box still shows something, then new lines.
-        args.console.print(f"[dim]last lines of {runner_id}, then following ...[/]")
-        # Taken before the tail, so no line falls between the two reads.
-        now = datetime.now(timezone.utc)
-        printer = LogPrinter(args.console)
-        # The API's newest-first history, so a quiet box shows its latest lines.
-        for entry in box.logs(
-            runner_id, FOLLOW_BACKLOG_LINES, now - timedelta(hours=23)
-        ):
-            printer.print(entry)
-        print_logs(
-            box.client,
-            runner_id,
-            args.console,
-            follow=True,
-            since=now,
+        err_console(args).print(
+            f"[dim]last lines of {runner_id}"
+            + (", then following (ctrl-c to stop) ...[/]" if follow else "[/]")
         )
+        _print_history(
+            box,
+            runner_id,
+            printer,
+            since,
+            FOLLOW_BACKLOG_LINES if tail is None else tail,
+        )
+        if follow:
+            with contextlib.suppress(KeyboardInterrupt):
+                _follow(box, runner_id, printer, now)
         return
-    # The API only accepts a start time within the last 24 hours.
-    since = datetime.now(timezone.utc) - timedelta(hours=23)
     runners = box.runners(since=since)
     if not runners:
         raise DevError(f"{box.app} has no runners in the last 23 hours")
-    runner_id = _latest_runner(box, runners)
-    print_logs(box.client, runner_id, args.console, follow=False, since=since)
+    runner, started = _latest_runner(box, runners)
+    runner_id = runner.runner_id
+    err_console(args).print(
+        f"[dim]full log of {runner_id} ({runner.state.value.lower()}, "
+        f"started {_clock(started)})[/]"
+        if tail is None
+        else f"[dim]last {tail} lines of {runner_id} "
+        f"({runner.state.value.lower()}, started {_clock(started)})[/]"
+    )
+    _print_history(box, runner_id, printer, since, tail)
+    if printer.count == 0:
+        err_console(args).print(f"no log lines from {runner_id} yet", markup=False)
+
+
+def _iso(epoch: float) -> str:
+    return datetime.fromtimestamp(epoch, timezone.utc).isoformat(timespec="seconds")
 
 
 def cmd_hold(args):
-    if args.off or args.hours == 0:
+    err = err_console(args)
+    if args.off or args.hours == 0:  # 0 predates --off and still clears
         if args.off and args.hours is not None:
-            args.parser.error("--off takes no hours")
-        if get_box(args).clear_hold():
-            args.console.print("hold cleared; idle shutdown applies again")
+            raise usage_error(
+                args,
+                "--off takes no hours",
+                [("fal dev hold --off", "clear the hold")],
+            )
+        box = get_box(args)
+        cleared = box.clear_hold()
+        if _json(args):
+            emit_json(
+                args,
+                {
+                    "name": box.name,
+                    "state": "cleared" if cleared else "none",
+                    "held_until": None,
+                },
+            )
+        elif cleared:
+            err.print("hold cleared; idle shutdown applies again")
         else:
-            args.console.print("no hold was set")
+            err.print("no hold was set")
         return
     if args.hours is None:
-        args.parser.error("usage: fal dev hold <hours> | --off")
-        return
-    if get_box(args).hold(args.hours):
-        args.console.print(
-            f"idle shutdown suspended for {args.hours:g}h (until the box next stops)"
+        raise usage_error(
+            args,
+            "say how many hours to hold, or pass --off",
+            [
+                ("fal dev hold 4", "keep the box up for 4 hours"),
+                ("fal dev hold --off", "clear the hold"),
+            ],
+        )
+    if not 0 < args.hours <= config.MAX_HOLD_HOURS:
+        raise DevError(
+            f"a hold is more than 0 and at most {config.MAX_HOLD_HOURS} hours "
+            f"({config.MAX_HOLD_HOURS // 24} days); got {args.hours:g}",
+            fixes=[(f"fal dev hold {config.MAX_HOLD_HOURS}", "the longest hold")],
+            code=EXIT_USAGE,
+        )
+    box = get_box(args)
+    set_now = box.hold(args.hours)
+    if _json(args):
+        if set_now:
+            until = time.time() + args.hours * 3600
+        else:
+            # A longer hold was kept; say when it ends if the box can tell.
+            try:
+                until = box.hold_until()
+            except Exception:
+                until = None
+        emit_json(
+            args,
+            {
+                "name": box.name,
+                "state": "held" if set_now else "kept_longer",
+                "hours": args.hours,
+                "held_until": None if until is None else _iso(until),
+            },
+        )
+    elif set_now:
+        until = time.strftime("%H:%M", time.localtime(time.time() + args.hours * 3600))
+        err.print(
+            f"idle shutdown held until {until} ({args.hours:g}h). "
+            "fal dev hold --off to clear",
+            markup=False,
         )
     else:
-        args.console.print("a longer hold is already in place; kept it")
+        err.print("a longer hold is already in place; kept it")
 
 
 def _fal_command() -> str:
@@ -491,8 +903,45 @@ def _fal_command() -> str:
     return str(candidate) if candidate.exists() else (sys.argv[0] or "fal")
 
 
+def _proxy_fal() -> tuple[str, str | None]:
+    """The fal to put in a ProxyCommand, and a comment saying why if it is a path.
+
+    A bare `fal` reads best, and is right when PATH finds this same install.
+    """
+    absolute = _fal_command()
+    found = shutil.which("fal")
+    if found and os.path.realpath(found) == os.path.realpath(absolute):
+        return "fal", None
+    reason = (
+        "`fal` is not on PATH"
+        if found is None
+        else "`fal` on PATH is a different install"
+    )
+    return absolute, f"absolute path to this fal: {reason}"
+
+
+def _ssh_entry(name: str, args) -> str:
+    command, note = _proxy_fal()
+    return ssh_config(name, command, args.host, args.team, note)
+
+
 def cmd_ssh_config(args):
-    print(ssh_config(resolve_name(args), _fal_command(), args.host, args.team))
+    name = resolve_name(args)
+    entry = _ssh_entry(name, args)
+    if not getattr(args, "install", False):
+        print(entry)
+        return
+    path = Path.home() / ".ssh" / "config"
+    action, backup = install_ssh_config(path, name, entry)
+    where = "~/.ssh/config"
+    err = err_console(args)
+    if action == "unchanged":
+        err.print(f"{where} already has {config.app_name(name)}", markup=False)
+    else:
+        verb = "added to" if action == "added" else "updated in"
+        kept = f" (previous file kept as {backup})" if backup else ""
+        err.print(f"{config.app_name(name)} {verb} {where}{kept}", markup=False)
+    err.print(f"connect with: ssh {config.app_name(name)}", markup=False)
 
 
 def _run_scp(argv: list[str]) -> int:
@@ -514,38 +963,41 @@ def cmd_cp(args):
     scp = file_copy.find_scp()
     # Resolved here, without announcing the account: the proxy does it per connect.
     name = resolve_name(args)
-    entry = ssh_config(name, _fal_command(), args.host, args.team)
+    entry = _ssh_entry(name, args)
     with tempfile.TemporaryDirectory(prefix="fal-dev-cp-") as folder:
         config_path = Path(folder) / "ssh_config"
         config_path.write_text(entry + "\n")
         argv = file_copy.scp_command(
             copy, config.app_name(name), str(config_path), args.recursive, scp
         )
+        err = err_console(args)
+        err.print("[dim]connecting to the box (starts it if stopped) ...[/]")
         if copy.upload:
             size = file_copy.human_size(file_copy.tree_size(copy.local))
-            args.console.print(
-                f"[dim]uploading about {size} to {copy.remote} "
-                "(starts the box if stopped) ...[/]"
-            )
+            err.print(f"[dim]uploading about {size} to :{copy.remote}[/]")
         else:
-            args.console.print(
-                f"[dim]downloading {copy.remote} (starts the box if stopped) ...[/]"
-            )
+            err.print(f"[dim]downloading :{copy.remote}[/]")
+        began = time.monotonic()
         code = _run_scp(argv)
+        took = format_elapsed(time.monotonic() - began)
     if code != 0:
         hint = " (could not connect; see the messages above)" if code == 255 else ""
         raise DevError(
             f"scp failed with exit {code}{hint}; the destination may be incomplete"
         )
     if copy.upload:
-        args.console.print(f"uploaded to {copy.remote}")
+        size = file_copy.human_size(file_copy.tree_size(copy.local))
+        err.print(
+            f"uploaded {size} to :{file_copy.uploaded_path(copy)} ({took})",
+            markup=False,
+        )
         return
     landed = file_copy.downloaded_path(copy)
     if landed is None:
-        args.console.print(f"downloaded to {copy.local}")
+        err.print(f"downloaded to {copy.local} ({took})", markup=False)
     else:
         size = file_copy.human_size(file_copy.tree_size(landed))
-        args.console.print(f"downloaded {size} to {landed}")
+        err.print(f"downloaded {size} to {landed} ({took})", markup=False)
 
 
 def cmd_ssh_proxy(args):
@@ -556,11 +1008,19 @@ def cmd_ssh_proxy(args):
         box = get_box(args, quiet=True, remember=False)
         warn_if_foreign(box, args)
         return box.ssh_proxy(args.timeout)
+    except KeyboardInterrupt:
+        # ssh ends the proxy with a signal once it is done; that is no failure.
+        return 0
     except DevError:
         # The CLI's error panel prints these with their fix hints.
         raise
     except Exception as exc:
+        # Logged out, not deployed, unreachable: the CLI's mapping, with its exit code.
+        from fal.dev.cli.parser import known_failure
+
+        known = known_failure(exc)
+        if known is not None:
+            raise known from exc
         # Editors show only stderr; ssh itself reports a bare "Connection closed".
         reason = str(exc).strip() or type(exc).__name__
-        print(f"fal dev ssh-proxy failed: {reason}", file=sys.stderr, flush=True)
-        return 1
+        raise DevError(reason, title="fal dev ssh-proxy failed") from exc

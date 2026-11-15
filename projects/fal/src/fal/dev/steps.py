@@ -60,6 +60,8 @@ class Step:
     detail: str = ""
     started: float | None = None
     ended: float | None = None
+    # Replaces "typically ~Ns" while the step is active, e.g. the last run's time.
+    note: str | None = None
 
 
 class Steps:
@@ -134,6 +136,12 @@ class Steps:
             self._plain(step, "...")
             if not self._animate and self.hint and key in HINT_STEPS:
                 self.say(self.hint)
+
+    def set_note(self, key: str, note: str) -> None:
+        """What to say about the wait instead of the typical time."""
+        step = self._get(key)
+        if step is not None:
+            step.note = note
 
     def finish(self, key: str, detail: str | None = None) -> None:
         with self._lock:
@@ -217,7 +225,7 @@ class Steps:
         if self._animate:
             return
         if what == "...":
-            hint = typically(step.expected)
+            hint = step.note or typically(step.expected)
             self.say(
                 f"{self._index(step)} {step.label} ..." + (f" ({hint})" if hint else "")
             )
@@ -292,7 +300,7 @@ class Steps:
             row.append(step.label.ljust(label_width), style="bold")
             row.append(f"  {format_elapsed(took or 0):>6}", style="bold")
             note = step.detail or ""
-            hint = typically(step.expected)
+            hint = step.note or typically(step.expected)
             if hint:
                 note = f"{note}  {hint}" if note else hint
             if note:

@@ -19,7 +19,8 @@ from fal.api.client import SyncServerlessClient
 from fal.dev import config, state
 from fal.dev.account import Account
 from fal.dev.box import log
-from fal.dev.errors import DevError
+from fal.dev.cli.error_panel import warn
+from fal.dev.errors import EXIT_AUTH, DevError
 
 SHOWN_APPS = 5
 
@@ -47,14 +48,18 @@ def key_account() -> Account | None:
         # A key without permission to read its account still works.
         if not is_permission_denied(exc.__cause__):
             raise DevError(
-                f"could not read the API key's account: {exc.__cause__ or exc}"
+                f"could not read the API key's account: {exc.__cause__ or exc}",
+                code=EXIT_AUTH,
             ) from exc
         nickname = None
     except OSError as exc:
-        raise DevError(f"could not read the API key's account: {exc}") from exc
+        raise DevError(
+            f"could not read the API key's account: {exc}", code=EXIT_AUTH
+        ) from exc
     except (KeyError, TypeError, ValueError) as exc:
         raise DevError(
-            f"could not read the API key's account: unexpected response ({exc!r})"
+            f"could not read the API key's account: unexpected response ({exc!r})",
+            code=EXIT_AUTH,
         ) from exc
     return Account(nickname, False, via_key=True)
 
@@ -73,7 +78,12 @@ def resolve_account(
     listed = accounts()
     personal = next((a for a in listed if a["is_personal"]), None)
     if personal is None:
-        raise DevError("your fal login has no personal account")
+        raise DevError(
+            "your fal login has no personal account",
+            title="not logged in as a user",
+            fixes=[("fal auth login", "log in again")],
+            code=EXIT_AUTH,
+        )
     wanted = explicit or state.load_box(app, host).get("team")
     if not wanted:
         return Account(personal["nickname"], True)
@@ -86,7 +96,11 @@ def resolve_account(
                 f". It was remembered for {app}: pass --team <name>, or "
                 f"--team {personal['nickname']} for your personal account"
             )
-        raise DevError(message)
+        others = [a["nickname"] for a in listed if not a["is_personal"]]
+        fixes = [(f"--team {personal['nickname']}", "your personal account")]
+        if others:
+            fixes.append((f"--team {others[0]}", "a team you are in"))
+        raise DevError(message, title="wrong team", fixes=fixes, code=EXIT_AUTH)
     if explicit and remember:
         # Best effort: a read-only home must not break the command.
         with contextlib.suppress(OSError):
@@ -94,9 +108,19 @@ def resolve_account(
     return Account(found["nickname"], found["is_personal"])
 
 
-def announce(account: Account) -> None:
-    """Say which account a command runs as, on stderr (stdout carries data)."""
-    log(f"Team: {account}")
+def announce(
+    account: Account, name: str | None = None, *, verbose: bool = False
+) -> None:
+    """Say which account a command runs as, on stderr (stdout carries data).
+
+    One line with the box name ("box demo, team red"), only when the account is
+    not your personal default. Off a terminal it is left out unless `verbose`,
+    which also says it for the personal account.
+    """
+    if not verbose and (account.personal or not sys.stderr.isatty()):
+        return
+    where = f"box {name}, " if name else ""
+    log(f"{where}team {account}")
 
 
 def production_apps(client: SyncServerlessClient) -> list[str]:
@@ -132,8 +156,14 @@ def confirm_deploy(
     confirmed = account.team or "key"
     if state.load_box(app, host).get("confirmed_team") == confirmed:
         return
+    import grpc
+
+    from fal.exceptions.auth import UnauthenticatedException
+
     try:
         apps = production_apps(client)
+    except (UnauthenticatedException, grpc.RpcError):
+        raise  # The CLI says these with their own fixes and exit codes.
     except Exception as exc:
         raise DevError(f"could not list the apps of {account.runs_as}: {exc}") from exc
     if not apps:
@@ -143,9 +173,15 @@ def confirm_deploy(
     owner = f"{account.runs_as} has production apps ({shown})"
     box = f"{name} ({app})" if name else app
     if not sys.stdin.isatty():
-        raise DevError(f"{owner}; pass --yes to deploy {box} anyway")
-    log(f"warning: {owner}. {box} would be deployed next to them.")
-    if not Confirm.ask("Continue?", default=False, console=Console(stderr=True)):
+        raise DevError(
+            f"{owner}; pass --yes to deploy {box} anyway",
+            title="team has production apps",
+            fixes=[("--yes", "deploy next to them")],
+            code=EXIT_AUTH,
+        )
+    err = Console(stderr=True)
+    warn(f"{owner}. {box} would be deployed next to them.", err)
+    if not Confirm.ask("Continue?", default=False, console=err):
         raise DevError("cancelled")
     with contextlib.suppress(OSError):
         state.update_box(app, host, confirmed_team=confirmed)

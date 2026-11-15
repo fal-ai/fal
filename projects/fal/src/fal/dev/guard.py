@@ -16,7 +16,7 @@ import time
 from typing import TYPE_CHECKING
 
 from fal.dev import config, state
-from fal.dev.errors import DevError
+from fal.dev.errors import EXIT_AUTH, DevError
 
 if TYPE_CHECKING:
     from fal.dev.box import Box
@@ -102,6 +102,7 @@ def check_owner(box: Box, *, take_over: bool) -> None:
             (f"fal dev deploy --name {pick}", "make a box of your own"),
             (f"fal dev deploy --name {box.name} --take-over", "replace theirs anyway"),
         ],
+        code=EXIT_AUTH,
     )
 
 

@@ -14,6 +14,7 @@ import json
 import os
 import posixpath
 import shlex
+import shutil
 import socket
 import sys
 import time
@@ -29,7 +30,7 @@ from fal.api.client import SyncServerlessClient
 from fal.cli.runners import recent_logs, shell_session
 from fal.dev import config, state
 from fal.dev.account import Account
-from fal.dev.errors import DevError
+from fal.dev.errors import EXIT_NO_BOX, EXIT_TIMEOUT, EXIT_USAGE, DevError
 from fal.dev.transport import CONNECT_TIMEOUT, host_of, retry_connect
 from fal.sdk import AliasInfo, RunnerInfo, RunnerState
 
@@ -281,6 +282,8 @@ class Box:
         self.account = account
         self.client = SyncServerlessClient(host=host, team=account.fal_team)
         self.start_cancelled: bool | None = None
+        # Whether the last `start` found a runner already up; None before any start.
+        self.was_live: bool | None = None
         # `fal dev up` sets this to show its steps: messages and deploy logs then
         # go to it instead of stderr.
         self.progress: Steps | None = None
@@ -439,16 +442,28 @@ class Box:
         return live_code(app)
 
     def require_runner(self) -> str:
-        live = newest_live(self.runners())
+        runners = self.runners()
+        live = newest_live(runners)
         if not live:
+            if any(r.state not in FINAL_STATES for r in runners):
+                raise DevError(
+                    f"the box is starting, not ready yet: {self.app}",
+                    title="the box is not ready",
+                    fixes=[("fal dev status", "see how far it is")],
+                    code=EXIT_NO_BOX,
+                )
             raise DevError(
-                f"{self.app} is not running",
-                title="the box is not running",
-                fixes=[("fal dev up", "start it")],
+                f"box {self.name} is stopped",
+                title="the box is stopped",
+                fixes=[(f"fal dev up --name {self.name}", "start it")],
+                code=EXIT_NO_BOX,
             )
         if not self.armed():
             raise DevError(
-                f"{self.app} is shutting down. Start it again with: fal dev up"
+                f"box {self.name} is shutting down",
+                title="the box is shutting down",
+                fixes=[(f"fal dev up --name {self.name}", "start it again")],
+                code=EXIT_NO_BOX,
             )
         return live[0].runner_id
 
@@ -537,11 +552,14 @@ class Box:
             time.sleep(POLL_SECONDS)
         return True
 
-    def save_work(self) -> None:
-        """Save /work on a running box; raise, leaving the box up, if that fails."""
+    def save_work(self) -> str | None:
+        """Save /work on a running box; raise, leaving the box up, if that fails.
+
+        Returns the save script's one-line report, None when no runner is up.
+        """
         live = newest_live(self.runners())
         if not live:
-            return
+            return None
         log(f"saving {config.LOCAL_WORK} ...")
         guidance = (
             "the box is still running and the save may still be in progress. Retry, "
@@ -562,6 +580,7 @@ class Box:
                 f"({output or f'exit {code}'}); {guidance}"
             )
         log(output)
+        return output
 
     def check_admin_key(self) -> None:
         """Warn when the idle watchdog's key is missing or exposed to every app."""
@@ -841,7 +860,8 @@ class Box:
         """Scale to 1 and wait for a ready runner; cancel the start if none comes up."""
         # Only cancel a start this call made: never stop a box that was already up.
         was_live = bool(newest_live(self.runners()))
-        self._begin("runner")
+        self._begin("runner", "requesting a machine")
+        self.was_live = was_live
         # After a start that did not come up: True if it was scaled back to 0,
         # False if that failed, None if the box was already up (left running).
         self.start_cancelled = None
@@ -895,6 +915,7 @@ class Box:
                 f"no machine became ready within {timeout}s{unreachable}; {outcome}",
                 title="no GPU came free",
                 fixes=fixes,
+                code=EXIT_TIMEOUT,
             )
         return runner
 
@@ -912,15 +933,21 @@ class Box:
 
         check_limits(machine_type)
         exists = self.app_info() is not None
-        if starship and exists:
-            self._say(
-                "the box already exists; use `fal dev deploy --starship` to change it"
-            )
-        if (secrets or set_env) and exists:
-            self._say(
-                "the box already exists; use `fal dev deploy --secret` or "
-                "`--set-env` to change what it receives"
-            )
+        if exists:
+            ignored = [
+                flag
+                for flag, given in (
+                    ("--starship", starship),
+                    ("--secret", secrets),
+                    ("--set-env", set_env),
+                )
+                if given
+            ]
+            if ignored:
+                self._say(
+                    f"warning: {', '.join(ignored)} ignored: the box already exists. "
+                    "Apply them with: fal dev deploy (it restarts the box)"
+                )
         if not exists:
             if self.progress is None:
                 log(
@@ -946,20 +973,23 @@ class Box:
         self.check_admin_key()
         return self.start(timeout, machine_type, on_wait)
 
-    def down(self, no_save: bool = False) -> None:
-        if not no_save:
-            self.save_work()
+    def down(self, no_save: bool = False) -> str | None:
+        """Save /work (unless `no_save`) and stop; the save's report, if it ran."""
+        saved = None if no_save else self.save_work()
         if not self.stop():
             raise DevError(
                 "a runner is still shutting down; check again with `fal dev status` "
                 "or rerun `fal dev down`"
             )
+        return saved
 
     def hold(self, hours: float) -> bool:
         """Keep the box up past the idle timeout; False if a longer hold was kept."""
         if not 0 < hours <= config.MAX_HOLD_HOURS:
             raise DevError(
-                f"hours must be more than 0 and at most {config.MAX_HOLD_HOURS}"
+                f"a hold is more than 0 and at most {config.MAX_HOLD_HOURS} hours "
+                f"({config.MAX_HOLD_HOURS // 24} days); got {hours:g}",
+                code=EXIT_USAGE,
             )
         live = newest_live(self.runners())
         if not live:
@@ -967,6 +997,7 @@ class Box:
                 f"{self.app} is not running",
                 title="the box is not running",
                 fixes=[("fal dev up", "start it")],
+                code=EXIT_NO_BOX,
             )
         # Re-arm the box in case the watchdog has just started shutting it down.
         self.scale(1)
@@ -994,6 +1025,7 @@ class Box:
                 f"{self.app} is not running",
                 title="the box is not running",
                 fixes=[("fal dev up", "start it")],
+                code=EXIT_NO_BOX,
             )
         # Exits HOLD_KEPT_EXIT when no hold was in effect (missing or expired file).
         script = (
@@ -1100,36 +1132,103 @@ class Box:
 
 
 def ssh_config(
-    name: str, fal_command: str, host: str | None = None, team: str | None = None
+    name: str,
+    fal_command: str,
+    host: str | None = None,
+    team: str | None = None,
+    note: str | None = None,
 ) -> str:
-    """An ~/.ssh/config entry for Cursor / VS Code Remote-SSH."""
+    """An ~/.ssh/config entry for Cursor / VS Code Remote-SSH.
+
+    `note` is one comment line placed above the ProxyCommand.
+    """
     alias = config.app_name(name)
     proxy = f"{shlex.quote(fal_command)} dev ssh-proxy --name {name}"
     if host:
         proxy += f" --host {shlex.quote(host)}"
     if team:
         proxy += f" --team {shlex.quote(team)}"
-    # Leading blank line: appending to a config without a trailing newline stays valid.
-    return (
-        f"\nHost {alias}\n"
-        f"    HostName {alias}\n"
-        "    User root\n"
-        f"    ProxyCommand {proxy}\n"
-        "    # A stopped box starts on connect, which takes about 3 minutes: "
-        "wait for it\n"
-        "    # (or run `fal dev up` first). Longer than ssh-proxy's own 900 s wait, "
-        "so its messages come first.\n"
-        "    ConnectTimeout 960\n"
-        "    ServerAliveInterval 30\n"
-        "    # One connection serves the next ones: each new connection costs ~6 s.\n"
-        "    ControlMaster auto\n"
-        "    ControlPath ~/.ssh/fal-dev-%C\n"
-        "    ControlPersist 2m\n"
-        "    # Connecting authorizes the public keys in ~/.ssh on the box.\n"
-        "    # The box keeps its host key on /data, so it only changes if the\n"
-        "    # workspace is reset.\n"
-        "    StrictHostKeyChecking accept-new"
-    )
+    lines = [
+        f"Host {alias}",
+        f"    HostName {alias}",
+        "    User root",
+    ]
+    if note:
+        lines.append(f"    # {note}")
+    lines += [
+        f"    ProxyCommand {proxy}",
+        "    # A stopped box starts on connect (~3 min, hence ConnectTimeout). "
+        "Connecting also authorizes your ~/.ssh public keys on the box.",
+        "    # ControlMaster: one connection serves the next ones (each new one costs "
+        "~6 s).",
+        "    ConnectTimeout 960",
+        "    ServerAliveInterval 30",
+        "    ControlMaster auto",
+        "    ControlPath ~/.ssh/fal-dev-%C",
+        "    ControlPersist 2m",
+        "    StrictHostKeyChecking accept-new",
+    ]
+    return "\n".join(lines)
+
+
+def ssh_config_markers(name: str) -> tuple[str, str]:
+    """The comment lines that fence a box's block in ~/.ssh/config."""
+    return f"# >>> fal dev {name} >>>", f"# <<< fal dev {name} <<<"
+
+
+def install_ssh_config(path: Path, name: str, entry: str) -> tuple[str, Path | None]:
+    """Add or replace the box's fenced block in the ssh config file at `path`.
+
+    Returns "added", "updated" or "unchanged", and the backup of the previous file
+    (None when there was nothing to back up or nothing changed). Text outside the
+    markers is never touched.
+    """
+    # A dotfiles-managed config is a symlink: write through it, not over it.
+    path = path.resolve()
+    begin, end = ssh_config_markers(name)
+    block = f"{begin}\n{entry}\n{end}\n"
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        text = None
+    current = text or ""
+    start = current.find(begin)
+    stop = current.find(end, start) if start >= 0 else -1
+    if (start >= 0) != (stop >= 0) or (start < 0 and end in current):
+        raise DevError(
+            f"{path} has only one of the fal dev markers for {name}",
+            title="ssh config needs a hand edit",
+            fixes=[
+                (f"open {path}", f"remove the half {begin} / {end} block"),
+                (f"fal dev ssh-config --name {name}", "print the entry to paste"),
+            ],
+        )
+    if start >= 0 and stop >= 0:
+        stop += len(end)
+        if current[stop : stop + 1] == "\n":
+            stop += 1
+        updated = current[:start] + block + current[stop:]
+        action = "updated"
+    else:
+        if current and not current.endswith("\n"):
+            current += "\n"
+        updated = current + ("\n" if current else "") + block
+        action = "added"
+    if updated == (text or ""):
+        return "unchanged", None
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    backup = None
+    if text is not None:
+        backup = path.with_name(path.name + ".fal-dev.bak")
+        shutil.copy2(path, backup)
+    mode = path.stat().st_mode & 0o777 if text is not None else 0o600
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    with os.fdopen(fd, "w") as f:
+        f.write(updated)
+    os.chmod(tmp, mode)
+    tmp.replace(path)
+    return action, backup
 
 
 def _delete_app(

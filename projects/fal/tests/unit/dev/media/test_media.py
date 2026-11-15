@@ -199,8 +199,7 @@ def test_blocks_truecolor_golden():
     image.putpixel((0, 1), (0, 0, 255))
     image.putpixel((1, 1), (0, 255, 0))
     assert blocks_lines(image) == [
-        f"{ESC}[38;2;255;0;0;48;2;0;0;255m▀"
-        f"{ESC}[38;2;255;0;0;48;2;0;255;0m▀{ESC}[0m"
+        f"{ESC}[38;2;255;0;0;48;2;0;0;255m▀{ESC}[38;2;255;0;0;48;2;0;255;0m▀{ESC}[0m"
     ]
 
 
@@ -694,8 +693,10 @@ def test_view_reports_bad_items(tmp_path, capsys, monkeypatch):
     )()
     assert preview.view(args) == 1
     captured = capsys.readouterr()
-    assert "missing.png: no such file" in captured.err
+    assert "no such file: missing.png" in captured.err
     assert str(good) in captured.out
+    assert "image/png" in captured.out and "4x4" in captured.out
+    assert "(preview skipped)" in captured.out
 
 
 def _hot_args(**kwargs):
@@ -947,19 +948,66 @@ def test_glue_imports_no_pillow():
     subprocess.run([sys.executable, "-c", code], check=True)
 
 
-def test_view_accepts_name_and_explains_a_missing_preview(
-    monkeypatch, tmp_path, capsys
-):
+def test_view_explains_a_missing_preview(monkeypatch, tmp_path, capsys):
     from fal.cli.main import parse_args
 
     monkeypatch.delenv("FAL_DEV_PREVIEW", raising=False)
     monkeypatch.setattr(term_media, "terminal_for", lambda args: _detect({}, tty=False))
     image = tmp_path / "a.png"
-    image.write_bytes(b"x")
-    args = parse_args(["dev", "view", "--name", "box1", str(image)])
+    Image.new("RGB", (2, 2)).save(image)
+    args = parse_args(["dev", "view", str(image)])
 
-    assert args.name == "box1"
+    assert not hasattr(args, "name") or args.name is None
     assert preview.view(args) == 0
 
     err = capsys.readouterr().err
     assert "no preview" in err and "FAL_DEV_PREVIEW=blocks" in err
+
+
+def test_view_no_preview_prints_type_size_and_dimensions(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("FAL_DEV_PREVIEW", raising=False)
+    from fal.cli.main import parse_args
+
+    png = tmp_path / "a.png"
+    Image.new("RGB", (30, 20)).save(png)
+    jpg = tmp_path / "b.jpg"
+    Image.new("RGB", (64, 48)).save(jpg)
+    args = parse_args(["dev", "view", "--no-preview", str(png), str(jpg)])
+    assert preview.view(args) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].startswith(str(png)) and "image/png" in out[0]
+    assert "30x20" in out[0] and out[0].endswith("(preview skipped)")
+    assert "image/jpeg" in out[1] and "64x48" in out[1]
+
+
+@pytest.mark.parametrize(
+    "fmt, size", [("GIF", (7, 5)), ("BMP", (9, 3)), ("WEBP", (11, 13))]
+)
+def test_sniff_image_matches_pillow(tmp_path, fmt, size):
+    from fal.dev.media.common import sniff_image
+
+    path = tmp_path / f"x.{fmt.lower()}"
+    Image.new("RGB", size).save(path, format=fmt)
+    content_type, dims = sniff_image(path)
+    assert content_type == f"image/{fmt.lower()}" and dims == size
+
+
+def test_view_errors_are_clear_not_tracebacks(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("FAL_DEV_PREVIEW", "off")
+    text = tmp_path / "notes.txt"
+    text.write_text("hello")
+    args = type(
+        "A",
+        (),
+        {
+            "files": [str(tmp_path), str(text), "nope.png"],
+            "play": False,
+            "preview": None,
+        },
+    )()
+    assert preview.view(args) == 1
+    err = capsys.readouterr().err
+    assert f"is a directory, not an image or video: {tmp_path}" in err
+    assert f"not an image or video: {text}" in err
+    assert "no such file: nope.png" in err
+    assert "Traceback" not in err

@@ -29,6 +29,7 @@ from fal.dev.media.common import (
     OFF,
     VIDEO_SUFFIXES,
     clean,
+    sniff_image,
 )
 from fal.dev.state import STATE_DIR
 
@@ -315,6 +316,50 @@ class HotPreview:
 # ------------------------------------------------------------ fal dev view
 
 
+def _human_size(num_bytes: int) -> str:
+    value = float(num_bytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} GB"
+
+
+def describe_file(path: str) -> str:
+    """ "path | type | size | WxH" for a local media file, without Pillow."""
+    parts = [path]
+    sniffed = sniff_image(path)
+    if sniffed:
+        content_type, dims = sniffed
+    else:
+        content_type = mimetypes.guess_type(path)[0] or "unknown type"
+        dims = None
+    parts.append(content_type)
+    parts.append(_human_size(os.path.getsize(path)))
+    if dims:
+        parts.append(f"{dims[0]}x{dims[1]}")
+    return " | ".join(parts)
+
+
+def _local_media(item: str) -> str:
+    """The path of a local media file, or raise OSError with a clear reason."""
+    path = Path(item)
+    if path.is_dir():
+        raise OSError(f"is a directory, not an image or video: {item}")
+    if not path.exists():
+        raise OSError(f"no such file: {item}")
+    if not path.is_file():
+        raise OSError(f"not a regular file: {item}")
+    try:
+        with open(path, "rb"):
+            pass
+    except OSError as exc:
+        raise OSError(f"cannot read {item}: {exc.strerror or exc}") from None
+    if sniff_image(item) is None and path.suffix.lower() not in VIDEO_SUFFIXES:
+        raise OSError(f"not an image or video: {item}")
+    return item
+
+
 def view(args) -> int:
     """`fal dev view`: show local files or URLs inline."""
     from fal.dev.media import term_media
@@ -325,21 +370,33 @@ def view(args) -> int:
         try:
             if item.startswith(("http://", "https://", "data:")):
                 path = str(fetch(Media(item)))
-            elif Path(item).is_file():
-                path = item
             else:
-                raise OSError("no such file")
+                path = _local_media(item)
+        except TooLarge as exc:
+            print(
+                clean(f"too large to download ({exc}): {item[:200]}"), file=sys.stderr
+            )
+            failed += 1
+            continue
         except Exception as exc:
-            print(clean(f"{item[:200]}: {exc}"), file=sys.stderr)
+            message = str(exc)
+            # Local errors already name the file; others get it as a prefix.
+            if not (isinstance(exc, OSError) and item in message):
+                message = f"{item[:200]}: {message}"
+            print(clean(message), file=sys.stderr)
             failed += 1
             continue
         paths.append((path, ""))
-    try:
-        show_paths(paths, term, play=args.play)
-    except Exception as exc:
-        print(f"preview failed: {clean(str(exc))}", file=sys.stderr)
-        return 1
     opted_out = getattr(args, "preview", None) is False or os.environ.get(ENV_PROTOCOL)
+    if term.protocol == OFF:
+        for path, _ in paths:
+            print(clean(f"{describe_file(path)} (preview skipped)"))
+    else:
+        try:
+            show_paths(paths, term, play=args.play)
+        except Exception as exc:
+            print(f"preview failed: {clean(str(exc))}", file=sys.stderr)
+            return 1
     if paths and term.protocol == OFF and not opted_out:
         print(
             "no preview: this is not a terminal that can show images. Set "

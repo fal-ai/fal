@@ -54,11 +54,11 @@ def test_wrap_runs_the_command_after_a_fresh_marker():
     assert marker_a.decode() not in " ".join(a)
 
 
-def _run_wrapped(command):
-    wrapped, marker = execute.wrap(command)
+def _run_wrapped(command, stdin=None):
+    wrapped, marker = execute.wrap(command, None if stdin is None else len(stdin))
     # Skip the lingering sleep: only the drain behaviour matters here.
     wrapped[2] = wrapped[2].replace(f"sleep {execute.LINGER_SECONDS}", "")
-    proc = subprocess.run(wrapped, capture_output=True, check=False)
+    proc = subprocess.run(wrapped, capture_output=True, input=stdin, check=False)
     return proc, marker
 
 
@@ -68,6 +68,21 @@ def test_the_wrapper_ends_both_streams_with_the_exit_code():
     assert proc.stdout == b"out\n" + marker + b"7\n"
     assert proc.stderr == b"err\n" + marker + b"7\n"
     assert proc.returncode == 7
+
+
+def test_with_stdin_bytes_the_command_sees_end_of_input_after_them():
+    # The remote stdin stays open, as on the box; the wrapper still ends input.
+    wrapped, marker = execute.wrap(["wc", "-c"], 3)
+    wrapped[2] = wrapped[2].replace(f"sleep {execute.LINGER_SECONDS}", "")
+    proc = subprocess.Popen(
+        wrapped, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    proc.stdin.write(b"abc")
+    proc.stdin.flush()
+    out, _ = proc.communicate(timeout=10)
+
+    assert out.split()[0] == b"3"
+    assert proc.returncode == 0
 
 
 def _fake_session(frames_out, frames_err=()):

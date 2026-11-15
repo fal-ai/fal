@@ -193,13 +193,39 @@ def test_naming_your_personal_account_runs_as_personal():
     assert get_box(_args(team="ME")).account == PERSONAL
 
 
-def test_the_team_line_goes_to_stderr(capsys):
-    get_box(_args())
+def _tty_stderr(monkeypatch, tty=True):
+    monkeypatch.setattr(team.sys.stderr, "isatty", lambda: tty, raising=False)
+
+
+def test_the_team_line_names_the_box_and_goes_to_stderr(capsys, monkeypatch):
+    _tty_stderr(monkeypatch)
     get_box(_args(name="b", team="red"))
 
     out, err = capsys.readouterr()
     assert out == ""
-    assert err.splitlines() == ["Team: personal (me)", "Team: red"]
+    assert err.splitlines() == ["box b, team red"]
+
+
+def test_the_personal_account_prints_no_team_line_unless_verbose(capsys, monkeypatch):
+    _tty_stderr(monkeypatch)
+    get_box(_args())
+    assert capsys.readouterr().err == ""
+
+    verbose = _args()
+    verbose.verbose = True
+    get_box(verbose)
+    assert capsys.readouterr().err.splitlines() == ["box demo, team personal (me)"]
+
+
+def test_no_team_line_off_a_terminal_unless_verbose(capsys, monkeypatch):
+    _tty_stderr(monkeypatch, tty=False)
+    get_box(_args(team="red"))
+    assert capsys.readouterr().err == ""
+
+    verbose = _args(team="red")
+    verbose.verbose = True
+    get_box(verbose)
+    assert capsys.readouterr().err.splitlines() == ["box demo, team red"]
 
 
 def test_a_quiet_box_prints_no_team_line(capsys):
@@ -284,7 +310,40 @@ def test_a_failing_app_list_is_an_error_naming_the_account(monkeypatch):
     monkeypatch.setattr(team, "production_apps", fail)
     _stdin(monkeypatch, False)
 
-    with pytest.raises(DevError, match="could not list the apps of team red: boom"):
+    with pytest.raises(
+        DevError, match="could not list the apps of team red: boom"
+    ) as e:
+        _confirm(MagicMock())
+    assert e.value.code == 1
+
+
+def test_a_logged_out_app_list_is_left_to_the_clis_login_error(monkeypatch):
+    from fal.exceptions.auth import UnauthenticatedException
+
+    def fail(client):
+        raise UnauthenticatedException()
+
+    monkeypatch.setattr(team, "production_apps", fail)
+    _stdin(monkeypatch, False)
+
+    with pytest.raises(UnauthenticatedException):
+        _confirm(MagicMock())
+
+
+def test_an_rpc_error_from_the_app_list_is_left_to_the_cli(monkeypatch):
+    import grpc
+
+    class NotFound(grpc.RpcError):
+        def code(self):
+            return grpc.StatusCode.NOT_FOUND
+
+    def fail(client):
+        raise NotFound()
+
+    monkeypatch.setattr(team, "production_apps", fail)
+    _stdin(monkeypatch, False)
+
+    with pytest.raises(NotFound):
         _confirm(MagicMock())
 
 
@@ -401,14 +460,12 @@ def test_yes_is_not_a_flag_of_other_commands():
         parse_args(["dev", "status", "--yes"])
 
 
-def test_team_help_says_it_is_remembered_and_defaults_to_personal(capsys):
+def test_team_help_says_it_is_remembered(capsys):
     with pytest.raises(FalParserExit):
         parse_args(["dev", "up", "--help"])
 
     out = " ".join(capsys.readouterr().out.split())
-    assert re.search(
-        r"--team TEAM .*Changes the team remembered for the box.*personal account", out
-    )
+    assert re.search(r"--team TEAM Team the box runs as \(remembered per box\)", out)
 
 
 def test_ssh_proxy_does_not_announce_the_account(monkeypatch):

@@ -10,26 +10,47 @@ from __future__ import annotations
 import argparse
 import functools
 import importlib
+import sys
 from typing import Callable
 
 from fal.cli.parser import FalClientParser
 from fal.dev import config
-from fal.dev.errors import DevError
+from fal.dev.errors import (
+    EXIT_AUTH,
+    EXIT_INTERRUPTED,
+    EXIT_NO_BOX,
+    EXIT_USAGE,
+    DevError,
+)
 
 EXPERIMENTAL = "(experimental) "
 
-TEAM_HELP = (
-    "The team the box runs as. Changes the team remembered for the box; without "
-    "it, the remembered team, else your personal account."
-)
+# `up` may build the image, deploy and wait for a machine; a proxy start only
+# wakes a deployed box.
+UP_TIMEOUT = 1800
+PROXY_START_TIMEOUT = 900
+
+NAME_HELP = "Box name (default: this folder's box)"
+TEAM_HELP = "Team the box runs as (remembered per box)"
 SSH_CONFIG_TEAM_HELP = (
     "Write --team into the entry's ProxyCommand. Nothing is remembered until "
     "ssh-proxy runs."
 )
-YES_HELP = (
-    "Deploy into a team that has production apps without asking (needed when "
-    "there is no terminal to ask on)."
+# Each command's --yes skips one thing; the help names it.
+YES_DEPLOY_HELP = (
+    "Skip the confirmation before deploying into a team that has production "
+    "apps (needed without a terminal)."
 )
+YES_DOWN_HELP = (
+    "Skip the confirmation when the GPU is busy or a job is running (needed "
+    "without a terminal)."
+)
+YES_DESTROY_HELP = (
+    "Skip typing the box name to confirm the delete (needed without a "
+    "terminal). Requires --name."
+)
+VERBOSE_HELP = "Show more detail, such as the account the box runs as."
+JSON_HELP = "Print the result as one JSON object on stdout (errors too)."
 
 # Each dashboard refresh is a runner exec; faster only loads the box and the API.
 MIN_INTERVAL = 1.0
@@ -49,10 +70,10 @@ A project is a folder with:
                    traceback and the server keeps running.
   requirements.txt (optional) extra packages, see below.
 
-Preinstalled on the stock box image (the Python you deployed from, CUDA 12.8):
-torch 2.8.0 and torchvision 0.23.0 (cu128), transformers 4.56.1, diffusers 0.35.1,
-accelerate 1.10.1, safetensors 0.6.2, huggingface_hub 0.34.4, and uv. A custom
-image (`fal dev deploy --dockerfile`) has what its Dockerfile installs.
+The stock box image has torch, torchvision, transformers, diffusers, accelerate,
+safetensors, huggingface_hub and uv preinstalled (`fal dev exec -- pip list`
+shows the versions). A custom image (`fal dev deploy --dockerfile`) has what its
+Dockerfile installs.
 
 requirements.txt is installed with uv into <project>/.venv, which sees the
 preinstalled packages and only adds what is missing or newer. The torch stack
@@ -82,12 +103,17 @@ tmux instead):
   fal dev exec -- tail -n 20 /work/train.log
 """
 
-HOT_DESCRIPTION = (
-    "Keep a model loaded on the box and reload your inference code on save.\n\n"
-    + HOT_PROJECT
-    + "\nExample: fal dev hot start ./my-model, then "
-    "fal dev hot sync --watch --run --prompt 'a red fox'"
-)
+HOT_DESCRIPTION = """\
+Keep a model loaded on the box and reload your inference code on save.
+
+A project folder has load.py (def load() -> state: loads the weights, runs once)
+and infer.py (def infer(state, **params): runs per request, reloaded on save).
+Saving load.py or requirements.txt reloads the weights; any other .py file
+reloads code only. Layout and requirements: fal dev hot start --help
+
+Example: fal dev hot start ./my-model, then
+fal dev hot sync --watch --run --prompt 'a red fox'
+"""
 
 HOT_START_DESCRIPTION = (
     "Push the project folder, start the hot server and wait for load() to finish. "
@@ -103,6 +129,64 @@ DASH_DESCRIPTION = (
     "The cost line comes from the platform's usage API and needs a key with "
     "billing access; it is hidden otherwise."
 )
+
+
+ENV_NOTES = """\
+Secrets and environment: --secret NAME gives the box a team secret. Create it
+with `fal secrets set NAME=value`; the box sees only the names you list, as
+environment variables in shells, `fal dev exec`, ssh, `hot` and Claude
+sessions, and `fal dev status` shows the names, never the values. --set-env
+KEY=VALUE sets a plain variable whose value is stored in the box's settings, so
+use --secret for anything sensitive."""
+
+STARSHIP_NOTE = """\
+--starship copies only your starship.toml ($STARSHIP_CONFIG or
+~/.config/starship.toml) into the box's settings (keep secrets out of it) and
+installs starship there."""
+
+TEAM_DATA_NOTE = """\
+--team-data keeps the box on the team-shared /data (shared model weights, other
+apps' files) instead of its own volume. By default /data is the box's volume,
+devbox-<name>, and the team /data is not mounted, so a box whose files are on
+the team /data needs this flag to keep them. It is not remembered: pass it on
+every deploy."""
+
+NAME_RULES = (
+    "Which box and team\n"
+    "  Box:   --name, else the box this folder last used (remembered once the\n"
+    f"         box exists), else ${config.ENV_DEFAULT_NAME}, else your OS username\n"
+    "         (lowercased, other characters become dashes, 40 characters at\n"
+    f"         most). Names use lowercase letters, digits and dashes; the app is\n"
+    f"         {config.APP_PREFIX}<name>.\n"
+    "  Team:  --team, else the team remembered for the box, else your personal\n"
+    "         account. `fal account set` never applies to a box. Under an API key\n"
+    "         the key's own account is used and --team is ignored.\n"
+    f"  State is kept in ~/.fal/dev on this machine."
+)
+
+EXIT_CODES = (
+    "Exit codes\n"
+    "  0 ok, 1 error, 2 usage, 3 box not found or stopped, 4 auth or team,\n"
+    "  5 timeout, 130 interrupted with Ctrl-C. `exec` returns the remote\n"
+    "  command's own code. With --json, a failure also prints\n"
+    '  {"error": {"title", "message", "fixes"}} on stdout.'
+)
+
+QUICK_START = (
+    "Quick start\n"
+    "  fal dev up           start your box (creates it the first time)\n"
+    "  fal dev shell        open a shell on it\n"
+    "  fal dev hot start    keep a model loaded and reload code on save\n"
+    "  fal dev down         save /work and stop it (stops billing)"
+)
+
+
+def examples(*rows: tuple[str, str], notes: str = "") -> str:
+    """An `examples:` epilog: (command, what it does) rows, then optional notes."""
+    width = max(len(command) for command, _ in rows)
+    lines = [f"  {command.ljust(width)}   {what}" for command, what in rows]
+    text = "examples:\n" + "\n".join(lines)
+    return f"{text}\n\n{notes}" if notes else text
 
 
 def box_name(value: str) -> str:
@@ -154,6 +238,7 @@ def env_pair(value: str) -> tuple[str, str]:
 
 def add_user_env_arguments(p: argparse.ArgumentParser, *, removable: bool) -> None:
     """--secret and --set-env (and, on deploy, their --unset-* counterparts)."""
+    later = "fal dev deploy"
     p.add_argument(
         "--secret",
         action="append",
@@ -161,17 +246,11 @@ def add_user_env_arguments(p: argparse.ArgumentParser, *, removable: bool) -> No
         metavar="NAME",
         type=env_name,
         help=(
-            "Give the box a fal secret, by name (repeatable), e.g. HF_TOKEN. Secrets "
-            "are team-level: create them with `fal secrets set NAME=value`; the box "
-            "sees only the names you list, as environment variables in shells, "
-            "`fal dev exec`, ssh, `hot` and Claude sessions. `fal dev status` shows "
-            "the names, never the values. "
+            "Give the box a team secret, by name (repeatable), e.g. HF_TOKEN. "
             + (
-                "Remembered on this machine for later deploys; remove one with "
-                "--unset-secret."
+                "Remembered for later deploys."
                 if removable
-                else "Applies when the box is first created; later use "
-                "`fal dev deploy --secret`."
+                else f"Applies when the box is created; later use `{later} --secret`."
             )
         ),
     )
@@ -182,14 +261,11 @@ def add_user_env_arguments(p: argparse.ArgumentParser, *, removable: bool) -> No
         metavar="KEY=VALUE",
         type=env_pair,
         help=(
-            "Set an environment variable on the box (repeatable). Not for secrets: "
-            "the value is stored in the box's settings; use --secret for those. "
+            "Set an environment variable on the box (repeatable; not for secrets). "
             + (
-                "Remembered on this machine for later deploys; remove one with "
-                "--unset-env."
+                "Remembered for later deploys."
                 if removable
-                else "Applies when the box is first created; later use "
-                "`fal dev deploy --set-env`."
+                else f"Applies when the box is created; later use `{later} --set-env`."
             )
         ),
     )
@@ -218,26 +294,169 @@ def interval(value: str) -> float:
     return seconds
 
 
-def _command(module: str, handler: str) -> Callable[[argparse.Namespace], object]:
-    """A command that imports its handler `cmd_<handler>` when it runs."""
+class DevParser(FalClientParser):
+    """A `fal dev` parser: its own usage and a `try:` fix on a parse error."""
+
+    def error(self, message):
+        _parse_error(self, message)
+
+
+def _parse_fixes(parser: argparse.ArgumentParser, message: str) -> list:
+    import difflib
+    import re
+
+    fixes = []
+    wrong = re.search(r"invalid choice: '([^']+)'", message)
+    if wrong:
+        names = [
+            name
+            for action in parser._actions
+            if isinstance(action.choices, dict)
+            for name in action.choices
+        ]
+    else:
+        wrong = re.search(r"unrecognized arguments: (--[^\s=]+)", message)
+        names = [o for a in parser._actions for o in a.option_strings]
+    if wrong:
+        # Strict enough that an unrelated word ("bogus") suggests nothing.
+        close = difflib.get_close_matches(wrong.group(1), names, n=1, cutoff=0.75)
+        if close:
+            fixes.append((f"{parser.prog} {close[0]}", "did you mean this?"))
+    fixes.append((f"{parser.prog} --help", "see the options and examples"))
+    return fixes
+
+
+def _parse_error(parser: argparse.ArgumentParser, message: str) -> None:
+    """Show a parse error with the command's own usage, then exit 2."""
+    from fal.dev.cli import error_panel
+
+    exc = DevError(
+        message,
+        title=parser.prog,
+        fixes=_parse_fixes(parser, message),
+        code=EXIT_USAGE,
+        usage=parser.format_usage(),
+    )
+    if "--json" in sys.argv[1:]:
+        print(error_panel.as_json(exc, parser.prog))
+    error_panel.show(exc, _stderr_console())
+    parser.exit(EXIT_USAGE)
+
+
+def _command(
+    module: str, handler: str, command: str | None = None
+) -> Callable[[argparse.Namespace], object]:
+    """A command that imports its handler `cmd_<handler>` when it runs.
+
+    `command` names it in error panels. Failures become an error panel on
+    stderr and the error's exit code (and a JSON error object on stdout under
+    --json); Ctrl-C exits 130.
+    """
 
     def run(args: argparse.Namespace) -> object:
+        err = _stderr_console()
+        if args is not None:
+            args.err = err
         implementation = importlib.import_module(f"fal.dev.cli.{module}")
         try:
             return getattr(implementation, f"cmd_{handler}")(args)
         except DevError as exc:
-            _show(exc)
-            return 1
+            return _fail(args, exc, command, err)
+        except KeyboardInterrupt:
+            err.print("interrupted", highlight=False)
+            return EXIT_INTERRUPTED
         except Exception as exc:
-            unreachable = _unreachable(exc)
-            if unreachable is None:
+            wrapped = known_failure(exc)
+            if wrapped is None:
                 raise
-            unreachable.__cause__ = exc
-            _show(unreachable)
-            return 1
+            wrapped.__cause__ = exc
+            return _fail(args, wrapped, command, err)
 
     run.__name__ = f"{module}.{handler}"
     return run
+
+
+def _stderr_console():
+    from rich.console import Console
+
+    return Console(stderr=True, soft_wrap=True)
+
+
+def known_failure(exc: Exception) -> DevError | None:
+    """Logged out, box not deployed or host unreachable, as a DevError; else None."""
+    return _not_logged_in(exc) or _not_deployed(exc) or _unreachable(exc)
+
+
+def _not_logged_in(exc: Exception) -> DevError | None:
+    from fal.exceptions.auth import UnauthenticatedException
+
+    if not isinstance(exc, UnauthenticatedException):
+        return None
+    return DevError(
+        "you are not logged in, and no API key is set",
+        title="not logged in",
+        fixes=[
+            ("fal auth login", "log in with your browser"),
+            ("fal profile key", "or set an API key"),
+        ],
+        code=EXIT_AUTH,
+    )
+
+
+def _not_deployed(exc: Exception) -> DevError | None:
+    """The platform's NOT_FOUND for the box's app, said in box terms."""
+    import re
+
+    import grpc
+
+    if not (
+        isinstance(exc, grpc.RpcError)
+        and callable(getattr(exc, "code", None))
+        and exc.code() == grpc.StatusCode.NOT_FOUND
+        and "Application" in (exc.details() or "")
+    ):
+        return None
+    found = re.search(r"'name': '([^']+)'", exc.details())
+    app = found.group(1) if found else ""
+    name = app.removeprefix(config.APP_PREFIX) if app else None
+    flag = f" --name {name}" if name else ""
+    return DevError(
+        f"box {name} is not deployed" if name else "this box is not deployed",
+        title="no such box",
+        fixes=[
+            (f"fal dev up{flag}", "create and start it"),
+            ("fal dev list", "see your boxes"),
+        ],
+        code=EXIT_NO_BOX,
+    )
+
+
+def _fail(
+    args: argparse.Namespace | None, exc: DevError, command: str | None, err
+) -> int:
+    """Show a failure on stderr, plus a JSON error object on stdout under --json."""
+    from fal.dev.cli import error_panel
+
+    if args is not None and getattr(args, "json", False) is True:
+        args.console.print_json(error_panel.as_json(exc, command))
+    error_panel.show(exc, err, command)
+    return exc.code
+
+
+def _hold_hours(text: str) -> float:
+    """Hours from `2`, `0.5`, `30m` or `2h`."""
+    value = text.strip().lower()
+    scale = 1.0
+    if value.endswith("m"):
+        value, scale = value[:-1], 1 / 60
+    elif value.endswith("h"):
+        value = value[:-1]
+    try:
+        return float(value) * scale
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"{text!r} is not a duration; use hours (2, 0.5) or 30m, 2h"
+        ) from None
 
 
 def _add_take_over(parser: argparse.ArgumentParser) -> None:
@@ -249,14 +468,6 @@ def _add_take_over(parser: argparse.ArgumentParser) -> None:
             "refuses; owners are recorded on each deploy."
         ),
     )
-
-
-def _show(exc: DevError) -> None:
-    from rich.console import Console
-
-    from fal.dev.cli import error_panel
-
-    error_panel.show(exc, Console(stderr=True))
 
 
 def _unreachable(exc: Exception) -> DevError | None:
@@ -277,7 +488,11 @@ def _unreachable(exc: Exception) -> DevError | None:
         except RuntimeError:
             host = "fal"
         message = unreachable_message(host, exc)
-    elif isinstance(exc, grpc.RpcError) and exc.code() == grpc.StatusCode.UNAVAILABLE:
+    elif (
+        isinstance(exc, grpc.RpcError)
+        and callable(getattr(exc, "code", None))
+        and exc.code() == grpc.StatusCode.UNAVAILABLE
+    ):
         host = flags.GRPC_HOST.partition(":")[0]
         if https_proxy_for(host) is None:
             # Not proxied: `fal`'s own handler already explains UNAVAILABLE.
@@ -301,8 +516,12 @@ def _unreachable(exc: Exception) -> DevError | None:
     )
 
 
-def _add_yes(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--yes", action="store_true", help=YES_HELP)
+def _add_yes(parser: argparse.ArgumentParser, help_text: str) -> None:
+    parser.add_argument("--yes", action="store_true", help=help_text)
+
+
+def _add_json(parser: argparse.ArgumentParser, help_text: str = JSON_HELP) -> None:
+    parser.add_argument("--json", action="store_true", help=help_text)
 
 
 def add(
@@ -328,7 +547,9 @@ def add(
         team_help=team_help,
         **kwargs,
     )
-    parser.set_defaults(func=_command(module, handler or cmd.replace("-", "_")))
+    parser.set_defaults(
+        func=_command(module, handler or cmd.replace("-", "_"), parser.prog)
+    )
     return parser
 
 
@@ -343,13 +564,17 @@ def _group(subparsers, cmd: str, help_text: str, parents: list, **kwargs):
         metavar="command",
         dest=f"{cmd}_cmd",
         required=True,
-        parser_class=FalClientParser,
+        parser_class=DevParser,
     )
 
 
-def _name_parser(help_text: str, type_=None) -> argparse.ArgumentParser:
+def _name_parser(
+    help_text: str, type_=None, *, verbose: bool = True
+) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--name", type=type_, help=help_text)
+    if verbose:
+        parser.add_argument("-v", "--verbose", action="store_true", help=VERBOSE_HELP)
     return parser
 
 
@@ -388,20 +613,35 @@ def _preview_parser(*, compare: bool = False) -> argparse.ArgumentParser:
 
 
 def _add_box_commands(subparsers, parents) -> None:
-    box = _name_parser(
-        "Box name; the app is devbox-<name>. Remembered for the current folder "
-        f"(default: the folder's last box, else ${config.ENV_DEFAULT_NAME} or "
-        "your OS username).",
-        box_name,
-    )
+    box = _name_parser(NAME_HELP, box_name)
+    # `up` has its own --verbose (the whole deploy log).
+    box_up = _name_parser(NAME_HELP, box_name, verbose=False)
     add_box = functools.partial(add, subparsers, "box", [*parents, box])
     no_save_help = (
         f"Skip saving {config.LOCAL_WORK} first; changes since the last save are lost."
+    )
+    # Same list as the dash help: what keeps a box from idle shutdown.
+    activity = (
+        "Idle shutdown counts terminal input, a connected SSH client or editor, "
+        "GPU use of 10% or more, Claude sessions, /hot requests and holds as "
+        "activity."
     )
 
     p = add_box(
         "deploy",
         "Build the image and (re)deploy your box as a private app. Ends open shells.",
+        description=(
+            "Build the image and (re)deploy your box as a private app. Ends open "
+            f"shells.\n\n{ENV_NOTES}\n\n{STARSHIP_NOTE}\n\n{TEAM_DATA_NOTE}"
+        ),
+        epilog=examples(
+            ("fal dev deploy", "redeploy with the current settings"),
+            (
+                "fal dev deploy --machine-type GPU-H100",
+                "switch the machine type (restarts the box)",
+            ),
+            ("fal dev deploy --secret HF_TOKEN", "give the box a secret"),
+        ),
     )
     p.add_argument(
         "--machine-type",
@@ -445,41 +685,51 @@ def _add_box_commands(subparsers, parents) -> None:
     p.add_argument(
         "--starship",
         action="store_true",
-        help=(
-            "Use your local starship prompt on the box: copies only your "
-            "starship.toml ($STARSHIP_CONFIG or ~/.config/starship.toml, stored in "
-            "the box's settings: keep secrets out of it) and "
-            "installs starship there (not remembered)."
-        ),
+        help="Use your local starship prompt on the box (not remembered).",
     )
     p.add_argument(
         "--dockerfile",
         help="Your own image, based on the default (see fal/dev/remote/Dockerfile).",
     )
     add_user_env_arguments(p, removable=True)
-    _add_yes(p)
+    _add_yes(p, YES_DEPLOY_HELP)
     _add_take_over(p)
     p.add_argument(
         "--team-data",
         action="store_true",
-        help=(
-            "Keep the box on the team-shared /data (shared model weights, other "
-            "apps' files) instead of its own volume. By default /data is the box's "
-            "volume, devbox-<name>, and the team /data is not mounted, so a box "
-            "whose files are on the team /data needs this flag to keep them. Not "
-            "remembered: pass it on every deploy."
-        ),
+        help="Keep the box on the team-shared /data (not remembered).",
     )
 
-    p = add_box(
-        "up", "Start the box (deploying it the first time) and wait until ready."
+    p = add(
+        subparsers,
+        "box",
+        [*parents, box_up],
+        "up",
+        "Start the box (deploying it the first time) and wait until ready.",
+        description=(
+            "Start the box (deploying it the first time) and wait until ready.\n\n"
+            f"{ENV_NOTES}\n\n{STARSHIP_NOTE}"
+        ),
+        epilog=examples(
+            ("fal dev up", "start this folder's box"),
+            ("fal dev up --name demo", "start (or create) a box named demo"),
+            ("fal dev up --machine-type GPU-H100", "start it on another machine type"),
+            ("fal dev up --json", "print the result as JSON (scripts)"),
+            notes=(
+                "Starting takes a few minutes; the last start's time is remembered "
+                "on this machine and shown as the typical wait. Secrets, --set-env "
+                "and --starship apply when the box is created; to change them on an "
+                "existing box use `fal dev deploy`."
+            ),
+        ),
     )
     p.add_argument(
         "--machine-type",
         type=config.machine_type_name,
         help=(
             "Switch the machine type of a stopped box; it stays until changed "
-            f"again. Limited by ${config.ENV_ALLOWED_MACHINES}."
+            f"again (default: the box's current type, else {config.DEFAULT_GPU} "
+            f"for a new box). Limited by ${config.ENV_ALLOWED_MACHINES}."
         ),
     )
     p.add_argument(
@@ -490,110 +740,236 @@ def _add_box_commands(subparsers, parents) -> None:
     p.add_argument(
         "--starship",
         action="store_true",
-        help=(
-            "Use your local starship prompt on the box: copies only your "
-            "starship.toml ($STARSHIP_CONFIG or ~/.config/starship.toml, stored in "
-            "the box's settings: keep secrets out of it) and "
-            "installs starship there (applies when the box is first created; "
-            "later use `fal dev deploy --starship`)."
-        ),
+        help="Use your local starship prompt on the box (applies when created).",
     )
     add_user_env_arguments(p, removable=False)
-    _add_yes(p)
+    _add_yes(p, YES_DEPLOY_HELP)
     _add_take_over(p)
     p.add_argument(
+        "-v",
         "--verbose",
         action="store_true",
-        help="Show the whole deploy log after the run, not its last lines on failure.",
+        help=(
+            "Show the whole deploy log after the run, not its last lines on "
+            "failure, and the account the box runs as."
+        ),
     )
+    _add_json(p)
     p.add_argument(
         "--timeout",
         type=positive_int,
-        default=1800,
-        help="Seconds to wait (default: %(default)s).",
-    )
-
-    p = add_box("down", f"Save {config.LOCAL_WORK}, then stop the box. /data is kept.")
-    p.add_argument("--no-save", action="store_true", help=no_save_help)
-    p.add_argument(
-        "--yes",
-        action="store_true",
+        default=UP_TIMEOUT,
         help=(
-            "Stop without asking when the GPU is busy or a job is running "
-            "(needed when there is no terminal to ask on)."
+            "Seconds to wait for the box to be ready (default: %(default)s; the "
+            "first deploy builds the image)."
         ),
     )
-    p = add_box("status", "Show whether the box is running.")
+
+    p = add_box(
+        "down",
+        f"Save {config.LOCAL_WORK}, then stop the box. /data is kept.",
+        epilog=examples(
+            ("fal dev down", f"save {config.LOCAL_WORK}, then stop the box"),
+            ("fal dev down --no-save", "stop without saving"),
+            ("fal dev down --yes", "stop even if the GPU is busy"),
+            ("fal dev down --json", "print the result as JSON"),
+        ),
+    )
+    p.add_argument("--no-save", action="store_true", help=no_save_help)
+    _add_yes(p, YES_DOWN_HELP)
+    _add_json(p)
+    p = add_box(
+        "status",
+        "Show whether the box is running.",
+        epilog=examples(
+            ("fal dev status", "one line: state, machine, uptime, hold"),
+            ("fal dev status --json", "the full snapshot for scripts"),
+            ("fal dev status --name demo", "another box"),
+        ),
+    )
     p.add_argument(
         "--json",
         action="store_true",
         help="Print the same snapshot as `fal dev dash --json` and exit.",
     )
-    add(
+    p = add(
         subparsers,
         "box",
         parents,
         "list",
         "List the dev boxes of your account or team.",
-    ).add_argument(
-        "--json", action="store_true", help="Print a JSON list, one object per box."
+        team_help=(
+            "List this team's boxes (default: your personal account). Not "
+            "remembered: pass it each time."
+        ),
+        epilog=examples(
+            ("fal dev list", "your boxes, running first"),
+            ("fal dev list --team acme", "a team's boxes"),
+            ("fal dev list --all --json", "every box, for scripts"),
+            notes=(
+                "Running boxes come first, then the rest by how recently this "
+                "machine used them. The box of this folder is highlighted."
+            ),
+        ),
+    )
+    p.add_argument(
+        "--all",
+        action="store_true",
+        help="Show every stopped box, not just the 10 most recent.",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Print a JSON list, one object per box (all of them).",
     )
     p = add_box(
         "destroy",
         "Delete the box's app. Its /data volume is kept: there is no delete API yet.",
+        epilog=examples(
+            ("fal dev destroy", "delete this folder's box (asks you to type its name)"),
+            ("fal dev destroy --name demo --yes", "delete demo without asking"),
+            notes=(
+                "--yes needs --name, so a remembered box is never deleted by accident."
+            ),
+        ),
     )
-    p.add_argument(
-        "--yes",
-        action="store_true",
-        help="Skip typing the box name to confirm (needed without a terminal).",
-    )
+    _add_yes(p, YES_DESTROY_HELP)
     add_box(
         "shell",
         "Open an interactive shell on the box.",
+        epilog=examples(
+            ("fal dev shell", "a shell on this folder's box"),
+            ("fal dev shell --name demo", "a shell on another box"),
+        ),
         description="Open an interactive shell on the box. Your own shell setup "
         f"goes in ~/.devboxrc on the box (kept at {config.WORKSPACE_ROOT}/<name>/"
         ".devboxrc, so it survives restarts). ssh sessions get HISTFILE, DEVBOX_* "
-        "and the uv warning too.",
+        "and the uv warning too. Needs a running box: it does not start a stopped "
+        "one (run `fal dev up` first). Leave with exit or ctrl-d; the box keeps "
+        "running.",
     )
 
     p = add_box(
         "exec",
         "Run one command on the box: fal dev exec -- nvidia-smi",
         description=EXEC_DESCRIPTION,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=examples(
+            ("fal dev exec -- nvidia-smi", "run one command and print its output"),
+            ("fal dev exec -- bash -c 'df -h && ls /work'", "use a shell for pipes"),
+            ("echo hi | fal dev exec -i -- cat", "forward piped input"),
+            notes=(
+                "Needs a running box: it does not start a stopped one (run `fal dev "
+                "up` first).\n"
+                "Stdin is not forwarded unless you pass -i. There is no -t: a remote "
+                "terminal merges stderr into stdout, which exec's output-loss check "
+                "needs apart; use `fal dev shell` or ssh for an interactive program.\n"
+                "exit codes: the remote command's own code (127 means command not "
+                "found), 75 the output may be incomplete (the connection ended before "
+                "the command's end marker arrived: run it again), 1 an error before "
+                "the command ran"
+            ),
+        ),
+    )
+    p.add_argument(
+        "-i",
+        "--stdin",
+        action="store_true",
+        help="Forward piped input to the command (needs input piped in).",
     )
     p.add_argument(
         "command", nargs=argparse.REMAINDER, help="The command to run, after --."
     )
 
-    p = add_box("logs", "Follow the box's logs.")
+    p = add_box(
+        "logs",
+        "Follow the box's logs.",
+        epilog=(
+            "examples:\n"
+            "  fal dev logs                 last 20 lines, then follow\n"
+            "  fal dev logs -n 100 --no-follow\n"
+            "  fal dev logs --all           the latest runner's whole log\n\n"
+            "The platform keeps only the last 23 hours of start times, so --all "
+            "cannot reach a runner older than that."
+        ),
+    )
     p.add_argument(
         "--all",
         action="store_true",
-        help="Show the full log of the latest runner, even if it stopped.",
+        help=(
+            "Show the full log of the latest runner (a live one if there is one), "
+            "even if it stopped. Only runners started in the last 23 hours."
+        ),
+    )
+    p.add_argument(
+        "-n",
+        "--tail",
+        type=int,
+        metavar="N",
+        help=(
+            "Lines of history to show first (default: 20; with --all, the whole log)."
+        ),
+    )
+    p.add_argument(
+        "--no-follow",
+        action="store_true",
+        help="Print the history and exit instead of following new lines.",
+    )
+    p.add_argument(
+        "--full",
+        action="store_true",
+        help="Show log lines over 500 characters in full instead of cut short.",
     )
 
     p = add_box(
         "hold",
         f"Suspend idle shutdown for N hours (at most {config.MAX_HOLD_HOURS}); "
-        "--off (or 0) clears the hold.",
+        "--off clears the hold.",
+        epilog=(
+            "examples:\n"
+            "  fal dev hold 4       keep the box up for 4 hours\n"
+            "  fal dev hold --off   let idle shutdown apply again\n"
+            f"\n{activity} A hold lasts at most {config.MAX_HOLD_HOURS} hours and "
+            "lives on the running box only: stopping the box (fal dev down, or an "
+            "idle stop) clears it, and a new start has none. Holding a shorter "
+            "time than one already set keeps the longer one."
+        ),
     )
     p.add_argument(
         "hours",
-        type=float,
+        type=_hold_hours,
         nargs="?",
-        help="How long to keep the box up regardless of activity; 0 clears the hold.",
+        help=(
+            "How long to keep the box up regardless of activity: hours (2, 0.5) "
+            "or a duration (30m, 2h)."
+        ),
     )
     p.add_argument(
         "--off",
         action="store_true",
         help="Clear the hold so idle shutdown applies again. The box keeps running.",
     )
+    _add_json(p)
 
-    add_box(
+    p = add_box(
         "ssh-config",
         "Print an ~/.ssh/config entry for Cursor / VS Code Remote-SSH.",
         team_help=SSH_CONFIG_TEAM_HELP,
+        epilog=(
+            "examples:\n"
+            "  fal dev ssh-config               print the entry\n"
+            "  fal dev ssh-config --install     add it to ~/.ssh/config, then: "
+            "ssh devbox-<name>\n"
+            "--host (the fal API host, as for every fal command) is written into "
+            "the entry's ProxyCommand, so ssh reaches the same environment. "
+            "--install adds the entry between marker comments in ~/.ssh/config "
+            "(running it again replaces the entry) and keeps the previous file as "
+            "~/.ssh/config.fal-dev.bak."
+        ),
+    )
+    p.add_argument(
+        "--install",
+        action="store_true",
+        help="Add or replace this box's entry in ~/.ssh/config instead of printing.",
     )
     p = add_box(
         "cp",
@@ -603,11 +979,15 @@ def _add_box_commands(subparsers, parents) -> None:
             "examples:\n"
             "  fal dev cp :/work/out.mp4 .      download a file\n"
             "  fal dev cp -r ./data :/data/x    upload a folder\n"
-            "Relative box paths start in the box's home folder. Uses scp over the "
+            "A folder copied onto a folder that already exists lands inside it: "
+            "-r ./data :/data/x makes /data/x/data when /data/x exists, and "
+            "`:/work/out .` into an existing local folder makes ./out. The final "
+            "line shows where a download landed. Relative box paths start in the "
+            "box's home folder. Each call opens its own connection (about 6 s "
+            "each); to move many files, copy a folder or use ssh. Uses scp over the "
             "ssh-proxy with your default keys in ~/.ssh (your ~/.ssh/config is "
             "not used); ~/.ssh/known_hosts is not touched."
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("src", help="Source: a local path, or :path on the box.")
     p.add_argument("dst", help="Destination: a local path, or :path on the box.")
@@ -619,13 +999,22 @@ def _add_box_commands(subparsers, parents) -> None:
     )
     p = add_box(
         "ssh-proxy",
-        "SSH ProxyCommand used by the ssh-config entry; starts a stopped box.",
+        "Used by the ssh-config entry, not for direct use; starts a stopped box.",
+        description=(
+            "The ProxyCommand that the `fal dev ssh-config` entry runs: it carries "
+            "the ssh connection over the box and starts a stopped box first. It is "
+            "not for direct use (stdout is the ssh connection); run `fal dev "
+            "ssh-config --install` and use ssh."
+        ),
     )
     p.add_argument(
         "--timeout",
         type=positive_int,
-        default=900,
-        help="Seconds to wait for a stopped box (default: %(default)s).",
+        default=PROXY_START_TIMEOUT,
+        help=(
+            "Seconds to wait for a stopped box to start (default: %(default)s; "
+            "no image build, unlike `up`)."
+        ),
     )
 
     hot = _group(
@@ -635,7 +1024,6 @@ def _add_box_commands(subparsers, parents) -> None:
         "on save.",
         parents,
         description=HOT_DESCRIPTION,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     add_hot = functools.partial(add, hot, "hot", [*parents, box])
     project = argparse.ArgumentParser(add_help=False)
@@ -673,7 +1061,6 @@ def _add_box_commands(subparsers, parents) -> None:
         "Start the hot server and wait for the model to load.",
         extra_parents=(project,),
         description=HOT_START_DESCRIPTION,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p = add_hot(
         "sync",
@@ -684,25 +1071,37 @@ def _add_box_commands(subparsers, parents) -> None:
     p.add_argument(
         "--run",
         action="store_true",
-        help="With --watch: send a request after each push.",
+        help=(
+            "Send a request after each push (with --watch), or once after "
+            "the push (without)."
+        ),
     )
     add_hot(
         "run",
         "Send one request to the hot server.",
         extra_parents=(request, hot_preview),
     )
-    add_hot("status", "Show the hot server's state and recent log.")
+    p = add_hot("status", "Show the hot server's state and last reload and request.")
+    p.add_argument("--log", action="store_true", help="Also show the log tail.")
+    p.add_argument("--json", action="store_true", help="Print the raw status as JSON.")
     add_hot("logs", "Show the hot server's log.")
-    add_hot("restart", "Restart the hot server; the weights reload.")
-    add_hot("stop", "Stop the hot server.")
+    add_hot(
+        "restart",
+        "Restart the hot server; the weights reload.",
+        description=(
+            "Restart the hot server and reload the weights, without changing any "
+            "file. Use it after changing something outside the project folder, "
+            "or when the model is stuck in a bad state (such as out of GPU memory)."
+        ),
+    )
+    add_hot(
+        "stop",
+        "Stop the hot server and unload the weights (the box keeps running).",
+    )
 
 
 def _add_dash_command(subparsers, parents) -> None:
-    box = _name_parser(
-        "Box name (default: the folder's last box, else "
-        f"${config.ENV_DEFAULT_NAME} or your OS username).",
-        box_name,
-    )
+    box = _name_parser(NAME_HELP, box_name)
     p = add(
         subparsers,
         "dash",
@@ -711,6 +1110,11 @@ def _add_dash_command(subparsers, parents) -> None:
         "Live dashboard for a running dev box.",
         description=DASH_DESCRIPTION,
         extra_parents=(box,),
+        epilog=examples(
+            ("fal dev dash", "live view of this folder's box (q quits)"),
+            ("fal dev dash --once", "print one frame and exit"),
+            ("fal dev dash --json", "the raw status for scripts"),
+        ),
     )
     p.add_argument(
         "--interval",
@@ -735,32 +1139,76 @@ def _add_view_command(subparsers, parents) -> None:
         team_help=argparse.SUPPRESS,
     )
     p.add_argument("files", nargs="+", help="Image or video files, or URLs.")
-    p.add_argument(
-        "--name",
-        help="Accepted for consistency with the other commands; view is local "
-        "and ignores it.",
+
+
+# `fal dev --help` lists commands in the order of a session; plumbing comes last.
+COMMAND_ORDER = (
+    "up",
+    "shell",
+    "exec",
+    "cp",
+    "status",
+    "list",
+    "logs",
+    "dash",
+    "hold",
+    "view",
+    "hot",
+    "down",
+    "destroy",
+    "deploy",
+    "ssh-config",
+    "ssh-proxy",
+)
+
+
+def _order_commands(subparsers) -> None:
+    """Put the commands in COMMAND_ORDER, in `--help` and everywhere else."""
+    rank = {name: i for i, name in enumerate(COMMAND_ORDER)}
+    last = len(rank)
+    choices = subparsers._name_parser_map
+    ordered = sorted(choices.items(), key=lambda kv: rank.get(kv[0], last))
+    # In place: `choices` is the same dict, and argparse lists it in errors.
+    choices.clear()
+    choices.update(ordered)
+    subparsers._choices_actions.sort(key=lambda a: rank.get(a.dest, last))
+
+
+def _epilog() -> str:
+    import textwrap
+
+    network = textwrap.fill(NETWORK_NOTE, 78)
+    animation = textwrap.fill(
+        "Waits animate on a terminal; set FAL_DEV_NO_ANIMATION=1 for plain "
+        "status lines.",
+        78,
+    )
+    return "\n\n".join(
+        [QUICK_START, NAME_RULES, EXIT_CODES, f"{animation}\n\n{network}"]
     )
 
 
 def add_parser(main_subparsers, parents) -> None:
     dev_help = (
-        f"{EXPERIMENTAL}Personal GPU dev boxes: a persistent box you shell or SSH "
-        "into, with hot reload of inference code."
+        f"{EXPERIMENTAL}Personal dev boxes (CPU or GPU): a persistent box you shell "
+        "or SSH into, with hot reload of inference code."
     )
     parser = main_subparsers.add_parser(
         "dev",
-        description=f"{dev_help} Waits animate on a terminal; set "
-        "FAL_DEV_NO_ANIMATION=1 for plain status lines.\n\n" + NETWORK_NOTE,
+        description=dev_help,
+        epilog=_epilog(),
         help=dev_help,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=parents,
     )
+    # This parser is built by `fal`, so its errors are routed here.
+    parser.error = functools.partial(_parse_error, parser)
     subparsers = parser.add_subparsers(
         title="Commands",
         metavar="command",
         required=True,
-        parser_class=FalClientParser,
+        parser_class=DevParser,
     )
     _add_box_commands(subparsers, parents)
     _add_dash_command(subparsers, parents)
     _add_view_command(subparsers, parents)
+    _order_commands(subparsers)

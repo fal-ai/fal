@@ -13,6 +13,13 @@ from fal.dev.dash.model import Cost, IdleWarning
 from fal.dev.errors import DevError
 
 
+@pytest.fixture(autouse=True)
+def _isolated_state(monkeypatch, tmp_path):
+    from fal.dev import state
+
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "dev-state")
+
+
 def _text(renderable) -> str:
     console = Console(record=True, width=110, force_terminal=False, color_system=None)
     console.print(renderable)
@@ -33,7 +40,7 @@ def test_status_line_for_a_running_box():
     line = summary.status_line(snap, FakeDashBox(), now=NOW).plain
     assert line.startswith("devbox-demo  RUNNING  1x NVIDIA H100 80GB HBM3  up 1h 00m")
     assert "$3.15 ($2.00/h)" in line
-    assert "idle stop in 38m 00s" in line
+    assert "idle stop in 38m" in line
     assert "/work saved" in line
 
 
