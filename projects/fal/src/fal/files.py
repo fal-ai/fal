@@ -257,5 +257,12 @@ class FalFileSystem(AbstractFileSystem):
         self.dircache.clear()
 
     def mv(self, path1, path2, recursive=False, maxdepth=None, **kwargs):
-        # Delegate to server-side rename
-        self.rename(path1, path2)
+        destination = self._abspath(path2).rstrip("/") or "/"
+        if destination == "/volumes":
+            raise ValueError(f"Move into a volume, like volumes/<name>/: {path2}")
+
+        if path2.endswith("/") or self.isdir(destination):
+            source = self._abspath(path1).rstrip("/")
+            destination = posixpath.join(destination, posixpath.basename(source))
+
+        self.rename(path1, destination)
