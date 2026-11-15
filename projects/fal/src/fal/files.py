@@ -74,11 +74,10 @@ class FalFileSystem(AbstractFileSystem):
         if rpath.startswith("/"):
             return rpath
 
-        cwd = "/data"
         if rpath in [".", ""]:
-            return cwd
+            return "/"
 
-        return posixpath.join(cwd, rpath)
+        return "/" + rpath
 
     def _ls(self, path):
         response = self._request("GET", f"/files/list/{path}")
