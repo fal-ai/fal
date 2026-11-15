@@ -15,7 +15,15 @@ def _get_fs(args) -> "FalFileSystem":
 def _list(args):
     import posixpath
 
-    for entry in _get_fs(args).ls(args.path, detail=True):
+    fs = _get_fs(args)
+    entries = fs.ls(args.path, detail=True)
+    if not entries and fs._abspath(args.path).rstrip("/") == "/volumes":
+        args.console.print(
+            "No volumes yet. Create one with `fal volumes create <name>`."
+        )
+        return
+
+    for entry in entries:
         name = posixpath.basename(entry["name"])
         color = "blue" if entry["type"] == "directory" else "default"
         args.console.print(f"[{color}]{name}[/{color}]")
