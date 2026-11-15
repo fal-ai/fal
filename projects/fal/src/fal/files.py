@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     import httpx
 
 
+STORAGE_ROOTS = ("data", "volumes")
+
+
 class FalFileSystem(AbstractFileSystem):
     def __init__(
         self,
@@ -71,13 +74,15 @@ class FalFileSystem(AbstractFileSystem):
         return response
 
     def _abspath(self, rpath):
-        if rpath.startswith("/"):
-            return rpath
-
         if rpath in [".", ""]:
             return "/"
 
-        return "/" + rpath
+        abs_path = rpath if rpath.startswith("/") else "/" + rpath
+        root = abs_path.lstrip("/").split("/", 1)[0]
+        if root and root not in STORAGE_ROOTS:
+            raise ValueError(f"Path must start with data/ or volumes/: {rpath}")
+
+        return abs_path
 
     def _ls(self, path):
         response = self._request("GET", f"/files/list/{path}")
