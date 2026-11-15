@@ -32,7 +32,7 @@ HOLD_HOURS = 1.0
 IDLE_WARNING_SECONDS = 600
 LOG_MINUTES = 30
 LOG_LINES = 30
-# The history request is several times this (the app dash filters its own polling).
+# The history request asks for several times this.
 LOG_ROWS_MAX = 200
 STATE_INTERVAL = 15.0
 LOG_INTERVAL = 10.0

@@ -1037,11 +1037,9 @@ class Box:
 
         Returns the killed runner ids and whether the app still existed.
         """
-        from fal.dev.app.deploy import delete_app
-
         if not self.app.startswith(config.APP_PREFIX):
             raise DevError(f"refusing to delete {self.app!r}: not a dev box")
-        return delete_app(self.app, self.host, self.account.fal_team)
+        return _delete_app(self.app, self.host, self.account.fal_team)
 
     def ssh_proxy(self, timeout: int) -> int:
         """SSH ProxyCommand: carry the SSH connection over runner exec.
@@ -1128,3 +1126,31 @@ def ssh_config(
         "    # workspace is reset.\n"
         "    StrictHostKeyChecking accept-new"
     )
+
+
+def _delete_app(
+    name: str, host: str | None, team: str | None
+) -> tuple[list[str], bool]:
+    """Kill the app's runners and delete it, with the same calls as `fal apps delete`.
+
+    Returns the killed runner ids and whether the app still existed. The caller
+    checks that the app is a dev box.
+    """
+    from fal.cli._utils import get_client
+    from fal.flags import GRPC_HOST
+
+    client = get_client(host or GRPC_HOST, team)
+    killed = []
+    with client.connect() as connection:
+        try:
+            runners = connection.list_alias_runners(name)
+        except grpc.RpcError as exc:
+            if exc.code() != grpc.StatusCode.NOT_FOUND:
+                raise
+            runners = []
+        for runner in runners:
+            connection.kill_runner(runner.runner_id)
+            killed.append(runner.runner_id)
+        # The SDK client has no app delete yet.
+        revision = connection.delete_alias(name)
+    return killed, revision is not None

@@ -641,12 +641,10 @@ class WithLogs:
         yield logs_panel(self.snapshot, shown)
 
 
-def footer(
-    snapshot: Snapshot, now: float, key_hints: list = KEY_HINTS
-) -> RenderableType:
+def footer(snapshot: Snapshot, now: float) -> RenderableType:
     live = _live(snapshot)
     hints = Text(" ", no_wrap=True, overflow="ellipsis")
-    for i, (key, label, needs_runner) in enumerate(key_hints):
+    for i, (key, label, needs_runner) in enumerate(KEY_HINTS):
         usable = live or not needs_runner
         if i:
             hints += Text("   ")
@@ -732,18 +730,14 @@ def render(
     *,
     screen: bool = False,
     animate: bool = False,
-    body_of=body,
-    key_hints: list = KEY_HINTS,
 ) -> RenderableType:
     """One frame; on a full screen the footer stays visible when the body is cut.
 
     `animate` draws dust and spinners in loading states (loading's switches).
-    `body_of` and `key_hints` let another kind of box (`fal dev app dash`)
-    draw its own panels and keys in the same frame.
     """
     now = time.time() if now is None else now
-    frame = body_of(snapshot, box, now, animate)
-    bottom = footer(snapshot, now, key_hints)
+    frame = body(snapshot, box, now, animate)
+    bottom = footer(snapshot, now)
     if not screen:
         return Group(frame, bottom)
     layout = Layout()

@@ -5,13 +5,11 @@ Layout:
 - cli/: the `fal dev` command line. parser.py defines every command and
   imports nothing heavy; a command's handler is imported only when it runs.
 - box.py, hot.py, state.py: the laptop side of a box and of hot reload.
-- app/: the laptop side of `fal dev app` (a box built from an existing App).
 - dash/: the `fal dev dash` terminal dashboard.
 - media/: image and video results shown inline in the terminal (`hot run`,
-  `app request`, `fal dev view`).
+  `fal dev view`).
 - remote/: what runs on the box (its fal App, the hot server, the dashboard
-  probe, the `fal dev app` holder and child process). It never imports the
-  laptop side.
+  probe). It never imports the laptop side.
 
 The package is self-contained and only imported when `fal dev` runs, so it can
 move to a separate plugin package without code changes. Optional heavy

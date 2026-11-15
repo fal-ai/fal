@@ -1,6 +1,5 @@
 import argparse
 import io
-import json
 import re
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -12,7 +11,6 @@ from fal.cli.main import parse_args
 from fal.cli.parser import FalParserExit
 from fal.dev import state, team
 from fal.dev.account import Account
-from fal.dev.app import session as app_session
 from fal.dev.cli import box as box_commands
 from fal.dev.cli.common import get_box
 from fal.dev.errors import DevError
@@ -236,7 +234,6 @@ def test_production_apps_are_the_ones_that_are_not_dev_boxes():
     client = MagicMock()
     client.apps.list.return_value = [
         _app("devbox-demo"),
-        _app("dev-flux-jane"),
         _app("flux"),
         _app("api"),
     ]
@@ -393,7 +390,7 @@ def test_up_confirms_only_when_it_has_to_deploy(monkeypatch, events):
     assert events == [("confirm", {"yes": False, "name": "demo"})]
 
 
-@pytest.mark.parametrize("command", ["deploy", "up", "app start x.py"])
+@pytest.mark.parametrize("command", ["deploy", "up"])
 def test_yes_is_a_flag_of_the_commands_that_deploy(command):
     assert parse_args(["dev", *command.split(), "--yes"]).yes
     assert not parse_args(["dev", *command.split()]).yes
@@ -426,47 +423,3 @@ def test_ssh_proxy_does_not_announce_the_account(monkeypatch):
     box_commands.cmd_ssh_proxy(parse_args(["dev", "ssh-proxy"]))
 
     assert seen == {"quiet": True, "remember": False}
-
-
-def test_app_commands_after_start_do_not_offer_team(capsys):
-    for command, offered in (("app start x.py", True), ("app sync", False)):
-        with pytest.raises(FalParserExit):
-            parse_args(["dev", *command.split(), "--help"])
-        assert ("--team" in capsys.readouterr().out) is offered
-
-
-def test_a_session_remembers_its_account(monkeypatch, tmp_path):
-    monkeypatch.setattr(app_session, "SESSIONS_DIR", tmp_path)
-    app_session.Session(
-        name="dev-x",
-        file_path="/a.py",
-        root="/",
-        module="a",
-        class_name="A",
-        run_url="u",
-        token="t",
-        account=RED,
-    ).save()
-
-    assert app_session.find_session("dev-x").account == RED
-
-
-def test_a_session_from_before_accounts_is_ignored(monkeypatch, tmp_path, capsys):
-    monkeypatch.setattr(app_session, "SESSIONS_DIR", tmp_path)
-    (tmp_path / "dev-x.json").write_text(
-        json.dumps(
-            {
-                "name": "dev-x",
-                "file_path": "/a.py",
-                "root": "/",
-                "module": "a",
-                "class_name": "A",
-                "run_url": "u",
-                "token": "t",
-                "team": None,
-            }
-        )
-    )
-
-    assert app_session.load_sessions() == []
-    assert "written by an older `fal dev`" in capsys.readouterr().err

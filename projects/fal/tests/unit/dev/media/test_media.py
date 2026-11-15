@@ -926,8 +926,6 @@ def test_preview_flag_keeps_tmux_rules(monkeypatch):
     "argv",
     [
         ["dev", "hot", "run", "--no-preview", "--compare", "--play"],
-        ["dev", "app", "request", "/", "--preview", "--play"],
-        ["dev", "app", "sync", "--no-preview"],
         ["dev", "view", "a.png", "--play"],
     ],
 )

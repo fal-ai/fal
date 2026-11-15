@@ -1,8 +1,7 @@
 """Which project files may leave this machine.
 
 Used by every command that uploads a project folder to a box. Secrets stay
-local: files `fal dev app` uploads also land in the team's shared object store.
-The secret check is a denylist, so it catches the usual names only.
+local. The secret check is a denylist, so it catches the usual names only.
 """
 
 from __future__ import annotations

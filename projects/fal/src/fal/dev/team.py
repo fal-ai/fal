@@ -18,7 +18,6 @@ from rich.prompt import Confirm
 from fal.api.client import SyncServerlessClient
 from fal.dev import config, state
 from fal.dev.account import Account
-from fal.dev.app.session import NAME_PREFIX
 from fal.dev.box import log
 from fal.dev.errors import DevError
 
@@ -103,12 +102,13 @@ def announce(account: Account) -> None:
 def production_apps(client: SyncServerlessClient) -> list[str]:
     """The team's apps that are not dev boxes.
 
-    Dev boxes are recognised by their devbox-/dev- name prefixes, so a production
-    app named that way is not counted.
+    Dev boxes are recognised by their devbox- name prefix, so a production app
+    named that way is not counted.
     """
-    prefixes = (config.APP_PREFIX, NAME_PREFIX)
     return sorted(
-        app.alias for app in client.apps.list() if not app.alias.startswith(prefixes)
+        app.alias
+        for app in client.apps.list()
+        if not app.alias.startswith(config.APP_PREFIX)
     )
 
 

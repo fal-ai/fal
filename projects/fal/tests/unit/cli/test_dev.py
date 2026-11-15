@@ -149,22 +149,15 @@ def test_dev_hot_actions_run_their_handlers(monkeypatch, action):
     _run(monkeypatch, "hot", action, ["dev", "hot", action])
 
 
-def test_dev_group_includes_app_and_dash(monkeypatch):
+def test_dev_group_includes_dash(monkeypatch):
     assert _run(monkeypatch, "dash", "dash", ["dev", "dash", "--once"]).once
-    assert _run(monkeypatch, "app", "status", ["dev", "app", "status"]).name is None
     assert _run(monkeypatch, "box", "up", ["dev", "up", "--dash"]).dash
 
 
 def test_dev_names_are_flags_everywhere(monkeypatch):
     assert _run(monkeypatch, "dash", "dash", ["dev", "dash", "--name", "k"]).name == "k"
-    assert _run(monkeypatch, "app", "logs", ["dev", "app", "logs", "--name", "x"]).name
-    save = _run(
-        monkeypatch, "app", "request", ["dev", "app", "request", "/", "--save", "base"]
-    )
-    assert (save.name, save.save) == (None, "base")
-    for argv in (["dev", "dash", "k"], ["dev", "app", "logs", "-s", "x"]):
-        with pytest.raises(FalParserExit):
-            parse_args(argv)
+    with pytest.raises(FalParserExit):
+        parse_args(["dev", "dash", "k"])
 
 
 def test_default_name_from_env(monkeypatch):
@@ -210,10 +203,6 @@ def test_building_the_parsers_imports_no_handler_module():
         "    'deploy', 'up', 'down', 'status', 'shell', 'exec', 'logs', 'hold',\n"
         "    'ssh-config', 'ssh-proxy', 'hot start', 'hot sync', 'hot run',\n"
         "    'hot status', 'hot logs', 'hot restart', 'hot stop', 'dash',\n"
-        "    'app start', 'app sync', 'app request', 'app benchmark compare',\n"
-        "    'app benchmark list', 'app profile', 'app deps install',\n"
-        "    'app deps uninstall', 'app deps reset', 'app deps status',\n"
-        "    'app restart', 'app logs', 'app status', 'app stop',\n"
         "]\n"
         "for command in commands:\n"
         "    try:\n"
@@ -224,7 +213,7 @@ def test_building_the_parsers_imports_no_handler_module():
         "        raise AssertionError(command)\n"
         "heavy = [m for m in sys.modules if m.startswith('fal.dev.') and m not in (\n"
         "    'fal.dev.config', 'fal.dev.cli', 'fal.dev.cli.parser', 'fal.dev.errors',\n"
-        "    'fal.dev.remote', 'fal.dev.remote.protocol')]\n"
+        "    'fal.dev.remote')]\n"
         "assert not heavy, heavy\n"
     )
     done = subprocess.run(
@@ -249,7 +238,7 @@ def test_every_dev_command_resolves_its_handler():
         if isinstance(action, argparse._SubParsersAction)
     )
     leaves = list(_leaf_parsers(dev))
-    assert len(leaves) > 30
+    assert len(leaves) > 15
     for leaf in leaves:
         module, handler = leaf.get_default("func").__name__.split(".")
         implementation = importlib.import_module(f"fal.dev.cli.{module}")
@@ -651,14 +640,14 @@ def test_destroy_of_a_missing_box_is_an_error(monkeypatch):
 
 
 def test_box_destroy_refuses_non_devbox_apps_and_keeps_the_volume(monkeypatch):
-    from fal.dev.app import deploy
+    from fal.dev import box as box_module
     from fal.dev.errors import DevError
     from tests.unit.dev.fakes import make_box
 
     box = make_box()
     calls = []
     monkeypatch.setattr(
-        deploy, "delete_app", lambda *a, **k: calls.append(a) or (["r"], True)
+        box_module, "_delete_app", lambda *a, **k: calls.append(a) or (["r"], True)
     )
 
     assert box.destroy() == (["r"], True)

@@ -1,7 +1,7 @@
 """Every `fal dev` argument definition.
 
 `fal` builds all parsers on each run, so this module imports nothing heavy. A
-command's handler (`cmd_<name>` in box.py, hot.py, app.py, dash.py or view.py)
+command's handler (`cmd_<name>` in box.py, hot.py, dash.py or view.py)
 is only imported once that command runs.
 """
 
@@ -12,15 +12,11 @@ import functools
 import importlib
 from typing import Callable
 
-from fal.cli.parser import FalClientParser, RefAction, add_env_argument
+from fal.cli.parser import FalClientParser
 from fal.dev import config
 from fal.dev.errors import DevError
-from fal.dev.remote.protocol import MAX_PROFILE_WARMUPS, MAX_REPEAT, MAX_WARMUPS
 
 EXPERIMENTAL = "(experimental) "
-
-DEFAULT_KEEP_ALIVE = 1800
-PROXY_PORT = 8899
 
 TEAM_HELP = (
     "The team the box runs as. Changes the team remembered for the box; without "
@@ -37,30 +33,6 @@ YES_HELP = (
 
 # Each dashboard refresh is a runner exec; faster only loads the box and the API.
 MIN_INTERVAL = 1.0
-
-APP_DESCRIPTION = """\
-A dev box for an existing fal App, with hot reload.
-
-`start` deploys a private box that inherits the app's machine, requirements,
-image and secrets, uploads the app's source tree, and runs ``setup()`` once in a
-resident process. `sync` uploads changed files: endpoint edits reload in place
-with the weights still loaded; edits to ``setup()`` (or what it uses) restart
-the process; requirement or image changes need `start` again.
-
-The app process runs with ``FAL_DEV_SESSION`` set to the box name. Anything
-the app shares with its deployed runners, such as a compile cache on /data,
-should be keyed by it so dev runs stay apart. An app that already reads
-another variable for this can have it set too, with `start --session-env NAME`.
-"""
-
-START_DESCRIPTION = (
-    "Deploy a dev box from an app and run its setup() once. Synced source files "
-    "are also stored on your team's shared /data volume (under "
-    "/data/.fal-dev/objects, deleted after 30 days unused), so a new box copies "
-    "the files it already has instead of uploading them. Everyone on the team "
-    "can read that store, so do not sync a tree that holds anything teammates "
-    "should not see. Key, credential and .env files are never synced."
-)
 
 HOT_PROJECT = """\
 A project is a folder with:
@@ -239,19 +211,6 @@ def add_user_env_arguments(p: argparse.ArgumentParser, *, removable: bool) -> No
     )
 
 
-def bounded(low: int, high: int) -> Callable[[str], int]:
-    def parse(value: str) -> int:
-        try:
-            number = int(value)
-        except ValueError:
-            raise argparse.ArgumentTypeError(f"invalid integer {value!r}") from None
-        if not low <= number <= high:
-            raise argparse.ArgumentTypeError(f"must be between {low} and {high}")
-        return number
-
-    return parse
-
-
 def interval(value: str) -> float:
     seconds = float(value)
     if seconds < MIN_INTERVAL:
@@ -361,9 +320,7 @@ def add(
     """Add command `cmd`, run by `cmd_<handler>` (default: the command's name)."""
     kwargs.setdefault("description", help_text)
     if team_help is None:
-        # Commands after `start` use the team their box was started with.
-        after_start = module == "app" and cmd != "start"
-        team_help = argparse.SUPPRESS if after_start else TEAM_HELP
+        team_help = TEAM_HELP
     parser = subparsers.add_parser(
         cmd,
         help=help_text,
@@ -740,295 +697,6 @@ def _add_box_commands(subparsers, parents) -> None:
     add_hot("stop", "Stop the hot server.")
 
 
-def _add_app_commands(subparsers, parents) -> None:
-    app = _group(
-        subparsers,
-        "app",
-        "A dev box for an existing fal App, with hot reload.",
-        parents,
-        description=APP_DESCRIPTION,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    name = _name_parser(
-        "Box name, always prefixed dev- (default: the only box; for start, "
-        "<app>-<your username>)."
-    )
-    add_app = functools.partial(add, app, "app", [*parents, name])
-
-    p = add_app(
-        "start",
-        "Deploy a dev box from an app and run its setup() once.",
-        description=START_DESCRIPTION,
-    )
-    p.add_argument(
-        "app_ref",
-        action=RefAction,
-        help="path/to/app.py, path/to/app.py::App, or the name of an app in "
-        "pyproject.toml's tool.fal.apps table (as with `fal deploy`).",
-    )
-    p.add_argument(
-        "--machine-type",
-        type=config.machine_type_name,
-        help="Override the app's machine type.",
-    )
-    _add_yes(p)
-    p.add_argument(
-        "--root",
-        help="Source tree to sync and import from (defaults to the folder holding "
-        "the app's top-level package, widened to its app_files folder).",
-    )
-    add_env_argument(p)
-    p.add_argument(
-        "--session-env",
-        action="append",
-        metavar="NAME",
-        help="Also set environment variable NAME to the box name in the app "
-        "process (repeatable). FAL_DEV_SESSION is always set.",
-    )
-    p.add_argument(
-        "--replace",
-        action="store_true",
-        help="Take over an existing app with the same dev- name.",
-    )
-    p.add_argument(
-        "--keep-alive",
-        type=int,
-        default=DEFAULT_KEEP_ALIVE,
-        help="Seconds without requests before the box shuts down "
-        f"(default {DEFAULT_KEEP_ALIVE}).",
-    )
-
-    app_preview = _preview_parser()
-    p = add_app(
-        "sync",
-        "Upload changed files; endpoints reload in place.",
-        extra_parents=(app_preview,),
-    )
-    p.add_argument("--watch", action="store_true", help="Keep syncing on save.")
-    p.add_argument("--full", action="store_true", help="Upload every file.")
-    p.add_argument(
-        "--request",
-        metavar="PATH",
-        help="Send a request to PATH after each sync (with --data).",
-    )
-    p.add_argument("--data", help="JSON body, or @file.json.")
-
-    p = add_app(
-        "request",
-        "Send a request to the app on the box.",
-        extra_parents=(app_preview,),
-    )
-    p.add_argument("path", help="Endpoint path, e.g. /")
-    p.add_argument("--data", help="JSON body, or @file.json.")
-    p.add_argument("--output-file", help="Write the response body here.")
-    p.add_argument(
-        "--warmups",
-        type=bounded(0, MAX_WARMUPS),
-        default=0,
-        help="Requests to send first and leave out of the timings.",
-    )
-    p.add_argument(
-        "--repeat",
-        type=bounded(1, MAX_REPEAT),
-        default=1,
-        help="Time this many requests (run back to back on the box) and report "
-        "median, p90, min and max.",
-    )
-    p.add_argument(
-        "--save",
-        metavar="NAME",
-        help="Save the timings as a named benchmark, for `benchmark compare`.",
-    )
-
-    p = add_app(
-        "dash",
-        "Live dashboard for the box: GPU, keep-alive, app and engine.",
-        description="Live dashboard for a fal dev app box: the GPU, when the "
-        "box scales to zero, the app process and its last sync, the inference "
-        "engine of an LLM app, and the runner's logs. Watching it is not a "
-        "request, so it never keeps the box up.",
-    )
-    p.add_argument(
-        "--interval",
-        type=interval,
-        default=3.0,
-        help="Seconds between refreshes (default: %(default)s).",
-    )
-    p.add_argument("--once", action="store_true", help="Print one frame and exit.")
-    p.add_argument(
-        "--wait",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="With no box yet, show one waiting frame (refreshed in place) and "
-        "attach when a box appears, also after the box is stopped. Default: on "
-        "when stdout is a terminal, so it can be started before the box. "
-        "Ignored with --once, which prints one frame (the waiting text if there "
-        "is no box) and exits.",
-    )
-
-    p = add_app(
-        "split",
-        "Open the dash and the sync watcher in panes next to this one.",
-        description="Split the current terminal: the live dash on the right and "
-        "`sync --watch` under it, both waiting for a box if none exists yet, so "
-        "an agent in this pane can start one. Uses tmux when $TMUX is set, "
-        "iTerm via AppleScript in iTerm, otherwise prints the two commands.",
-    )
-
-    p = add_app(
-        "proxy",
-        "Serve the box's app on a local port, for any HTTP client.",
-        description="Serve the app on the box at http://BIND:PORT, so a local "
-        "client (an OpenAI SDK, a coding agent, curl) can call it like a local "
-        "server: every request and streamed response goes through the box, "
-        "signed with your fal login. The client needs no fal key. Every "
-        "request counts as activity, so the box stays up while it is used.",
-    )
-    p.add_argument("--port", type=int, default=PROXY_PORT, help="Local port.")
-    p.add_argument(
-        "--bind",
-        default="127.0.0.1",
-        help="Local address to listen on (default 127.0.0.1; anyone who can "
-        "reach it can call the box as you).",
-    )
-
-    benchmark = _group(
-        app,
-        "benchmark",
-        "Compare saved benchmark runs (`request --repeat N --save NAME`).",
-        parents,
-    )
-    add_benchmark = functools.partial(add, benchmark, "app", [*parents, name])
-    p = add_benchmark(
-        "compare", "Show two saved runs side by side.", handler="benchmark_compare"
-    )
-    p.add_argument("baseline", help="Benchmark name or JSON file.")
-    p.add_argument("candidate", help="Benchmark name or JSON file.")
-    add_benchmark("list", "List saved runs.", handler="benchmark_list")
-
-    p = add_app(
-        "profile",
-        "Run one request under the torch profiler and download the trace.",
-        description="Warm the endpoint up, run one request under torch.profiler, "
-        "print the top ops and save a Perfetto/Chrome trace locally. Without "
-        "--data the request body is {}. CPU ops are recorded in the thread that runs "
-        "the endpoint: work an async endpoint hands to other threads shows up "
-        "as GPU kernels only.",
-    )
-    p.add_argument("path", help="Endpoint path, e.g. /")
-    p.add_argument("--data", help="JSON body, or @file.json.")
-    depth = p.add_mutually_exclusive_group()
-    depth.add_argument(
-        "--light",
-        dest="mode",
-        action="store_const",
-        const="light",
-        help="GPU kernels only: the smallest trace.",
-    )
-    depth.add_argument(
-        "--deep",
-        dest="mode",
-        action="store_const",
-        const="deep",
-        help="Add shapes, memory, stacks and FLOPs (large traces).",
-    )
-    p.set_defaults(mode="standard")
-    p.add_argument(
-        "--warmups",
-        type=bounded(0, MAX_PROFILE_WARMUPS),
-        default=1,
-        help="Unprofiled requests to send first (default 1).",
-    )
-    p.add_argument(
-        "--top", type=bounded(1, 100), default=15, help="Ops to print (default 15)."
-    )
-    p.add_argument(
-        "--output-dir",
-        help="Where to save profiles (default ~/.fal/dev/profiles/<name>).",
-    )
-    p.add_argument(
-        "--max-trace-mb",
-        type=bounded(1, 100_000),
-        default=200,
-        help="Skip downloading compressed traces over this size (default 200).",
-    )
-
-    deps = _group(
-        app,
-        "deps",
-        "Try other package versions without rebuilding the box.",
-        parents,
-        description="Install packages into an overlay that the app imports ahead "
-        "of its own environment (which is never modified), then restart the app. "
-        "Only what the app's environment does not already satisfy is installed. "
-        "The overlay is kept with the box and installed again on a new runner.",
-    )
-    add_deps = functools.partial(add, deps, "app", [*parents, name])
-    no_restart = argparse.ArgumentParser(add_help=False)
-    no_restart.add_argument(
-        "--no-restart",
-        dest="restart",
-        action="store_false",
-        help="Change the overlay without restarting the app.",
-    )
-    p = add_deps(
-        "install",
-        "Install packages into the overlay.",
-        handler="deps_install",
-        extra_parents=(no_restart,),
-    )
-    p.add_argument("packages", nargs="+", help="Requirement specs.")
-    p.add_argument(
-        "--no-deps", action="store_true", help="Install exactly these packages."
-    )
-    p.add_argument("--pre", action="store_true", help="Allow pre-releases.")
-    p.add_argument("--index-url", help="Package index to use.")
-    p.add_argument(
-        "--extra-index-url",
-        action="append",
-        help="Another index (repeatable). The highest version across indexes "
-        "wins, so a public package can shadow a private one of the same name.",
-    )
-    p.add_argument(
-        "--force",
-        action="store_true",
-        help="Allow changing packages the box's app server runs on "
-        "(fastapi, pydantic, uvicorn, ...).",
-    )
-    p = add_deps(
-        "uninstall",
-        "Remove packages from the overlay (their dependencies stay until reset).",
-        handler="deps_uninstall",
-        extra_parents=(no_restart,),
-    )
-    p.add_argument("packages", nargs="+")
-    add_deps(
-        "reset",
-        "Delete the overlay.",
-        handler="deps_reset",
-        extra_parents=(no_restart,),
-    )
-    p = add_deps(
-        "status",
-        "Show the overlay and the versions the app imports.",
-        handler="deps_status",
-    )
-    p.add_argument(
-        "packages", nargs="*", help="Also show which version the app imports."
-    )
-    p.add_argument("--json", action="store_true")
-
-    p = add_app("restart", "Restart the app process; setup() runs again.")
-    p.add_argument(
-        "--no-sync", dest="sync", action="store_false", help="Skip syncing first."
-    )
-    p = add_app("logs", "Show the app process's output.")
-    p.add_argument("--lines", type=int, default=200)
-    p.add_argument("--follow", "-f", action="store_true")
-    add_app("status", "Show the box and app state.")
-    add_app("stop", "Shut the box down and delete it.")
-
-
 def _add_dash_command(subparsers, parents) -> None:
     box = _name_parser(
         "Box name (default: the folder's last box, else "
@@ -1094,6 +762,5 @@ def add_parser(main_subparsers, parents) -> None:
         parser_class=FalClientParser,
     )
     _add_box_commands(subparsers, parents)
-    _add_app_commands(subparsers, parents)
     _add_dash_command(subparsers, parents)
     _add_view_command(subparsers, parents)
