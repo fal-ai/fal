@@ -388,13 +388,16 @@ def _add_cpu_ram_net_rows(table: Table, system: dict) -> None:
     )
     used = system.get("mem_used_bytes")
     total = system.get("mem_total_bytes")
-    known = used is not None and bool(total)
-    pct = used / total * 100 if known else None
+    pct = used / total * 100 if used is not None and total else None
     table.add_row(
         Text("ram", style=MUTED),
         _bar(pct),
         Text(f"{round(pct) if pct is not None else '-':>3}%"),
-        Text(f"{used / 2**30:.1f}/{total / 2**30:.0f} GiB" if known else "-"),
+        Text(
+            f"{used / 2**30:.1f}/{total / 2**30:.0f} GiB"
+            if used is not None and total
+            else "-"
+        ),
         Text(""),
     )
     if "net_in_bps" in system:

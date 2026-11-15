@@ -190,9 +190,7 @@ def test_estimate_progress_never_reaches_one():
 
 
 def test_panel_drops_the_hint_rather_than_cut_it():
-    body = loading.dust_panel_body(
-        42, "waiting for a runner: pending", expected=100
-    )
+    body = loading.dust_panel_body(42, "waiting for a runner: pending", expected=100)
     assert "typically" not in _text(body, width=48)
     assert "typically ~1m40s" in _text(body, width=80)
 

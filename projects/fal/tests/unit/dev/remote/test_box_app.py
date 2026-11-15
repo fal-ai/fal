@@ -307,7 +307,8 @@ def _uv_notes(tmp_path, cases):
             [
                 "bash",
                 "-c",
-                f'PATH="{tmp_path}:/usr/bin:/bin"; unset VIRTUAL_ENV; . {rc}; PWD={cwd}; {command}',
+                f'PATH="{tmp_path}:/usr/bin:/bin"; unset VIRTUAL_ENV; '
+                f". {rc}; PWD={cwd}; {command}",
             ],
             capture_output=True,
             text=True,
@@ -383,7 +384,8 @@ def test_box_environment_reaches_non_interactive_shells(tmp_path):
         [
             "bash",
             "-c",
-            f". {rc}; echo $HISTFILE $DEVBOX_WORKSPACE $DEVBOX_WORK $CLAUDE_CONFIG_DIR; "
+            f". {rc}; echo $HISTFILE $DEVBOX_WORKSPACE $DEVBOX_WORK "
+            "$CLAUDE_CONFIG_DIR; "
             "type -t uv",
         ],
         capture_output=True,

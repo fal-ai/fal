@@ -16,8 +16,8 @@ def https_proxy_for(url_or_host: str) -> str | None:
     import urllib.request  # noqa: PLC0415
 
     host = urllib.parse.urlsplit(url_or_host).hostname or url_or_host.partition(":")[0]
-    proxy = urllib.request.getproxies_environment().get("https")
-    if not proxy or urllib.request.proxy_bypass_environment(host):
+    proxy = urllib.request.getproxies_environment().get("https")  # type: ignore[attr-defined]
+    if not proxy or urllib.request.proxy_bypass_environment(host):  # type: ignore[attr-defined]
         return None
     return proxy
 
@@ -32,9 +32,9 @@ def grpc_proxy_options(target: str) -> list[tuple[str, str | int]]:
     import urllib.request  # noqa: PLC0415
 
     host = urllib.parse.urlsplit(target).hostname or target.partition(":")[0]
-    if urllib.request.getproxies_environment().get(
+    if urllib.request.getproxies_environment().get(  # type: ignore[attr-defined]
         "https"
-    ) and urllib.request.proxy_bypass_environment(host):
+    ) and urllib.request.proxy_bypass_environment(host):  # type: ignore[attr-defined]
         # gRPC itself ignores NO_PROXY and would still use a lowercase https_proxy.
         return [("grpc.enable_http_proxy", 0)]
     if os.environ.get("grpc_proxy"):

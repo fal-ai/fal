@@ -79,7 +79,7 @@ def cmd_deploy(args):
 
 def _up_steps(box, args, first_deploy: bool, info) -> Steps:
     """The checklist for this run: only the steps that apply."""
-    specs: list[tuple] = []
+    specs: list[tuple[str, str] | tuple[str, str, float | None]] = []
     if first_deploy:
         specs += [
             ("volume", "create volume"),
@@ -476,6 +476,7 @@ def cmd_hold(args):
         return
     if args.hours is None:
         args.parser.error("usage: fal dev hold <hours> | --off")
+        return
     if get_box(args).hold(args.hours):
         args.console.print(
             f"idle shutdown suspended for {args.hours:g}h (until the box next stops)"

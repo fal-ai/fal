@@ -49,8 +49,8 @@ A project is a folder with:
                    traceback and the server keeps running.
   requirements.txt (optional) extra packages, see below.
 
-Preinstalled on the stock box image (the Python you deployed from, CUDA 12.8): torch 2.8.0
-and torchvision 0.23.0 (cu128), transformers 4.56.1, diffusers 0.35.1,
+Preinstalled on the stock box image (the Python you deployed from, CUDA 12.8):
+torch 2.8.0 and torchvision 0.23.0 (cu128), transformers 4.56.1, diffusers 0.35.1,
 accelerate 1.10.1, safetensors 0.6.2, huggingface_hub 0.34.4, and uv. A custom
 image (`fal dev deploy --dockerfile`) has what its Dockerfile installs.
 

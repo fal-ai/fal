@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 from fal.api.client import SyncServerlessClient
 from fal.dev import config
@@ -49,7 +49,9 @@ def _row(app, runners: list | None) -> BoxRow:
         app=app.alias,
         state=state,
         machine_type=machine,
-        uptime_seconds=runner.uptime.total_seconds() if up else None,
+        uptime_seconds=runner.uptime.total_seconds()
+        if runner is not None and up
+        else None,
         hold_until=None,
         # Only a running box's hold is read; for the others, "no hold" is a guess.
         hold_known=state not in {"UNKNOWN", "RUNNING"},
@@ -98,9 +100,7 @@ def list_boxes(
         boxes = [Box(rows[i].name, host=host, account=account) for i in running]
         with ThreadPoolExecutor(max_workers=HOLD_WORKERS) as pool:
             for i, (until, known) in zip(running, pool.map(_hold, boxes)):
-                rows[i] = BoxRow(
-                    **{**rows[i].as_dict(), "hold_until": until, "hold_known": known}
-                )
+                rows[i] = replace(rows[i], hold_until=until, hold_known=known)
     return rows
 
 

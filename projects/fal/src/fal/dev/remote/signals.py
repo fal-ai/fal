@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import time
+from typing import Any
 
 # First line of the script `fal dev exec` runs; marks a running exec command.
 EXEC_TAG = "# fal-dev-exec"
@@ -128,7 +129,7 @@ def has_gpu():
     later driver glitch reads as an error, never as a CPU machine whose idle
     shutdown ignores GPU work. Before the driver shows up, no GPU work can run.
     """
-    global _SEEN_GPU
+    global _SEEN_GPU  # noqa: PLW0603
     _SEEN_GPU = _SEEN_GPU or (
         bool(glob.glob("/dev/nvidia[0-9]*")) or shutil.which("nvidia-smi") is not None
     )
@@ -194,7 +195,7 @@ def gpu_memory_by_pid():
         )
     except (OSError, subprocess.TimeoutExpired):
         return {}
-    used = {}
+    used: dict[int, float] = {}
     if out.returncode != 0:
         return used
     for line in out.stdout.strip().splitlines():
@@ -315,7 +316,7 @@ def disks(paths):
     Two paths on the same device (st_dev) are one disk, not two. Paths that do
     not exist, or filesystems that report no size, are left out.
     """
-    found = {}
+    found: dict[int, dict[str, Any]] = {}
     for path in paths:
         try:
             device = os.stat(path).st_dev

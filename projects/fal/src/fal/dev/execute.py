@@ -109,7 +109,10 @@ class MarkerFilter:
 def run(
     client, runner_id: str, command: list[str], console, stdout=None, stderr=None
 ) -> int:
-    """Run `command` on the runner; its exit code, or TRUNCATED_EXIT if output was lost."""
+    """Run `command` on the runner.
+
+    Returns its exit code, or TRUNCATED_EXIT if output was lost.
+    """
     from fal.cli.runners import shell_session
 
     wrapped, marker = wrap(command)

@@ -315,22 +315,23 @@ class Box:
         progress = self.progress
         if progress is None:
             return {}
+        steps: Steps = progress
         from fal.api.api import ResultHandler
 
         class Build(ResultHandler):
             def on_log(self, entry) -> None:
-                progress.begin("build")
-                progress.capture(entry.message)
+                steps.begin("build")
+                steps.capture(entry.message)
 
         class Register(ResultHandler):
             def __call__(self, partial_result) -> None:
                 # The build is over once the platform starts registering.
-                progress.finish("build")
-                progress.begin("deploy")
+                steps.finish("build")
+                steps.begin("deploy")
                 super().__call__(partial_result)
 
             def on_log(self, entry) -> None:
-                progress.capture(entry.message)
+                steps.capture(entry.message)
 
         return {"build_result_handler": Build(), "result_handler": Register()}
 
@@ -997,7 +998,8 @@ class Box:
         # Exits HOLD_KEPT_EXIT when no hold was in effect (missing or expired file).
         script = (
             'old=$(cat "$0" 2>/dev/null || echo 0); rm -f "$0"; '
-            f'[ "${{old%.*}}" -gt "$(date +%s)" ] 2>/dev/null || exit {config.HOLD_KEPT_EXIT}'
+            f'[ "${{old%.*}}" -gt "$(date +%s)" ] 2>/dev/null '
+            f"|| exit {config.HOLD_KEPT_EXIT}"
         )
         code, output = self.run(
             live[0].runner_id, ["sh", "-c", script, config.HOLD_FILE]
@@ -1113,8 +1115,10 @@ def ssh_config(
         f"    HostName {alias}\n"
         "    User root\n"
         f"    ProxyCommand {proxy}\n"
-        "    # A stopped box starts on connect, which takes about 3 minutes: wait for it\n"
-        "    # (or run `fal dev up` first). Longer than ssh-proxy's own 900 s wait, so its messages come first.\n"
+        "    # A stopped box starts on connect, which takes about 3 minutes: "
+        "wait for it\n"
+        "    # (or run `fal dev up` first). Longer than ssh-proxy's own 900 s wait, "
+        "so its messages come first.\n"
         "    ConnectTimeout 960\n"
         "    ServerAliveInterval 30\n"
         "    # One connection serves the next ones: each new connection costs ~6 s.\n"
