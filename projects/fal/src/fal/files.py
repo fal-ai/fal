@@ -104,15 +104,6 @@ class FalFileSystem(AbstractFileSystem):
         abs_path = self._abspath(path)
         if abs_path in self.dircache:
             entries = self.dircache[abs_path]
-        elif abs_path in ["/", "", "."]:
-            entries = [
-                {
-                    "name": "/data",
-                    "size": 0,
-                    "type": "directory",
-                    "mtime": 0,
-                }
-            ]
         else:
             entries = self._ls(abs_path)
         self.dircache[abs_path] = entries
