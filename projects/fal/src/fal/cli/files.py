@@ -12,6 +12,30 @@ def _get_fs(args) -> "FalFileSystem":
     return FalFileSystem(host=args.host, team=args.team)
 
 
+def _complete_remote_path(prefix, parsed_args, **kwargs):
+    import posixpath
+
+    import argcomplete
+    import httpx
+
+    from fal.exceptions import FalServerlessException
+
+    parent = posixpath.dirname(prefix)
+    try:
+        entries = _get_fs(parsed_args).ls(parent, detail=True)
+    except (FalServerlessException, httpx.HTTPError, ValueError) as exc:
+        argcomplete.warn(f"Cannot complete remote path: {exc}")
+        return []
+
+    completions = []
+    for entry in entries:
+        name = posixpath.join(parent, posixpath.basename(entry["name"]))
+        if entry["type"] == "directory":
+            name += "/"
+        completions.append(name)
+    return completions
+
+
 def _list(args):
     import posixpath
 
@@ -81,7 +105,7 @@ def add_parser(main_subparsers, parents):
         type=str,
         help="The path to list",
         default="/",
-    )
+    ).completer = _complete_remote_path  # type: ignore[attr-defined]
     list_parser.set_defaults(func=_list)
 
     download_help = "Download files."
@@ -93,7 +117,7 @@ def add_parser(main_subparsers, parents):
     )
     download_parser.add_argument(
         "remote_path", type=str, help="Remote path to download"
-    )
+    ).completer = _complete_remote_path  # type: ignore[attr-defined]
     download_parser.add_argument(
         "local_path", type=str, help="Local path to download to"
     )
@@ -107,7 +131,9 @@ def add_parser(main_subparsers, parents):
         parents=parents,
     )
     upload_parser.add_argument("local_path", type=str, help="Local path to upload")
-    upload_parser.add_argument("remote_path", type=str, help="Remote path to upload to")
+    upload_parser.add_argument(
+        "remote_path", type=str, help="Remote path to upload to"
+    ).completer = _complete_remote_path  # type: ignore[attr-defined]
     upload_parser.set_defaults(func=_upload)
 
     upload_url_help = "Upload file from URL."
@@ -120,7 +146,7 @@ def add_parser(main_subparsers, parents):
     upload_url_parser.add_argument("url", type=str, help="URL to upload")
     upload_url_parser.add_argument(
         "remote_path", type=str, help="Remote path to upload to"
-    )
+    ).completer = _complete_remote_path  # type: ignore[attr-defined]
     upload_url_parser.set_defaults(func=_upload_url)
 
     mv_help = "Move or rename a remote file or directory."
@@ -130,8 +156,12 @@ def add_parser(main_subparsers, parents):
         help=mv_help,
         parents=parents,
     )
-    mv_parser.add_argument("source", type=str, help="Remote source path")
-    mv_parser.add_argument("destination", type=str, help="Remote destination path")
+    mv_parser.add_argument(
+        "source", type=str, help="Remote source path"
+    ).completer = _complete_remote_path  # type: ignore[attr-defined]
+    mv_parser.add_argument(
+        "destination", type=str, help="Remote destination path"
+    ).completer = _complete_remote_path  # type: ignore[attr-defined]
     mv_parser.set_defaults(func=_mv)
 
     rm_help = "Recursively remove a remote file or directory."
@@ -141,5 +171,7 @@ def add_parser(main_subparsers, parents):
         help=rm_help,
         parents=parents,
     )
-    rm_parser.add_argument("path", type=str, help="Remote path")
+    rm_parser.add_argument(
+        "path", type=str, help="Remote path"
+    ).completer = _complete_remote_path  # type: ignore[attr-defined]
     rm_parser.set_defaults(func=_rm)
