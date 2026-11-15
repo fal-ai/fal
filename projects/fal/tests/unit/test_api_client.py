@@ -30,6 +30,27 @@ def test_sync_client_prints_when_team_set_with_explicit_api_key():
     assert credentials.key_secret == "key-secret"
 
 
+@pytest.mark.parametrize(
+    "host, expected",
+    [
+        ("api.fal.ai", "https://rest.fal.ai"),
+        ("api.alpha.fal.ai", "https://rest.alpha.fal.ai"),
+        # An environment may put its own labels in front of the service label.
+        ("box7.api.staging.example.com", "https://box7.rest.staging.example.com"),
+        # Only a whole label matches, never an `api` substring of another one.
+        ("rapid7.api.staging.example.com", "https://rapid7.rest.staging.example.com"),
+    ],
+)
+def test_sync_client_rest_url_swaps_the_api_label(host, expected):
+    assert SyncServerlessClient(host=host)._rest_url == expected
+
+
+def test_sync_client_rest_url_without_host_follows_the_sdk():
+    from fal.flags import REST_URL
+
+    assert SyncServerlessClient()._rest_url == REST_URL
+
+
 def test_sync_client_invalid_api_key_format_raises_value_error():
     client = SyncServerlessClient(api_key="invalid-format")
 
