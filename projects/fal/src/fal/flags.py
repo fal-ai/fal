@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import urllib.parse
 
 from fal.config import Config
 
@@ -57,6 +58,29 @@ _WS_RUN_HOST_ENV = os.getenv("FAL_WS_RUN_HOST")
 
 # Legacy: FAL_HOST takes precedence over config.host (unless FAL_GRPC_HOST is set)
 GRPC_HOST = _GRPC_HOST_ENV or os.getenv("FAL_HOST") or config_host or "api.alpha.fal.ai"
+
+TRUSTED_GRPC_HOST_DOMAINS = ("fal.ai", "fal.run", "fal.dev")
+ALLOW_UNTRUSTED_GRPC_HOST = bool_envvar("FAL_ALLOW_UNTRUSTED_GRPC_HOST")
+
+
+def _is_trusted_grpc_host(host: str) -> bool:
+    hostname = urllib.parse.urlsplit(f"//{host}").hostname or ""
+    return any(
+        hostname == domain or hostname.endswith(f".{domain}")
+        for domain in TRUSTED_GRPC_HOST_DOMAINS
+    )
+
+
+if (
+    not TEST_MODE
+    and not ALLOW_UNTRUSTED_GRPC_HOST
+    and not _is_trusted_grpc_host(GRPC_HOST)
+):
+    raise ValueError(
+        f"gRPC host {GRPC_HOST!r} is not a fal host "
+        f"({', '.join(TRUSTED_GRPC_HOST_DOMAINS)}). "
+        "Set FAL_ALLOW_UNTRUSTED_GRPC_HOST=1 to connect to it anyway."
+    )
 
 REST_HOST = _REST_HOST_ENV or swap_api_label(GRPC_HOST, "rest")
 REST_SCHEME = "http" if TEST_MODE or AUTH_DISABLED else "https"
