@@ -111,7 +111,7 @@ def test_small_file_upload_advances_while_the_body_is_written(monkeypatch, tmp_p
     monkeypatch.setattr("rich.progress.Progress", make_progress)
 
     fs = FalFileSystem(skip_instance_cache=True)
-    fs.put_file(str(path), "small.bin")
+    fs.put_file(str(path), "data/small.bin")
 
     assert recorded["url"] == "/files/file/local//data/small.bin"
     progress = progresses[0]
@@ -141,7 +141,7 @@ def test_empty_file_upload_finishes_the_bar(monkeypatch, tmp_path):
     monkeypatch.setattr("rich.progress.Progress", make_progress)
 
     fs = FalFileSystem(skip_instance_cache=True)
-    fs.put_file(str(path), "empty.bin")
+    fs.put_file(str(path), "data/empty.bin")
 
     task = progresses[0].tasks[0]
     assert task.total == 1

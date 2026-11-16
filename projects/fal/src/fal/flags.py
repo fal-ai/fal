@@ -13,6 +13,35 @@ def bool_envvar(name: str):
     return False
 
 
+def swap_api_label(host: str, replacement: str) -> str:
+    """Swap the `api` label of a host for `replacement`.
+
+    One DNS label names the service, so the REST host is the gRPC host with
+    that label swapped. The label is not always the first one: an environment
+    may put its own labels in front of it. A host with no `api` label is
+    returned unchanged.
+    """
+    labels = host.split(".")
+    for index, label in enumerate(labels):
+        if label == "api":
+            labels[index] = replacement
+            return ".".join(labels)
+    return host
+
+
+def api_label_index(host: str) -> int:
+    """Position of the `api` label in a host, or 0 when it has none."""
+    labels = host.split(".")
+    return labels.index("api") if "api" in labels else 0
+
+
+def insert_label(host: str, label: str, index: int) -> str:
+    """Insert `label` into `host` at `index`."""
+    labels = host.split(".")
+    labels.insert(min(index, len(labels)), label)
+    return ".".join(labels)
+
+
 DEBUG = bool_envvar("DEBUG")
 TEST_MODE = bool_envvar("ISOLATE_TEST_MODE")
 AUTH_DISABLED = bool_envvar("ISOLATE_AUTH_DISABLED")
@@ -42,21 +71,18 @@ def _is_trusted_grpc_host(host: str) -> bool:
     )
 
 
-if not TEST_MODE:
-    if not _GRPC_HOST_ENV:
-        assert GRPC_HOST.startswith(
-            "api"
-        ), "FAL_HOST must start with 'api' (use FAL_GRPC_HOST to override)"
-    if not ALLOW_UNTRUSTED_GRPC_HOST and not _is_trusted_grpc_host(GRPC_HOST):
-        raise ValueError(
-            f"gRPC host {GRPC_HOST!r} is not a fal host "
-            f"({', '.join(TRUSTED_GRPC_HOST_DOMAINS)}). "
-            "Set FAL_ALLOW_UNTRUSTED_GRPC_HOST=1 to connect to it anyway."
-        )
+if (
+    not TEST_MODE
+    and not ALLOW_UNTRUSTED_GRPC_HOST
+    and not _is_trusted_grpc_host(GRPC_HOST)
+):
+    raise ValueError(
+        f"gRPC host {GRPC_HOST!r} is not a fal host "
+        f"({', '.join(TRUSTED_GRPC_HOST_DOMAINS)}). "
+        "Set FAL_ALLOW_UNTRUSTED_GRPC_HOST=1 to connect to it anyway."
+    )
 
-REST_HOST = _REST_HOST_ENV or (
-    GRPC_HOST.replace("api", "rest", 1) if GRPC_HOST.startswith("api") else GRPC_HOST
-)
+REST_HOST = _REST_HOST_ENV or swap_api_label(GRPC_HOST, "rest")
 REST_SCHEME = "http" if TEST_MODE or AUTH_DISABLED else "https"
 REST_URL = f"{REST_SCHEME}://{REST_HOST}"
 
@@ -65,9 +91,15 @@ FAL_RUN_HOST = _RUN_HOST_ENV or (
     GRPC_HOST.replace("api.", "", 1).replace("alpha.", "", 1).replace(".ai", ".run", 1)
 )
 
-FAL_QUEUE_RUN_HOST = _QUEUE_RUN_HOST_ENV or f"queue.{FAL_RUN_HOST}"
+# The queue and ws hosts name their service in the same position the gRPC host
+# names `api`, so any environment labels in front of it stay where they are.
+_SERVICE_INDEX = api_label_index(GRPC_HOST)
 
-FAL_WS_RUN_HOST = _WS_RUN_HOST_ENV or f"ws.{FAL_RUN_HOST}"
+FAL_QUEUE_RUN_HOST = _QUEUE_RUN_HOST_ENV or insert_label(
+    FAL_RUN_HOST, "queue", _SERVICE_INDEX
+)
+
+FAL_WS_RUN_HOST = _WS_RUN_HOST_ENV or insert_label(FAL_RUN_HOST, "ws", _SERVICE_INDEX)
 
 DONT_OPEN_LINKS = bool_envvar("FAL_DONT_OPEN_LINKS")
 
