@@ -48,7 +48,7 @@ def test_fal_fs(tmp_path):
         remote_temp_dir + "/mydir",
         remote_temp_dir + "/myfile",
     ]
-    assert fs.ls(posixpath.relpath(remote_temp_dir, "/data"), detail=False) == [
+    assert fs.ls(posixpath.relpath(remote_temp_dir, "/"), detail=False) == [
         remote_temp_dir + "/mydir",
         remote_temp_dir + "/myfile",
     ]
