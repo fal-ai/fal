@@ -16,6 +16,26 @@ KV_SPLIT_RE = re.compile(r"(:=|=)")
 _FAILURE_LOG_LINES = 40
 
 
+def _load_json_value(key: str, raw: str):
+    def reject_constant(name: str):
+        # json.loads accepts NaN and Infinity, which are not valid JSON and
+        # would be rejected (or silently mangled) when the request is sent.
+        raise ValueError(
+            f"Invalid JSON for {key!r}: {name} is not allowed. "
+            "Use key=value to send a plain string."
+        )
+
+    try:
+        return json.loads(raw, parse_constant=reject_constant)
+    except json.JSONDecodeError as exc:
+        # `from None`: the CLI appends an exception's cause to the message,
+        # which would repeat the reason.
+        raise ValueError(
+            f"Invalid JSON for {key!r}: {exc.msg}. "
+            "Use key=value to send a plain string."
+        ) from None
+
+
 def _parse_params(params: list[str]) -> dict:
     """Turn `key=value` / `key:=json` CLI arguments into a request payload."""
     from . import cli_nested_json
@@ -30,13 +50,7 @@ def _parse_params(params: list[str]) -> dict:
             )
         key, separator, value = parts
         if separator == ":=":
-            try:
-                value = json.loads(value)
-            except json.JSONDecodeError as exc:
-                raise ValueError(
-                    f"Invalid JSON for {key!r}: {exc.msg}. "
-                    "Use key=value to send a plain string."
-                ) from exc
+            value = _load_json_value(key, value)
         pairs.append((key, value))
     return cli_nested_json.interpret_nested_json(pairs)  # type: ignore
 

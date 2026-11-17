@@ -326,8 +326,29 @@ def test_parse_params_keeps_equals_signs_in_values():
 
 
 def test_parse_params_rejects_invalid_json():
-    with pytest.raises(ValueError, match="Invalid JSON for 'texts'"):
+    with pytest.raises(ValueError, match="Invalid JSON for 'texts'") as excinfo:
         _parse_params(["texts:=[a, b]"])
+
+    # The CLI appends an exception's cause to the message; there must be none,
+    # or the reason is printed twice.
+    assert excinfo.value.__cause__ is None
+
+
+@pytest.mark.parametrize("raw", ["NaN", "Infinity", "-Infinity", "[1, NaN]"])
+def test_parse_params_rejects_non_json_constants(raw):
+    with pytest.raises(ValueError, match="is not allowed"):
+        _parse_params([f"x:={raw}"])
+
+
+def test_invalid_json_reason_is_printed_once(capsys):
+    from fal.cli.main import main
+
+    assert main(["api", "owner/app", "texts:=[a, b]"]) == 1
+
+    out = capsys.readouterr()
+    text = out.out + out.err
+    assert "Invalid JSON for 'texts'" in text
+    assert text.count("Expecting value") == 1
 
 
 def test_parse_params_rejects_missing_separator():
