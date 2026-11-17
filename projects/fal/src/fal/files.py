@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     import httpx
 
 
+STORAGE_ROOTS = ("data", "volumes")
+
+
 class FalFileSystem(AbstractFileSystem):
     def __init__(
         self,
@@ -71,14 +74,15 @@ class FalFileSystem(AbstractFileSystem):
         return response
 
     def _abspath(self, rpath):
-        if rpath.startswith("/"):
-            return rpath
-
-        cwd = "/data"
         if rpath in [".", ""]:
-            return cwd
+            return "/"
 
-        return posixpath.join(cwd, rpath)
+        abs_path = rpath if rpath.startswith("/") else "/" + rpath
+        root = abs_path.lstrip("/").split("/", 1)[0]
+        if root and root not in STORAGE_ROOTS:
+            raise ValueError(f"Path must start with data/ or volumes/: {rpath}")
+
+        return abs_path
 
     def _ls(self, path):
         response = self._request("GET", f"/files/list/{path}")
@@ -100,14 +104,15 @@ class FalFileSystem(AbstractFileSystem):
         abs_path = self._abspath(path)
         if abs_path in self.dircache:
             entries = self.dircache[abs_path]
-        elif abs_path in ["/", "", "."]:
+        elif abs_path == "/":
             entries = [
                 {
-                    "name": "/data",
+                    "name": f"/{root}",
                     "size": 0,
                     "type": "directory",
                     "mtime": 0,
                 }
+                for root in STORAGE_ROOTS
             ]
         else:
             entries = self._ls(abs_path)
@@ -252,5 +257,12 @@ class FalFileSystem(AbstractFileSystem):
         self.dircache.clear()
 
     def mv(self, path1, path2, recursive=False, maxdepth=None, **kwargs):
-        # Delegate to server-side rename
-        self.rename(path1, path2)
+        destination = self._abspath(path2).rstrip("/") or "/"
+        if destination == "/volumes":
+            raise ValueError(f"Move into a volume, like volumes/<name>/: {path2}")
+
+        if path2.endswith("/") or self.isdir(destination):
+            source = self._abspath(path1).rstrip("/")
+            destination = posixpath.join(destination, posixpath.basename(source))
+
+        self.rename(path1, destination)
