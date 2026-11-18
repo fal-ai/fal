@@ -115,7 +115,30 @@ def _deploy(args):
             )
             raise
 
-    _render_deploy_result(args, res, is_first_deploy=is_first_deploy, team=team)
+    _render_deploy_result(
+        args,
+        res,
+        is_first_deploy=is_first_deploy,
+        team=team,
+        reset_scale=_effective_reset_scale(args, app_ref),
+    )
+
+
+def _effective_reset_scale(args, app_ref: tuple[str | None, str | None]) -> bool:
+    """--reset-scale/--no-scale if given, else the pyproject entry's value."""
+    from ._utils import get_app_data_from_toml, is_app_name
+
+    if args.app_scale_settings is not None:
+        return bool(args.app_scale_settings)
+    name, func = app_ref
+    if name is not None and is_app_name((name, func)):
+        try:
+            return get_app_data_from_toml(
+                name, emit_deprecation_warnings=False
+            ).reset_scale
+        except (ValueError, FileNotFoundError):
+            return False
+    return False
 
 
 def _resolve_team_and_app_ref(args) -> tuple[str | None, tuple[str | None, str | None]]:
@@ -169,7 +192,12 @@ def _deployed_app_urls(route: str, url: str) -> tuple[str | None, str | None]:
 
 
 def _render_deploy_result(
-    args, res, *, is_first_deploy: bool = False, team: str | None = None
+    args,
+    res,
+    *,
+    is_first_deploy: bool = False,
+    team: str | None = None,
+    reset_scale: bool | None = None,
 ) -> None:
     app_id = res.revision
     resolved_app_name = res.app_name
@@ -293,7 +321,12 @@ def _render_deploy_result(
         print_rule(args.console, "", style=rule_style)
 
         # Reminder about scaling parameter inheritance
-        if not args.app_scale_settings:
+        applied = (
+            reset_scale
+            if reset_scale is not None
+            else bool(getattr(args, "app_scale_settings", False))
+        )
+        if not applied:
             args.console.print("")
             note = (
                 "[yellow]Note: Scaling parameters (keep_alive, min_concurrency, etc.) "
@@ -372,8 +405,11 @@ def add_parser(main_subparsers, parents):
     parser.add_argument(
         "--strategy",
         choices=["recreate", "rolling"],
-        help="Deployment strategy.",
-        default="rolling",
+        help=(
+            "Deployment strategy (default: rolling, or `deployment_strategy` "
+            "from the pyproject.toml app entry)."
+        ),
+        default=None,
     )
     rolling_group = parser.add_argument_group("Rolling deployment")
     attach_group = rolling_group.add_mutually_exclusive_group()
@@ -402,7 +438,6 @@ def add_parser(main_subparsers, parents):
         "--no-scale",
         action="store_false",
         dest="app_scale_settings",
-        default=False,
         help="Use the previous deployment of the application for scale settings. "
         "This is the default behavior.",
     )
@@ -412,6 +447,9 @@ def add_parser(main_subparsers, parents):
         dest="app_scale_settings",
         help="Use the application code for scale settings.",
     )
+    # None means neither flag was given, so a pyproject.toml app entry's
+    # `app_scale_settings` applies; an explicit flag wins over it.
+    parser.set_defaults(app_scale_settings=None)
     parser.add_argument(
         "--check",
         action="store_true",
