@@ -305,6 +305,12 @@ def _resolve_deploy_check_source(
     return None
 
 
+POLICY_LOOKUP_FAILED = (
+    "Could not read the team's deploy check policy; requiring confirmation. "
+    "Confirm the deploy when prompted, or pass --yes."
+)
+
+
 def _admin_requires_deploy_check(client: SyncServerlessClient) -> bool:
     from http import HTTPStatus
 
@@ -312,25 +318,22 @@ def _admin_requires_deploy_check(client: SyncServerlessClient) -> bool:
     import openapi_fal_rest.api.users.get_current_user as get_current_user
     from openapi_fal_rest.errors import UnexpectedStatus
 
+    # Any lookup that does not return the policy fails closed: a team that
+    # requires confirmation must not deploy without it because the users
+    # endpoint answered 4xx/5xx or returned nothing usable.
     try:
         response = get_current_user.sync_detailed(client=client._create_rest_client())
     except (UnexpectedStatus, httpx.HTTPError, ValueError):
-        logger.warning("Failed to fetch deploy check policy", exc_info=True)
+        logger.warning(POLICY_LOOKUP_FAILED, exc_info=True)
         return True
 
     if response.status_code != HTTPStatus.OK:
-        logger.warning(
-            "Failed to fetch deploy check policy",
-            status_code=response.status_code,
-        )
-        return False
+        logger.warning(POLICY_LOOKUP_FAILED, status_code=response.status_code)
+        return True
 
     if response.parsed is None:
-        logger.warning(
-            "Failed to fetch deploy check policy",
-            reason="empty parsed payload",
-        )
-        return False
+        logger.warning(POLICY_LOOKUP_FAILED, reason="empty or unparsable payload")
+        return True
 
     return _payload_requires_deploy_check(response.parsed)
 
