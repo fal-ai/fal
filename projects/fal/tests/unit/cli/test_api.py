@@ -1,4 +1,5 @@
 import json
+import re
 from unittest.mock import patch
 
 import httpx
@@ -346,7 +347,8 @@ def test_invalid_json_reason_is_printed_once(capsys):
     assert main(["api", "owner/app", "texts:=[a, b]"]) == 1
 
     out = capsys.readouterr()
-    text = out.out + out.err
+    # The error printer may colour the message (it does on Windows CI).
+    text = re.sub(r"\x1b\[[0-9;]*m", "", out.out + out.err)
     assert "Invalid JSON for 'texts'" in text
     assert text.count("Expecting value") == 1
 
