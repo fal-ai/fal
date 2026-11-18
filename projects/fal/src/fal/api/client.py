@@ -500,9 +500,14 @@ class SyncServerlessClient:
 
     @property
     def _rest_url(self) -> str:
-        from fal.flags import REST_SCHEME
+        from fal.flags import REST_SCHEME, REST_URL, swap_api_label
 
-        return f"{REST_SCHEME}://{self._grpc_host.replace('api', 'rest', 1)}"
+        if not self.host:
+            # No override on this client, so use the host the rest of the SDK
+            # resolved. That keeps FAL_REST_HOST working here too.
+            return REST_URL
+
+        return f"{REST_SCHEME}://{swap_api_label(self.host, 'rest')}"
 
     @property
     def _credentials(self) -> Credentials:

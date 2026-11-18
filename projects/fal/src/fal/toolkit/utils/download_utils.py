@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 from contextlib import suppress
 from email.message import Message
 from pathlib import Path, PurePath
@@ -16,6 +17,7 @@ from urllib.request import Request, urlopen
 
 from fal.toolkit.utils.ssrf import (
     SafeResponse,
+    SSRFConnectionError,
     SSRFError,
     SSRFHTTPStatusError,
     _ssrf_safe_get_to_file,
@@ -49,6 +51,17 @@ def _hash_url(url: str) -> str:
         A string representing the hashed URL.
     """
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+
+def _redact_url(url: str) -> str:
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        return "<invalid URL>"
+    if parts.scheme == "data":
+        return "data:<redacted>"
+    netloc = parts.netloc.rpartition("@")[2]
+    return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
 def _headers(request_headers: dict[str, str] | None = None) -> dict[str, str]:
@@ -188,9 +201,12 @@ def download_file(
             return target_path
 
         if force:
-            print(f"File already exists. Forcing download of {url} to {target_path}")
+            print(
+                "File already exists. Forcing download of "
+                f"{_redact_url(url)} to {target_path}"
+            )
         else:
-            print(f"Downloading {url} to {target_path}")
+            print(f"Downloading {_redact_url(url)} to {target_path}")
 
         os.replace(temp_path, target_path)
     except DownloadError:
@@ -198,17 +214,28 @@ def download_file(
         raise
     except SSRFHTTPStatusError as e:
         temp_path.unlink(missing_ok=True)
-        raise DownloadError(f"Failed to get remote file properties for {url}") from e
+        raise DownloadError(
+            f"Failed to get remote file properties for {_redact_url(url)}"
+        ) from e
+    except SSRFConnectionError as e:
+        temp_path.unlink(missing_ok=True)
+        # Connection failures can chain exceptions containing the signed URL.
+        raise DownloadError(str(e)) from None
     except SSRFError as e:
         temp_path.unlink(missing_ok=True)
         if str(e).startswith("File body exceeded"):
             error_target = target_path or target_dir_path
-            raise DownloadError(f"Failed to download {url} to {error_target}") from e
+            raise DownloadError(
+                f"Failed to download {_redact_url(url)} to {error_target}"
+            ) from e
         raise DownloadError(str(e)) from e
     except Exception as e:
         temp_path.unlink(missing_ok=True)
         error_target = target_path or target_dir_path
-        raise DownloadError(f"Failed to download {url} to {error_target}") from e
+        raise DownloadError(
+            f"Failed to download {_redact_url(url)} to {error_target}: "
+            f"{type(e).__name__}"
+        ) from None
 
     return target_path
 
@@ -266,11 +293,13 @@ def _download_file_python(
 
                 if total_size:
                     progress_msg = (
-                        f"Downloading {url} ... {received_size / total_size:.2%}"
+                        f"Downloading {_redact_url(url)} ... "
+                        f"{received_size / total_size:.2%}"
                     )
                 else:
                     progress_msg = (
-                        f"Downloading {url} ... {received_size / ONE_MB:.2f} MB"
+                        f"Downloading {_redact_url(url)} ... "
+                        f"{received_size / ONE_MB:.2f} MB"
                     )
                 print(progress_msg, end="\r\n")
 
