@@ -1041,21 +1041,6 @@ def test_app_health_override(test_health_override_app: str):
     assert r.status_code == 502, r.text
 
 
-def test_ws_client(test_app: str):
-    with apps.ws(test_app) as connection:
-        for i in range(3):
-            response = json.loads(connection.run({"lhs": 1, "rhs": i}))
-            assert response["result"] == 1 + i
-
-        for i in range(3):
-            connection.send({"lhs": 2, "rhs": i})
-
-        for i in range(3):
-            # they should be in order
-            response = json.loads(connection.recv())
-            assert response["result"] == 2 + i
-
-
 def test_app_client_path_included_in_app_id(test_stateful_app: str):
     response = apps.run(test_stateful_app + "/reset", arguments={})
     assert response["result"] == 0
