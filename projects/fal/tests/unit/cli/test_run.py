@@ -7,6 +7,7 @@ import pytest
 from fal.api import Options
 from fal.cli._result_handlers import PrepareRequirementsCallback
 from fal.cli.main import parse_args
+from fal.cli.parser import FalParserExit
 from fal.cli.run import _run
 from fal.project import find_project_root
 
@@ -49,11 +50,16 @@ def test_run_with_machine_type():
     assert args.machine_type == "GPU-H100"
 
 
-def test_run_with_forward_compat():
+def test_run_with_forward_compat(capsys):
     args = parse_args(["run", "/my/path.py::myfunc", "--forward-compat"])
     assert args.func == _run
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.forward_compat is True
+
+    with pytest.raises(FalParserExit) as error:
+        parse_args(["run", "--help"])
+    assert error.value.status == 0
+    assert "--forward-compat" not in capsys.readouterr().out
 
 
 def test_run_with_limit_max_requests():

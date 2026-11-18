@@ -214,7 +214,8 @@ def add_parser(main_subparsers, parents):
     parser.add_argument(
         "--forward-compat",
         action="store_true",
-        help="Run on test nodes carrying upcoming node changes.",
+        # Internal: the server requires an allowlisted owner for this option.
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--limit-max-requests",
