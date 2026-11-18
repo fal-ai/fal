@@ -577,7 +577,8 @@ class App(BaseServable):
     and lifecycle management.
 
     Example:
-        >>> class TextToImage(fal.App, machine_type="GPU"):
+        >>> class TextToImage(fal.App):
+        ...     machine_type = "GPU-H100"
         ...     requirements = ["diffusers", "torch"]
         ...
         ...     def setup(self):
@@ -604,10 +605,11 @@ class App(BaseServable):
             in the deployment. Use for custom code not available on PyPI.
             Example: `["my_utils", "models"]`
         machine_type: Compute instance type for your application. CPU options: 'XS',
-            'S' (default), 'M', 'L'. GPU options: 'GPU-A6000', 'GPU-A100', 'GPU-H100',
-            'GPU-H200', 'GPU-B200'. Use a string for a single type, or a list to
-            define fallback types (tried in order until one is available).
-            Example: `"GPU-A100"` or `["GPU-H100", "GPU-A100"]`
+            'S' (default), 'M', 'L', 'XL'. GPU options: 'GPU-L40', 'GPU-RTXPRO6000',
+            'GPU-H100', 'GPU-H200', 'GPU-B200'. Set it as a class attribute. Use a
+            string for a single type, or a list to define fallback types (tried in
+            order until one is available).
+            Example: `"GPU-H100"` or `["GPU-H100", "GPU-H200"]`
         num_gpus: Number of GPUs to allocate. Only applies to GPU machine types.
         regions: Allowed regions for deployment. None means any region.
             Example: `["us-east", "eu-west"]`
