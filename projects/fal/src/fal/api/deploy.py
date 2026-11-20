@@ -170,8 +170,8 @@ def _resolve_deployment_reference(
     *,
     app_name: str | None = None,
     auth: AuthModeLiteral | None = None,
-    strategy: DeploymentStrategyLiteral = "rolling",
-    reset_scale: bool = False,
+    strategy: DeploymentStrategyLiteral | None = None,
+    reset_scale: bool | None = None,
     attach_to_deployment: bool | None = None,
     message: str | None = None,
     annotations: dict[str, str] | None = None,
@@ -191,8 +191,10 @@ def _resolve_deployment_reference(
 
     app_data = AppData(
         auth=auth,
+        # None means "not given": the strategy then defaults to rolling at
+        # registration, and scale settings come from the previous deployment.
         deployment_strategy=cast(DeploymentStrategyLiteral, strategy),
-        reset_scale=cast(bool, reset_scale),
+        reset_scale=bool(reset_scale),
         attach_to_deployment=attach_to_deployment,
         name=app_name,
         message=message,
@@ -212,6 +214,12 @@ def _resolve_deployment_reference(
         app_data = replace(app_data, message=message, annotations=annotations)
         if attach_to_deployment is not None:
             app_data = replace(app_data, attach_to_deployment=attach_to_deployment)
+        # Flags given on the command line win over the pyproject.toml entry
+        # (`deployment_strategy`, `app_scale_settings`); unset flags keep it.
+        if strategy is not None:
+            app_data = replace(app_data, deployment_strategy=strategy)
+        if reset_scale is not None:
+            app_data = replace(app_data, reset_scale=reset_scale)
         if app_data.python_entry_point is not None or app_data.ref is None:
             # python_entry_point is resolved by the loader; ref is None for
             # image-only apps.
@@ -418,8 +426,8 @@ def prepare_deployment(
     *,
     app_name: str | None = None,
     auth: AuthModeLiteral | None = None,
-    strategy: DeploymentStrategyLiteral = "rolling",
-    reset_scale: bool = False,
+    strategy: DeploymentStrategyLiteral | None = None,
+    reset_scale: bool | None = None,
     attach_to_deployment: bool | None = None,
     force_env_build: bool = False,
     environment_name: str | None = None,
@@ -470,8 +478,8 @@ def deploy(
     *,
     app_name: str | None = None,
     auth: AuthModeLiteral | None = None,
-    strategy: DeploymentStrategyLiteral = "rolling",
-    reset_scale: bool = False,
+    strategy: DeploymentStrategyLiteral | None = None,
+    reset_scale: bool | None = None,
     attach_to_deployment: bool | None = None,
     force_env_build: bool = False,
     environment_name: str | None = None,
