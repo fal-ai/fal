@@ -465,7 +465,19 @@ def test_render_attach_to_deployment_line():
     assert _render_attach_to_deployment_line(False).plain == "Attach to deployment: no"
 
 
-def test_build_deployment_check_summary_includes_attach_to_deployment():
+@pytest.mark.parametrize(
+    "strategy,attach_to_deployment,expected",
+    [
+        ("rolling", None, True),
+        ("rolling", True, True),
+        ("rolling", False, False),
+        (None, None, True),
+        ("recreate", None, None),
+    ],
+)
+def test_build_deployment_check_summary_includes_attach_to_deployment(
+    strategy, attach_to_deployment, expected
+):
     prepared = _prepared_deployment(reset_scale=False)
     prepared = SimpleNamespace(
         loaded=prepared.loaded,
@@ -473,9 +485,9 @@ def test_build_deployment_check_summary_includes_attach_to_deployment():
         environment_name=prepared.environment_name,
         app_data=AppData(
             reset_scale=False,
-            deployment_strategy="rolling",
+            deployment_strategy=strategy,
             name="my-app",
-            attach_to_deployment=True,
+            attach_to_deployment=attach_to_deployment,
         ),
     )
 
@@ -486,7 +498,7 @@ def test_build_deployment_check_summary_includes_attach_to_deployment():
         force_env_build=False,
     )
 
-    assert summary.attach_to_deployment is True
+    assert summary.attach_to_deployment is expected
 
 
 def test_deploy_with_env_and_other_options():
