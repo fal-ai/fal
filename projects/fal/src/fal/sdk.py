@@ -26,6 +26,7 @@ from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 
 from fal import flags
 from fal._serialization import patch_pickle
+from fal._tls import grpc_root_certificates
 from fal.auth import UserAccess, current_user_info, key_credentials
 from fal.console import console
 from fal.exceptions import FalServerlessException
@@ -188,7 +189,7 @@ class LocalCredentials(ServerCredentials):
 
 class RemoteCredentials(ServerCredentials):
     def to_grpc(self) -> grpc.ChannelCredentials:
-        return grpc.ssl_channel_credentials()
+        return grpc.ssl_channel_credentials(root_certificates=grpc_root_certificates())
 
 
 @dataclass(repr=False)
