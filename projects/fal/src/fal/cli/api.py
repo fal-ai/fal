@@ -6,8 +6,9 @@ import rich
 
 from fal import flags
 
-# = or := only
-KV_SPLIT_RE = re.compile(r"(=|:=)")
+# `key=value` sends a string; `key:=value` sends the value parsed as JSON, as in
+# HTTPie. Only the first separator splits, so values may themselves contain `=`.
+KV_SPLIT_RE = re.compile(r"(:=|=)")
 
 # An unhandled app error is logged as one entry holding the whole traceback,
 # and fal.App runs endpoints under starlette/anyio, so that entry routinely
@@ -15,14 +16,48 @@ KV_SPLIT_RE = re.compile(r"(=|:=)")
 _FAILURE_LOG_LINES = 40
 
 
-def _api(args):
-    """Handle the api command execution."""
+def _load_json_value(key: str, raw: str):
+    def reject_constant(name: str):
+        # json.loads accepts NaN and Infinity, which are not valid JSON and
+        # would be rejected (or silently mangled) when the request is sent.
+        raise ValueError(
+            f"Invalid JSON for {key!r}: {name} is not allowed. "
+            "Use key=value to send a plain string."
+        )
+
+    try:
+        return json.loads(raw, parse_constant=reject_constant)
+    except json.JSONDecodeError as exc:
+        # `from None`: the CLI appends an exception's cause to the message,
+        # which would repeat the reason.
+        raise ValueError(
+            f"Invalid JSON for {key!r}: {exc.msg}. "
+            "Use key=value to send a plain string."
+        ) from None
+
+
+def _parse_params(params: list[str]) -> dict:
+    """Turn `key=value` / `key:=json` CLI arguments into a request payload."""
     from . import cli_nested_json
 
-    params_split = [KV_SPLIT_RE.split(param) for param in args.params]
-    params = cli_nested_json.interpret_nested_json(  # type: ignore
-        [(key, value) for key, _, value in params_split]
-    )
+    pairs = []
+    for param in params:
+        parts = KV_SPLIT_RE.split(param, maxsplit=1)
+        if len(parts) != 3:
+            raise ValueError(
+                f"Invalid parameter {param!r}. Use key=value for a string "
+                "or key:=<json> for any JSON value."
+            )
+        key, separator, value = parts
+        if separator == ":=":
+            value = _load_json_value(key, value)
+        pairs.append((key, value))
+    return cli_nested_json.interpret_nested_json(pairs)  # type: ignore
+
+
+def _api(args):
+    """Handle the api command execution."""
+    params = _parse_params(args.params)
 
     if args.model_id.endswith("/stream"):
         return stream_run(args.model_id, params)
@@ -233,7 +268,11 @@ def add_parser(main_subparsers, parents):
     parser.add_argument(
         "params",
         nargs="*",
-        help="Key-value pairs (e.g. key=value or nested[a][b]=value)",
+        help=(
+            "Key-value pairs: key=value sends a string, key:=<json> sends any "
+            "JSON value (e.g. n:=3 or 'tags:=[\"a\"]'), and nested[a][b]=value "
+            "builds nested objects"
+        ),
     )
 
     parser.set_defaults(func=_api)
