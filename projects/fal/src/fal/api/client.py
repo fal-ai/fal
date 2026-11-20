@@ -389,6 +389,14 @@ class VolumesNamespace:
         """Create a volume and return its canonical (lowercase) name."""
         return volumes_api.create_volume(self.client, name)
 
+    def list(self) -> List[volumes_api.VolumeInfo]:
+        """List the account's volumes, sorted by name."""
+        return volumes_api.list_volumes(self.client)
+
+    def delete(self, name: str) -> None:
+        """Delete a volume. Fails while a deployed app still mounts it."""
+        volumes_api.delete_volume(self.client, name)
+
 
 class _EnvironmentsNamespace:
     def __init__(self, client: SyncServerlessClient):

@@ -10,8 +10,10 @@ from fal.api.client import SyncServerlessClient
 from fal.exceptions import (
     VolumeAlreadyExistsError,
     VolumeControlPlaneUnavailableError,
+    VolumeInUseError,
     VolumeInvalidMountPathError,
     VolumeInvalidNameError,
+    VolumeLimitExceededError,
 )
 from fal.sdk import FalServerlessKeyCredentials
 from fal.volumes import Volume, normalize_volumes
@@ -106,6 +108,7 @@ def test_create_volume_validates_name_before_request(rest):
     ("status", "reason", "expected"),
     [
         (409, "VOLUME_ALREADY_EXISTS", VolumeAlreadyExistsError),
+        (409, "VOLUME_LIMIT_EXCEEDED", VolumeLimitExceededError),
         (503, "VOLUME_CONTROL_PLANE_UNAVAILABLE", VolumeControlPlaneUnavailableError),
     ],
 )
@@ -135,3 +138,42 @@ def test_create_volume_non_json_error_is_generic(rest):
     rest.response = _error_response(502, b"bad gateway")
     with pytest.raises(FalServerlessError, match="502 bad gateway"):
         SyncServerlessClient().volumes.create("my-volume")
+
+
+def test_list_volumes_parses_names_and_creation_times(rest):
+    rest.response = httpx.Response(
+        HTTPStatus.OK,
+        json=[
+            {"name": "cache", "created_at": "2026-11-10T22:03:28.777000Z"},
+            {"name": "models", "created_at": "2026-11-11T08:00:00Z"},
+        ],
+    )
+
+    volumes = SyncServerlessClient(host="api.example.com").volumes.list()
+
+    assert [v.name for v in volumes] == ["cache", "models"]
+    assert volumes[0].created_at.isoformat() == "2026-11-10T22:03:28.777000+00:00"
+    (request,) = rest.requests
+    assert request.method == "GET"
+    assert str(request.url) == "https://rest.example.com/volumes/"
+
+
+def test_delete_volume_sends_the_canonical_name(rest):
+    rest.response = httpx.Response(HTTPStatus.NO_CONTENT)
+
+    SyncServerlessClient(host="api.example.com").volumes.delete("My-Volume")
+
+    (request,) = rest.requests
+    assert request.method == "DELETE"
+    assert str(request.url) == "https://rest.example.com/volumes/my-volume"
+
+
+def test_delete_volume_in_use_is_a_typed_error(rest):
+    detail = "Volume 'my-volume' is mounted by app 'my-app'"
+    rest.response = _error_response(
+        409, json.dumps({"detail": detail, "reason": "VOLUME_IN_USE"}).encode()
+    )
+    with pytest.raises(VolumeInUseError) as exc_info:
+        SyncServerlessClient().volumes.delete("my-volume")
+    assert exc_info.value.message == detail
+    assert exc_info.value.volume_name == "my-volume"
