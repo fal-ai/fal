@@ -122,6 +122,18 @@ def test_declaration_must_be_a_method() -> None:
         ({"version": True, "schema_id": "x", "app": APP}, "version 1"),
         ({"version": 1, "schema_id": "", "app": APP}, "schema_id"),
         (
+            {"version": 1, "schema_id": "x", "app": APP, "other": "y"},
+            "exactly version, schema_id and app",
+        ),
+        (
+            {"version": 1, "schema_id": "x", "app": APP, "estimate_fingerprint": ""},
+            "estimate_fingerprint",
+        ),
+        (
+            {"version": 1, "schema_id": "x", "app": APP, "estimate_fingerprint": 1},
+            "estimate_fingerprint",
+        ),
+        (
             {"version": 1, "schema_id": "x", "app": {"type": "array"}},
             "object JSON Schema",
         ),
@@ -152,6 +164,27 @@ def test_a_malformed_declaration_is_refused_before_publishing(
 
     with pytest.raises(ValueError, match=reason):
         MalformedApp.build_metadata()
+
+
+def test_an_estimate_fingerprint_is_published_with_the_schema() -> None:
+    declared = {
+        "version": 1,
+        "schema_id": "id-images",
+        "app": APP,
+        "estimate_fingerprint": "abc123",
+    }
+
+    class Estimated:
+        def declaration(self) -> fal.BillingComponents:
+            return declared  # type: ignore[return-value]
+
+    class EstimatedApp(fal.App):
+        @fal.endpoint("/edit", billing=Estimated())
+        def edit(self, input: EditInput) -> EditOutput:
+            return EditOutput(images=1)
+
+    published = EstimatedApp.build_metadata()["billing_components"]
+    assert published == {"/edit": declared}
 
 
 def test_wma_apps_publish_billing_components() -> None:
