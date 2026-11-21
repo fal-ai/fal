@@ -152,6 +152,7 @@ def get_app_data_from_toml(
         "termination_grace_period_seconds", None
     )
     secrets = app_data.pop("secrets", None)
+    inject_fal_key = app_data.pop("inject_fal_key", None)
     data_mounts = app_data.pop("data_mounts", None)
     volumes = app_data.pop("volumes", None)
     health_check = app_data.pop("health_check", None)
@@ -196,6 +197,8 @@ def get_app_data_from_toml(
         )
     if secrets is not None:
         _validate_str_list("secrets", secrets)
+    if inject_fal_key is not None:
+        _validate_bool("inject_fal_key", inject_fal_key)
     if data_mounts is not None:
         _validate_str_list("data_mounts", data_mounts)
     if volumes is not None:
@@ -254,6 +257,8 @@ def get_app_data_from_toml(
         )
     if secrets is not None:
         options.host["secrets"] = secrets
+    if inject_fal_key is not None:
+        options.host["inject_fal_key"] = inject_fal_key
     if data_mounts is not None:
         options.host["data_mounts"] = data_mounts
     if volumes is not None:
