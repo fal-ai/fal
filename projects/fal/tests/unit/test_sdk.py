@@ -22,13 +22,15 @@ class RecordingStub:
     def __init__(self):
         self.register_request = None
         self.run_request = None
+        self.run_metadata = None
 
     def RegisterApplication(self, request):
         self.register_request = request
         return iter([])
 
-    def Run(self, request):
+    def Run(self, request, *, metadata=None):
         self.run_request = request
+        self.run_metadata = metadata
         return iter([])
 
 
@@ -341,6 +343,25 @@ def test_connection_run_allows_no_isolate_container_without_callable():
     assert stub.run_request is not None
     assert stub.run_request.WhichOneof("callable") is None
     assert not stub.run_request.HasField("health_check_config")
+
+
+@pytest.mark.parametrize(
+    ("options", "expected_metadata"),
+    [
+        ({}, None),
+        ({"inject_fal_key": True}, None),
+        ({"inject_fal_key": False}, (("fal-inject-fal-key", "false"),)),
+    ],
+)
+def test_connection_run_only_sends_explicit_fal_key_opt_out(options, expected_metadata):
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+    environment = connection.define_environment("virtualenv")
+
+    list(connection.run(None, [environment], entrypoint="main:app", **options))
+
+    assert stub.run_metadata == expected_metadata
 
 
 def test_connection_run_forwards_health_check_config():

@@ -1012,6 +1012,42 @@ def test_register_forwards_explicit_private_logs_false():
     assert call_kwargs["private_logs"] is False
 
 
+@pytest.mark.parametrize("inject_fal_key", [None, False, True])
+def test_register_sends_explicit_fal_key_option_as_metadata(inject_fal_key):
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
+
+    host = FalServerlessHost()
+    options = Options()
+    if inject_fal_key is not None:
+        options.host["inject_fal_key"] = inject_fal_key
+    metadata = {"message": "test deployment"}
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    connection.register.return_value = iter(
+        [RegisterApplicationResult(result=RegisterApplicationResultType("app-id"))]
+    )
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        host.register(
+            lambda: "ok",
+            options,
+            application_name="example-app",
+            deployment_strategy="recreate",
+            metadata=metadata,
+        )
+
+    expected = {"message": "test deployment"}
+    if inject_fal_key is not None:
+        expected["inject_fal_key"] = inject_fal_key
+    assert connection.register.call_args.kwargs["metadata"] == expected
+    assert metadata == {"message": "test deployment"}
+
+
 def test_register_allows_container_without_func_or_entrypoint():
     from fal.api.api import FalServerlessHost, Options
     from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
@@ -1773,24 +1809,34 @@ def test_run_raises_readable_error_on_unknown_state():
             )
 
 
-def test_fetch_metadata_preserves_application_name():
-    from fal.api.api import IsolatedFunction, Options
+def test_fetch_metadata_preserves_application_name_and_fal_key_option():
+    from fal.api.api import FalServerlessHost, IsolatedFunction, Options
+    from fal.sdk import HostedRunState
 
-    host = MagicMock()
-    host.run.return_value = {}
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = {}
+    connection.run.return_value = iter([partial_result])
     isolated_function = IsolatedFunction(
-        host=host,
-        options=Options(),
+        host=FalServerlessHost(),
+        options=Options(host={"inject_fal_key": False}),
         app_name="my-app",
         entrypoint="simple.app:SimpleApp",
     )
 
-    isolated_function.fetch_metadata(build_environment=False)
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        isolated_function.fetch_metadata(build_environment=False)
 
-    _, call_kwargs = host.run.call_args
+    _, call_kwargs = connection.run.call_args
     assert call_kwargs["application_name"] == "my-app"
     assert call_kwargs["entrypoint"] == "simple.app:SimpleApp.build_metadata"
     assert call_kwargs["build_environment"] is False
+    assert call_kwargs["inject_fal_key"] is False
 
 
 def test_secrets_propagate_to_host_kwargs():
