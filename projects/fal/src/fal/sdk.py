@@ -1284,7 +1284,11 @@ class FalServerlessConnection:
         volumes: dict[str, str] | None = None,
         entrypoint: str | None = None,
         build_environment: bool | None = None,
+        inject_fal_key: bool | None = None,
     ) -> Iterator[HostedRunResult[ResultT]]:
+        if inject_fal_key is not None and not isinstance(inject_fal_key, bool):
+            raise ValueError("inject_fal_key must be a boolean.")
+
         if (
             function is None
             and entrypoint is None
@@ -1369,7 +1373,12 @@ class FalServerlessConnection:
             )
         if build_environment is not None:
             request.build_environment = build_environment
-        stream = self.stub.Run(request)
+        stream = self.stub.Run(
+            request,
+            metadata=(("fal-inject-fal-key", "false"),)
+            if inject_fal_key is False
+            else None,
+        )
         for partial_result in stream:
             res = from_grpc(partial_result)
             res.stream = stream

@@ -934,6 +934,7 @@ class FalServerlessHost(Host):
             "retry_config",
             "termination_grace_period_seconds",
             "secrets",
+            "inject_fal_key",
             "data_mounts",
             "volumes",
             "requirements_context_dir",
@@ -1124,6 +1125,10 @@ class FalServerlessHost(Host):
         build_environment: bool | None = None,
         attach_to_deployment: bool | None = None,
     ) -> Optional[RegisterApplicationResult]:
+        inject_fal_key = options.host.get("inject_fal_key")
+        if inject_fal_key is not None and not isinstance(inject_fal_key, bool):
+            raise ValueError("inject_fal_key must be a boolean.")
+
         options = self.prepare_options(options, func=func)
         environment_options = options.environment
         if build_environment is False:
@@ -1203,6 +1208,8 @@ class FalServerlessHost(Host):
 
         if metadata is None:
             metadata = {}
+        if inject_fal_key is not None:
+            metadata = {**metadata, "inject_fal_key": inject_fal_key}
 
         # TODO: let the user send more metadata than just openapi
         if isinstance(func, ServeWrapper):
@@ -1357,6 +1364,7 @@ class FalServerlessHost(Host):
             volumes=volumes,
             entrypoint=entrypoint,
             build_environment=build_environment,
+            inject_fal_key=options.host.get("inject_fal_key"),
         ):
             result_handler(partial_result)
 
