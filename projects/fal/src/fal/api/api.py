@@ -156,6 +156,7 @@ class SpawnInfo:
     _url_ready: threading.Event = field(default_factory=threading.Event)
     _url: str | None = None
     stream: Any = None
+    credentials: Credentials | None = field(default=None, repr=False, compare=False)
 
     @property
     def return_value(self):
@@ -1486,7 +1487,7 @@ class FalServerlessHost(Host):
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
     ) -> SpawnInfo:
-        ret = SpawnInfo()
+        ret = SpawnInfo(credentials=self.credentials)
         default_handler = SpawnResultHandler(ret)
 
         # SpawnInfo is the spawn() return value, so the default handler always
