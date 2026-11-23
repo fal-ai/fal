@@ -19,6 +19,7 @@ from typing import (
     Union,
 )
 
+import grpc
 import httpx
 import pytest
 from fastapi import Request, WebSocket
@@ -1368,8 +1369,16 @@ def test_app_set_delete_alias(base_app: Tuple[str, str]):
         assert found.auth_mode == "private"
 
     with host._connection as client:
-        # Get the registered values
-        res = client.create_alias(app_alias, app_revision, "public")
+        with pytest.warns(
+            FutureWarning, match="Public app authentication is deprecated"
+        ):
+            with pytest.raises(grpc.RpcError) as exc:
+                client.create_alias(app_alias, app_revision, "public")
+        assert exc.value.code() == grpc.StatusCode.INVALID_ARGUMENT
+        assert "Public authentication can no longer be enabled" in exc.value.details()
+
+        alias = client.create_alias(app_alias, app_revision, "private")
+        assert alias.revision == app_revision
 
     with host._connection as client:
         # Get the registered values
@@ -1377,7 +1386,7 @@ def test_app_set_delete_alias(base_app: Tuple[str, str]):
         found = next(filter(lambda alias: alias.alias == app_alias, res), None)
         assert found, f"Could not find app {app_alias} in {res}"
         assert found.revision == app_revision
-        assert found.auth_mode == "public"
+        assert found.auth_mode == "private"
 
     with host._connection as client:
         res = client.delete_alias(alias=app_alias)
