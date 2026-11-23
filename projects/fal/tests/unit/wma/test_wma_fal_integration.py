@@ -44,34 +44,24 @@ def test_wma_subclass_keeps_its_concrete_app_name():
 
 
 def test_wma_app_rejects_fal_key_opt_out():
-    with pytest.raises(
-        ValueError, match="This option is not supported for this app type"
-    ):
+    with pytest.raises(ValueError, match="not supported for this app type"):
 
         class OptedOutApp(fal.wma.App):
             inject_fal_key = False
 
 
-@pytest.mark.parametrize("entrypoint", [False, True])
-def test_wma_app_rejects_fal_key_opt_out_from_deployment_options(entrypoint):
+def test_wma_entrypoint_rejects_fal_key_opt_out_from_pyproject():
     from fal.api import IsolatedFunction, Options
-    from fal.app import wrap_app
 
-    if entrypoint:
-        host = MagicMock()
-        host.run.return_value = EchoWmaApp.build_metadata()
-        function = IsolatedFunction(
-            host=host,
-            entrypoint="example:EchoWmaApp",
-            options=Options(host={"inject_fal_key": False}),
-        )
-    else:
-        function = wrap_app(EchoWmaApp)
-        function.options.host["inject_fal_key"] = False
+    host = MagicMock()
+    host.run.return_value = EchoWmaApp.build_metadata()
+    function = IsolatedFunction(
+        host=host,
+        entrypoint="example:EchoWmaApp",
+        options=Options(host={"inject_fal_key": False}),
+    )
 
-    with pytest.raises(
-        ValueError, match="This option is not supported for this app type"
-    ):
+    with pytest.raises(ValueError, match="not supported for this app type"):
         function.fetch_metadata()
 
 

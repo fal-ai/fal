@@ -34,7 +34,10 @@ from starlette.background import BackgroundTask
 
 from fal import App as FalApp
 from fal import endpoint
-from fal.api.api import _FAL_KEY_OPT_OUT_SUPPORTED, _validate_fal_key_opt_out
+from fal.api.api import (
+    _FAL_KEY_OPT_OUT_UNSUPPORTED,
+    _FAL_KEY_OPT_OUT_UNSUPPORTED_ERROR,
+)
 from fal.compat import run_in_thread
 from fal.exceptions import GPUException
 from fal.wma._errors import InputValueError, InternalServerError
@@ -843,9 +846,8 @@ class App(FalApp):
             if name_owner is App:
                 cls.app_name = None
         super().__init_subclass__(**kwargs)
-        _validate_fal_key_opt_out(
-            cls.host_kwargs.get("inject_fal_key"), supported=False
-        )
+        if cls.host_kwargs.get("inject_fal_key") is False:
+            raise ValueError(_FAL_KEY_OPT_OUT_UNSUPPORTED_ERROR)
 
     # Deferred billing reports authenticate to the fal REST API with the
     # app-scoped service credential. Subclasses that override this allow-list
@@ -919,7 +921,7 @@ class App(FalApp):
         """Publish both documents through the deployment metadata channel."""
 
         metadata = super().build_metadata()
-        metadata[_FAL_KEY_OPT_OUT_SUPPORTED] = False
+        metadata[_FAL_KEY_OPT_OUT_UNSUPPORTED] = True
         if cls.realtime_contract is not None:
             # Rendered from the OpenAPI document already built for metadata.
             metadata["asyncapi"] = cls._render_asyncapi(metadata["openapi"])

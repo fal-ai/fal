@@ -149,12 +149,27 @@ class FalSerializationError(FalServerlessException):
 class FalMissingDependencyError(FalSerializationError): ...
 
 
-_FAL_KEY_OPT_OUT_SUPPORTED = "_fal_key_opt_out_supported"
+# Metadata keys that ``App.build_metadata`` reports to the SDK only. They let
+# ``fetch_metadata`` validate ``inject_fal_key`` against the app class, which is
+# only known remotely for entrypoint apps; ``register`` strips them.
+_FAL_KEY_OPT_OUT_UNSUPPORTED = "_fal_key_opt_out_unsupported"
+_CLASS_FAL_KEY_OPT_OUT = "_class_fal_key_opt_out"
+_FAL_KEY_OPT_OUT_UNSUPPORTED_ERROR = (
+    "inject_fal_key = False is not supported for this app type."
+)
 
 
-def _validate_fal_key_opt_out(inject_fal_key: object, *, supported: bool) -> None:
-    if inject_fal_key is False and not supported:
-        raise ValueError("This option is not supported for this app type.")
+def _validate_fal_key_opt_out(
+    inject_fal_key: bool | None, metadata: dict[str, Any]
+) -> None:
+    if inject_fal_key is False and _FAL_KEY_OPT_OUT_UNSUPPORTED in metadata:
+        raise ValueError(_FAL_KEY_OPT_OUT_UNSUPPORTED_ERROR)
+    if inject_fal_key is not False and _CLASS_FAL_KEY_OPT_OUT in metadata:
+        raise ValueError(
+            "inject_fal_key = False on the app class has no effect for "
+            "python_entry_point apps. Set `inject_fal_key = false` for this app "
+            "in pyproject.toml instead."
+        )
 
 
 @dataclass
@@ -1133,16 +1148,6 @@ class FalServerlessHost(Host):
         build_environment: bool | None = None,
         attach_to_deployment: bool | None = None,
     ) -> Optional[RegisterApplicationResult]:
-        inject_fal_key = options.host.get("inject_fal_key")
-        if inject_fal_key is not None and not isinstance(inject_fal_key, bool):
-            raise ValueError("inject_fal_key must be a boolean.")
-        if metadata is not None and _FAL_KEY_OPT_OUT_SUPPORTED in metadata:
-            metadata = dict(metadata)
-            _validate_fal_key_opt_out(
-                inject_fal_key,
-                supported=metadata.pop(_FAL_KEY_OPT_OUT_SUPPORTED) is not False,
-            )
-
         options = self.prepare_options(options, func=func)
         environment_options = options.environment
         if build_environment is False:
@@ -1220,10 +1225,11 @@ class FalServerlessHost(Host):
         if func is not None:
             partial_func = _prepare_partial_func(func, runtime_config=runtime_config)
 
-        if metadata is None:
-            metadata = {}
-        if inject_fal_key is not None:
-            metadata = {**metadata, "inject_fal_key": inject_fal_key}
+        metadata = {
+            key: value
+            for key, value in (metadata or {}).items()
+            if key not in (_FAL_KEY_OPT_OUT_UNSUPPORTED, _CLASS_FAL_KEY_OPT_OUT)
+        }
 
         # TODO: let the user send more metadata than just openapi
         if isinstance(func, ServeWrapper):
@@ -1246,6 +1252,7 @@ class FalServerlessHost(Host):
             scale=scale,
             health_check_config=health_check_config,
             private_logs=options.host.get("private_logs"),
+            inject_fal_key=options.host.get("inject_fal_key"),
             files=files,
             skip_retry_conditions=skip_retry_conditions,
             retry_config=retry_config,
@@ -2693,8 +2700,9 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         """Probe ``<entrypoint>.build_metadata`` on the worker and cache the
         result into ``options.host["metadata"]``.
 
-        When there's no ``entrypoint`` set, validate and return the metadata
-        already populated by ``wrap_app`` or registration.
+        When there's no ``entrypoint`` set, the metadata was already populated
+        by ``wrap_app`` and is returned as is. Either way, the app's
+        ``inject_fal_key`` option is validated against the metadata.
 
         Pass ``build_environment=False`` to skip the inline env build inside
         the metadata probe (e.g. when the caller has already pre-built the env
@@ -2702,12 +2710,12 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         """
         if self.metadata_entrypoint is None:
             metadata = self.build_metadata()
-            _validate_fal_key_opt_out(
-                self.options.host.get("inject_fal_key"),
-                supported=metadata.get(_FAL_KEY_OPT_OUT_SUPPORTED) is not False,
-            )
-            return metadata
+        else:
+            metadata = self._probe_metadata(build_environment)
+        _validate_fal_key_opt_out(self.options.host.get("inject_fal_key"), metadata)
+        return metadata
 
+    def _probe_metadata(self, build_environment: bool | None) -> dict[str, Any]:
         from fal.api import ResultHandler  # noqa: PLC0415
 
         payload: object = self.host.run(
@@ -2724,10 +2732,6 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             raise FalServerlessError(
                 "fetch_metadata: entrypoint probe returned a non-dict payload."
             )
-        _validate_fal_key_opt_out(
-            self.options.host.get("inject_fal_key"),
-            supported=payload.get(_FAL_KEY_OPT_OUT_SUPPORTED) is not False,
-        )
         self.options.host["metadata"] = payload
         return payload
 

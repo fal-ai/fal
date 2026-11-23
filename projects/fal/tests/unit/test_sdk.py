@@ -22,15 +22,13 @@ class RecordingStub:
     def __init__(self):
         self.register_request = None
         self.run_request = None
-        self.run_metadata = None
 
     def RegisterApplication(self, request):
         self.register_request = request
         return iter([])
 
-    def Run(self, request, *, metadata=None):
+    def Run(self, request):
         self.run_request = request
-        self.run_metadata = metadata
         return iter([])
 
 
@@ -345,23 +343,31 @@ def test_connection_run_allows_no_isolate_container_without_callable():
     assert not stub.run_request.HasField("health_check_config")
 
 
-@pytest.mark.parametrize(
-    ("options", "expected_metadata"),
-    [
-        ({}, None),
-        ({"inject_fal_key": True}, None),
-        ({"inject_fal_key": False}, (("fal-inject-fal-key", "false"),)),
-    ],
-)
-def test_connection_run_only_sends_explicit_fal_key_opt_out(options, expected_metadata):
+@pytest.mark.parametrize("inject_fal_key", [None, False])
+def test_connection_only_sends_explicit_fal_key_opt_out(inject_fal_key):
     connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
     stub = RecordingStub()
     connection._stub = stub  # type: ignore[assignment]
     environment = connection.define_environment("virtualenv")
 
-    list(connection.run(None, [environment], entrypoint="main:app", **options))
+    list(
+        connection.register(
+            None,
+            [environment],
+            application_name="app",
+            deployment_strategy="rolling",
+            entrypoint="main:app",
+            inject_fal_key=inject_fal_key,
+        )
+    )
+    list(
+        connection.run(
+            None, [environment], entrypoint="main:app", inject_fal_key=inject_fal_key
+        )
+    )
 
-    assert stub.run_metadata == expected_metadata
+    for request in (stub.register_request, stub.run_request):
+        assert request.HasField("inject_fal_key") is (inject_fal_key is False)
 
 
 def test_connection_run_forwards_health_check_config():

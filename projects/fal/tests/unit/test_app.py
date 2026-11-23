@@ -1012,16 +1012,16 @@ def test_register_forwards_explicit_private_logs_false():
     assert call_kwargs["private_logs"] is False
 
 
-@pytest.mark.parametrize("inject_fal_key", [None, False, True])
-def test_register_sends_explicit_fal_key_option_as_metadata(inject_fal_key):
+@pytest.mark.parametrize(
+    "sdk_key", ["_class_fal_key_opt_out", "_fal_key_opt_out_unsupported"]
+)
+def test_register_forwards_fal_key_opt_out_and_strips_sdk_metadata(sdk_key):
     from fal.api.api import FalServerlessHost, Options
     from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
 
     host = FalServerlessHost()
-    options = Options()
-    if inject_fal_key is not None:
-        options.host["inject_fal_key"] = inject_fal_key
-    metadata = {"message": "test deployment"}
+    options = Options(host={"inject_fal_key": False})
+    metadata = {"message": "test deployment", sdk_key: True}
 
     connection = MagicMock()
     connection.define_environment.return_value = object()
@@ -1041,11 +1041,9 @@ def test_register_sends_explicit_fal_key_option_as_metadata(inject_fal_key):
             metadata=metadata,
         )
 
-    expected = {"message": "test deployment"}
-    if inject_fal_key is not None:
-        expected["inject_fal_key"] = inject_fal_key
-    assert connection.register.call_args.kwargs["metadata"] == expected
-    assert metadata == {"message": "test deployment"}
+    call_kwargs = connection.register.call_args.kwargs
+    assert call_kwargs["inject_fal_key"] is False
+    assert call_kwargs["metadata"] == {"message": "test deployment"}
 
 
 def test_register_allows_container_without_func_or_entrypoint():
@@ -1839,12 +1837,24 @@ def test_fetch_metadata_preserves_application_name_and_fal_key_option():
     assert call_kwargs["inject_fal_key"] is False
 
 
-@pytest.mark.parametrize("attribute_value", [False, True])
-def test_inject_fal_key_class_attribute_overrides_class_keyword(attribute_value):
-    class KeyInjectionApp(App, inject_fal_key=not attribute_value):
-        inject_fal_key = attribute_value
+def test_fetch_metadata_rejects_class_only_fal_key_opt_out_for_entrypoint():
+    from fal.api.api import IsolatedFunction, Options
 
-    assert KeyInjectionApp.host_kwargs["inject_fal_key"] is attribute_value
+    class OptedOutApp(App):
+        inject_fal_key = False
+
+        @endpoint("/")
+        def run(self) -> dict:
+            return {}
+
+    host = MagicMock()
+    host.run.return_value = OptedOutApp.build_metadata()
+    isolated_function = IsolatedFunction(
+        host=host, options=Options(), entrypoint="app:OptedOutApp"
+    )
+
+    with pytest.raises(ValueError, match="in pyproject.toml instead"):
+        isolated_function.fetch_metadata()
 
 
 def test_secrets_propagate_to_host_kwargs():

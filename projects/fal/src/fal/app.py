@@ -30,6 +30,7 @@ from fal.api import (
 from fal.api import (
     function as fal_function,
 )
+from fal.api.api import _CLASS_FAL_KEY_OPT_OUT
 from fal.auth import key_credentials
 from fal.compat import run_in_thread
 from fal.container import ContainerImage
@@ -649,8 +650,9 @@ class App(BaseServable):
         inject_fal_key: Set to False to skip the temporary fal API key and its
             legacy environment variables. Apps that call fal APIs or upload files
             to fal may need their own credentials. For `python_entry_point`
-            deployments, set this in `pyproject.toml` so the remote metadata probe
-            also skips the key.
+            apps the class is only imported remotely, so set
+            `inject_fal_key = false` in `pyproject.toml` instead; setting it
+            only on the class is an error.
         data_mounts: Persistent data mount paths to expose to the application.
             Use `["/data"]` for full access, or specific subdirectories like
             `["/data/.cache"]`. When omitted (None), the server applies a default
@@ -845,6 +847,8 @@ class App(BaseServable):
     @classmethod
     def build_metadata(cls) -> dict[str, Any]:
         metadata: dict[str, Any] = {"openapi": cls(_allow_init=True).openapi()}
+        if cls.host_kwargs.get("inject_fal_key") is False:
+            metadata[_CLASS_FAL_KEY_OPT_OUT] = True
         billing_components = cls.get_billing_components()
         if billing_components:
             metadata["billing_components"] = billing_components

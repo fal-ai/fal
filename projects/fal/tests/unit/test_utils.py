@@ -391,7 +391,6 @@ def test_load_function_from_applies_toml_host_options_over_app_defaults(tmp_path
             "keep_alive": 123,
             "_scheduler_options": {"storage_region": "eu-west"},
             "health_check_config": health_check_config,
-            "inject_fal_key": False,
         }
     )
 
@@ -402,7 +401,6 @@ def test_load_function_from_applies_toml_host_options_over_app_defaults(tmp_path
         "storage_region": "eu-west"
     }
     assert loaded.function.options.host["health_check_config"] == health_check_config
-    assert loaded.function.options.host["inject_fal_key"] is False
 
 
 def test_load_function_from_preserves_explicit_app_host_options_over_toml(tmp_path):
@@ -416,7 +414,6 @@ def test_load_function_from_preserves_explicit_app_host_options_over_toml(tmp_pa
         "    _scheduler='nomad',\n"
         "    _scheduler_options={'storage_region': 'us-east'},\n"
         "):\n"
-        "    inject_fal_key = False\n"
         "\n"
         "    @fal.endpoint(\n"
         "        '/', health_check=fal.HealthCheck(timeout_seconds=9, method='GET')\n"
@@ -432,7 +429,6 @@ def test_load_function_from_preserves_explicit_app_host_options_over_toml(tmp_pa
             "keep_alive": 123,
             "_scheduler": "kubernetes",
             "_scheduler_options": {"storage_region": "toml"},
-            "inject_fal_key": True,
             "health_check_config": ApplicationHealthCheckConfig(
                 path="/ready",
                 start_period_seconds=30,
@@ -449,7 +445,6 @@ def test_load_function_from_preserves_explicit_app_host_options_over_toml(tmp_pa
 
     assert loaded.function.options.host["keep_alive"] == 60
     assert loaded.function.options.host["_scheduler"] == "nomad"
-    assert loaded.function.options.host["inject_fal_key"] is False
     assert loaded.function.options.host["_scheduler_options"] == {
         "storage_region": "us-east"
     }
