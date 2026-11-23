@@ -796,9 +796,8 @@ class App(BaseServable):
         if cls.secrets is not None:
             cls.host_kwargs["secrets"] = cls.secrets
 
-        inject_fal_key = kwargs.get("inject_fal_key", cls.inject_fal_key)
-        if inject_fal_key is not None:
-            cls.host_kwargs["inject_fal_key"] = inject_fal_key
+        if cls.inject_fal_key is not None:
+            cls.host_kwargs["inject_fal_key"] = cls.inject_fal_key
 
         if cls.data_mounts is not None:
             cls.host_kwargs["data_mounts"] = cls.data_mounts

@@ -1839,6 +1839,14 @@ def test_fetch_metadata_preserves_application_name_and_fal_key_option():
     assert call_kwargs["inject_fal_key"] is False
 
 
+@pytest.mark.parametrize("attribute_value", [False, True])
+def test_inject_fal_key_class_attribute_overrides_class_keyword(attribute_value):
+    class KeyInjectionApp(App, inject_fal_key=not attribute_value):
+        inject_fal_key = attribute_value
+
+    assert KeyInjectionApp.host_kwargs["inject_fal_key"] is attribute_value
+
+
 def test_secrets_propagate_to_host_kwargs():
     class SecretsApp(App):
         secrets = ["OPENAI_API_KEY", "HF_TOKEN"]
