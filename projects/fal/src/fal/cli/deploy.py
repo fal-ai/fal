@@ -325,7 +325,7 @@ def add_parser(main_subparsers, parents):
         "  fal deploy\n"
         "  fal deploy path/to/myfile.py\n"
         "  fal deploy path/to/myfile.py::MyApp\n"
-        "  fal deploy path/to/myfile.py::MyApp --app-name myapp --auth public\n"
+        "  fal deploy path/to/myfile.py::MyApp --app-name myapp --auth private\n"
         "  fal deploy my-app\n"
         "  fal deploy my-app --attach\n"
         '  fal deploy my-app --message "a1b2c3d fix cold-start"\n'
@@ -367,7 +367,7 @@ def add_parser(main_subparsers, parents):
     parser.add_argument(
         "--auth",
         type=valid_auth_option,
-        help="Application authentication mode (private, public).",
+        help="App authentication mode (private or shared; public is deprecated).",
     )
     parser.add_argument(
         "--strategy",

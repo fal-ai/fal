@@ -27,7 +27,7 @@ def test_run_with_env():
     assert args.func == _run
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.env == "dev"
-    assert args.auth == "public"
+    assert args.auth == "private"
 
 
 @patch.dict("os.environ", {"FAL_ENV": "from-env-var"})
@@ -177,7 +177,7 @@ def mock_args(
     func_ref: Tuple[str, Optional[str]],
     team: Optional[str] = None,
     no_cache: bool = False,
-    auth: Optional[str] = "public",
+    auth: Optional[str] = "private",
     machine_type: Optional[str] = None,
     forward_compat: bool = False,
     limit_max_requests: Optional[int] = None,
@@ -534,7 +534,7 @@ def test_run_with_toml_success(
     assert call_kwargs["options"].environment == {}
     assert call_kwargs["options"].gateway == {}
 
-    assert call_kwargs["app_auth"] == "public"
+    assert call_kwargs["app_auth"] == "private"
     assert call_kwargs["app_name"] is None
 
 
@@ -574,7 +574,7 @@ def test_run_with_toml_cli_name_override(
 
     _, call_kwargs = mock_load_function_from.call_args
     assert call_kwargs["app_name"] == "cli-app"
-    assert call_kwargs["app_auth"] == "public"
+    assert call_kwargs["app_auth"] == "private"
     assert call_kwargs["options"].environment["requirements"] == ["numpy==1.26.4"]
     assert call_kwargs["options"].host["machine_type"] == "GPU-H100"
     assert call_kwargs["options"].host["num_gpus"] == 2
@@ -617,7 +617,7 @@ def test_run_with_toml_overrides_applied(
 
     _, call_kwargs = mock_load_function_from.call_args
     assert call_kwargs["app_name"] is None
-    assert call_kwargs["app_auth"] == "public"
+    assert call_kwargs["app_auth"] == "private"
     assert call_kwargs["options"].environment["requirements"] == ["numpy==1.26.4"]
     assert call_kwargs["options"].host["machine_type"] == "GPU-H100"
     assert call_kwargs["options"].host["num_gpus"] == 2

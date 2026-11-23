@@ -615,7 +615,7 @@ class App(BaseServable):
             For internal use. Prefer using class attributes instead.
         app_name: Custom name for the application. Defaults to class name.
         app_auth: Authentication mode. Options: 'private' (API key required),
-            'public' (no auth), 'shared' (shareable link).
+            'shared' (authenticated callers), or 'public' (deprecated).
         app_files: List of files/directories to include in deployment.
             Example: `["./models", "./config.yaml"]`
         app_files_ignore: Regex patterns to exclude from deployment.

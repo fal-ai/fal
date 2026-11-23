@@ -391,7 +391,7 @@ def _add_set_rev_parser(subparsers, parents):
         "--auth",
         choices=ALIAS_AUTH_MODES,
         default=None,
-        help="Application authentication mode.",
+        help="Application authentication mode (public is deprecated).",
     )
     parser.add_argument(
         "--strategy",

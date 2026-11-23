@@ -341,6 +341,18 @@ def test_connection_run_allows_no_isolate_container_without_callable():
     assert stub.run_request is not None
     assert stub.run_request.WhichOneof("callable") is None
     assert not stub.run_request.HasField("health_check_config")
+    assert stub.run_request.auth_mode == isolate_proto.ApplicationAuthMode.PRIVATE
+
+
+def test_connection_run_warns_for_legacy_public_auth():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+    with pytest.warns(FutureWarning, match="Public app authentication is deprecated"):
+        list(connection.run(None, [], entrypoint="mod:app", auth_mode="public"))
+
+    assert stub.run_request is not None
+    assert stub.run_request.auth_mode == isolate_proto.ApplicationAuthMode.PUBLIC
 
 
 def test_connection_run_forwards_health_check_config():
