@@ -149,6 +149,14 @@ class FalSerializationError(FalServerlessException):
 class FalMissingDependencyError(FalSerializationError): ...
 
 
+_FAL_KEY_OPT_OUT_SUPPORTED = "_fal_key_opt_out_supported"
+
+
+def _validate_fal_key_opt_out(inject_fal_key: object, *, supported: bool) -> None:
+    if inject_fal_key is False and not supported:
+        raise ValueError("This option is not supported for this app type.")
+
+
 @dataclass
 class SpawnInfo:
     future: Future | None = None
@@ -1128,6 +1136,12 @@ class FalServerlessHost(Host):
         inject_fal_key = options.host.get("inject_fal_key")
         if inject_fal_key is not None and not isinstance(inject_fal_key, bool):
             raise ValueError("inject_fal_key must be a boolean.")
+        if metadata is not None and _FAL_KEY_OPT_OUT_SUPPORTED in metadata:
+            metadata = dict(metadata)
+            _validate_fal_key_opt_out(
+                inject_fal_key,
+                supported=metadata.pop(_FAL_KEY_OPT_OUT_SUPPORTED) is not False,
+            )
 
         options = self.prepare_options(options, func=func)
         environment_options = options.environment
@@ -2679,16 +2693,20 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         """Probe ``<entrypoint>.build_metadata`` on the worker and cache the
         result into ``options.host["metadata"]``.
 
-        No-op when there's no ``entrypoint`` set — the regular flow already
-        populates metadata via ``wrap_app``/registration paths, and this
-        method just returns that cached value.
+        When there's no ``entrypoint`` set, validate and return the metadata
+        already populated by ``wrap_app`` or registration.
 
         Pass ``build_environment=False`` to skip the inline env build inside
         the metadata probe (e.g. when the caller has already pre-built the env
         via ``Host.build_environment``).
         """
         if self.metadata_entrypoint is None:
-            return self.build_metadata()
+            metadata = self.build_metadata()
+            _validate_fal_key_opt_out(
+                self.options.host.get("inject_fal_key"),
+                supported=metadata.get(_FAL_KEY_OPT_OUT_SUPPORTED) is not False,
+            )
+            return metadata
 
         from fal.api import ResultHandler  # noqa: PLC0415
 
@@ -2706,6 +2724,10 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             raise FalServerlessError(
                 "fetch_metadata: entrypoint probe returned a non-dict payload."
             )
+        _validate_fal_key_opt_out(
+            self.options.host.get("inject_fal_key"),
+            supported=payload.get(_FAL_KEY_OPT_OUT_SUPPORTED) is not False,
+        )
         self.options.host["metadata"] = payload
         return payload
 
