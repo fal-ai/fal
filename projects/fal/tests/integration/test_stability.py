@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import uuid
 from contextlib import suppress
 
@@ -577,6 +578,9 @@ def test_worker_env_vars(isolated_client):
 @pytest.mark.flaky(max_runs=3)
 def test_fal_storage_v3(isolated_client):
     url_prefixes = ["https://v3.fal.media/files", "https://v3b.fal.media/files"]
+    storage_host = os.getenv("FAL_STORAGE_HOST")
+    if storage_host:
+        url_prefixes.append(f"https://{storage_host}/files")
 
     # v3b validates content against the claimed type; keep this test out of the
     # rate-limited unrecognized-binary path.
@@ -587,7 +591,7 @@ def test_fal_storage_v3(isolated_client):
         repository="fal_v3",
         fallback_repository=None,
     )
-    assert any(file.url.startswith(url_prefix) for url_prefix in url_prefixes)
+    assert any(file.url.startswith(url_prefix) for url_prefix in url_prefixes), file.url
     assert file.as_bytes().decode().endswith("local")
 
     @isolated_client(
@@ -612,7 +616,7 @@ def test_fal_storage_v3(isolated_client):
 
     local_fn = hello_file.on(serve=False)
     file = local_fn()
-    assert any(file.url.startswith(url_prefix) for url_prefix in url_prefixes)
+    assert any(file.url.startswith(url_prefix) for url_prefix in url_prefixes), file.url
     assert file.as_bytes().decode().endswith("isolated")
 
 

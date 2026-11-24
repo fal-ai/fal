@@ -137,6 +137,8 @@ message HostedRun {
     optional ApplicationHealthCheckConfig health_check_config = 16;
     // Named data volumes to attach to the run.
     repeated VolumeMount volumes = 17;
+    // When false, runners get no generated fal API key. Unset or true injects it.
+    optional bool inject_fal_key = 18;
 }
 
 message BuildEnvironmentRequest {
@@ -427,6 +429,8 @@ message RegisterApplicationRequest {
     optional bool attach_to_deployment = 27;
     // Named data volumes to attach to application runners.
     repeated VolumeMount volumes = 28;
+    // When false, runners get no generated fal API key. Unset or true injects it.
+    optional bool inject_fal_key = 29;
 }
 
 message RegisterApplicationResultType {

@@ -26,6 +26,7 @@ from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 
 from fal import flags
 from fal._serialization import patch_pickle
+from fal._tls import grpc_root_certificates
 from fal.auth import UserAccess, current_user_info, key_credentials
 from fal.console import console
 from fal.exceptions import FalServerlessException
@@ -188,7 +189,7 @@ class LocalCredentials(ServerCredentials):
 
 class RemoteCredentials(ServerCredentials):
     def to_grpc(self) -> grpc.ChannelCredentials:
-        return grpc.ssl_channel_credentials()
+        return grpc.ssl_channel_credentials(root_certificates=grpc_root_certificates())
 
 
 @dataclass(repr=False)
@@ -1039,6 +1040,7 @@ class FalServerlessConnection:
         deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
         private_logs: bool | None = None,
+        inject_fal_key: bool | None = None,
         files: list[File] | None = None,
         skip_retry_conditions: list[RetryConditionLiteral] | None = None,
         retry_config: RetryConfig | RetryConfigDict | None = None,
@@ -1172,6 +1174,8 @@ class FalServerlessConnection:
             request.function.MergeFrom(wrapped_function)
         if private_logs is not None:
             request.private_logs = private_logs
+        if inject_fal_key is False:
+            request.inject_fal_key = False
         if build_environment is not None:
             request.build_environment = build_environment
         if attach_to_deployment is not None:
@@ -1283,6 +1287,7 @@ class FalServerlessConnection:
         volumes: dict[str, str] | None = None,
         entrypoint: str | None = None,
         build_environment: bool | None = None,
+        inject_fal_key: bool | None = None,
     ) -> Iterator[HostedRunResult[ResultT]]:
         if (
             function is None
@@ -1368,6 +1373,8 @@ class FalServerlessConnection:
             )
         if build_environment is not None:
             request.build_environment = build_environment
+        if inject_fal_key is False:
+            request.inject_fal_key = False
         stream = self.stub.Run(request)
         for partial_result in stream:
             res = from_grpc(partial_result)

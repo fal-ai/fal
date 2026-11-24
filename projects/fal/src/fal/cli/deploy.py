@@ -210,9 +210,9 @@ def _render_deploy_result(
             # A detached rolling deployment moves the alias first and brings the
             # new revision's runners up afterwards, with no automatic rollback.
             args.console.print(
-                "The rollout is still in progress: the new revision already "
-                "receives traffic while its runners start up, and a failed rollout "
-                "is not rolled back automatically.",
+                "The rollout is still in progress: the new revision "
+                "receives traffic while its runners start up. A failed deployment "
+                "can be rolled back automatically.",
             )
         else:
             check_icon = get_check_icon(args.console)

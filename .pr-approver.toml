@@ -1,0 +1,37 @@
+# Approval rules for pr-approver; see monorust/pr-approver/README.md in
+# isolate-cloud.
+
+# Bot user accounts are in @fal-ai/bots; type:bot covers GitHub Apps such as
+# fal2d2, which can't be team members.
+[groups.BOT]
+"*" = "@fal-ai/bots type:bot"
+
+[groups.REVIEWER]
+"*" = "* -@BOT"
+
+[[rules]]
+name     = "Five reviewers stand in for a code owner"
+priority = 60
+effect   = "accept"
+requires = { REVIEWER = 5 }
+
+[[rules]]
+name     = "Owned files need a code owner"
+priority = 50
+effect   = "deny"
+paths    = ["@CODEOWNERS"]
+requires = { CODEOWNERS = 1 }
+
+# fal-bot only bumps images, so it's trusted as an author too.
+[[rules]]
+name     = "Team author needs one reviewer"
+priority = 10
+effect   = "accept"
+author   = "@REVIEWER fal-bot"
+requires = { REVIEWER = 1 }
+
+[[rules]]
+name     = "Anyone else needs two reviewers"
+priority = 10
+effect   = "accept"
+requires = { REVIEWER = 2 }

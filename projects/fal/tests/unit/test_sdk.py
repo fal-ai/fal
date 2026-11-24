@@ -343,6 +343,33 @@ def test_connection_run_allows_no_isolate_container_without_callable():
     assert not stub.run_request.HasField("health_check_config")
 
 
+@pytest.mark.parametrize("inject_fal_key", [None, False])
+def test_connection_only_sends_explicit_fal_key_opt_out(inject_fal_key):
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+    environment = connection.define_environment("virtualenv")
+
+    list(
+        connection.register(
+            None,
+            [environment],
+            application_name="app",
+            deployment_strategy="rolling",
+            entrypoint="main:app",
+            inject_fal_key=inject_fal_key,
+        )
+    )
+    list(
+        connection.run(
+            None, [environment], entrypoint="main:app", inject_fal_key=inject_fal_key
+        )
+    )
+
+    for request in (stub.register_request, stub.run_request):
+        assert request.HasField("inject_fal_key") is (inject_fal_key is False)
+
+
 def test_connection_run_forwards_health_check_config():
     connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
     stub = RecordingStub()

@@ -1,7 +1,9 @@
-# WebRTC session apps with `fal.wma`
+# fal WMA: WebRTC session apps with `fal.wma`
 
-`fal.wma` provides WebRTC session APIs for Python applications. Import it
-explicitly. This API is experimental; pin your SDK version when deploying.
+fal WMA (World Model Accelerator) runs interactive, real-time apps such as
+world models on fal. `fal.wma` provides its WebRTC session APIs for Python
+applications. Import it explicitly. This API is experimental; pin your SDK
+version when deploying.
 
 Install the optional local WebRTC and schema dependencies:
 
