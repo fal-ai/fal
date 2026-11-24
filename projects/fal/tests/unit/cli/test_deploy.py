@@ -1825,6 +1825,7 @@ def test_get_app_data_from_toml_rejects_app_files_context_dir_without_app_files(
     [
         ("keep_alive", True, "keep_alive must be an integer."),
         ("private_logs", "yes", "private_logs must be a boolean."),
+        ("inject_fal_key", "false", "inject_fal_key must be a boolean."),
         ("_scheduler", "", "_scheduler must be a non-empty string."),
         ("_scheduler_options", "nomad", "_scheduler_options must be a table"),
         ("secrets", "OPENAI_API_KEY", "secrets must be a list of strings."),
@@ -1903,6 +1904,7 @@ def test_get_app_data_from_toml_with_image(mock_parse_toml, mock_find_toml, tmp_
         "apps": {
             "container-app": {
                 "ref": "src/my_app/inference.py::MyApp",
+                "inject_fal_key": False,
                 "image": {
                     "dockerfile": "Dockerfile",
                     "build_args": {"FOO": "bar"},
@@ -1919,6 +1921,7 @@ def test_get_app_data_from_toml_with_image(mock_parse_toml, mock_find_toml, tmp_
 
     toml_data = get_app_data_from_toml("container-app")
 
+    assert toml_data.options.host["inject_fal_key"] is False
     env = toml_data.options.environment
     assert env["kind"] == "container"
     assert env["image"]["dockerfile_str"] == dockerfile
