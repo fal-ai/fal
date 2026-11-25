@@ -967,7 +967,10 @@ class FalServerlessHost(Host):
     url: str = FAL_SERVERLESS_DEFAULT_URL
     local_file_path: str = ""
     local_project_root: str = ""
-    credentials: Credentials = field(default_factory=get_credentials)
+    # Resolved on first use (see `_credentials`): `fal.serverless` and
+    # `@fal.function` build hosts at import time, and looking up credentials
+    # can call the REST API.
+    credentials: Optional[Credentials] = None
     environment_name: Optional[str] = None
     requirements_context_dir: str = ""
 
@@ -1002,9 +1005,15 @@ class FalServerlessHost(Host):
         self.credentials = get_agent_credentials(self.credentials)
 
     @property
+    def _credentials(self) -> Credentials:
+        if self.credentials is None:
+            self.credentials = get_credentials()
+        return self.credentials
+
+    @property
     def _connection(self) -> FalServerlessConnection:
         with self._lock:
-            client = FalServerlessClient(self.url, self.credentials)
+            client = FalServerlessClient(self.url, self._credentials)
             return client.connect()
 
     def _materialize_local_requirements(
@@ -1110,7 +1119,7 @@ class FalServerlessHost(Host):
 
         res = []
         if options.files_list:
-            sync = FileSync(self.local_file_path, credentials=self.credentials)
+            sync = FileSync(self.local_file_path, credentials=self._credentials)
             files, errors = sync.sync_files(
                 options.files_list,
                 files_ignore=options.files_ignore,
