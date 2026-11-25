@@ -2,6 +2,7 @@ import io
 import json
 import os
 import struct
+import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -611,3 +612,42 @@ def test_follow_finished_runner_reads_history(
     assert logs[-1]["message"] == "149"
     assert logs[0]["message"] == ("0" if expect_since else "50")
     assert (mock_iter.call_args[0][2] is not None) == expect_since
+
+
+@pytest.fixture
+def non_utc_local_time(monkeypatch):
+    # UTC+3 all year, so a local-vs-UTC mixup shows as a 3 hour shift.
+    monkeypatch.setenv("TZ", "Europe/Istanbul")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="time.tzset is Unix-only")
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["runners", "logs", "rid", "--since", "1h"],
+        ["runners", "list", "--since", "1h"],
+    ],
+)
+def test_relative_since_is_relative_to_now(non_utc_local_time, argv):
+    since = parse_args(argv).since
+
+    expected = datetime.now(timezone.utc) - timedelta(hours=1)
+    assert since.tzinfo is not None
+    assert abs(since - expected) < timedelta(minutes=1)
+    start = isolate_proto.timestamp_from_datetime(since).ToDatetime(timezone.utc)
+    assert abs(start - expected) < timedelta(minutes=1)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="time.tzset is Unix-only")
+def test_iso_since_with_offset_names_that_instant(non_utc_local_time):
+    instant = (datetime.now(timezone.utc) - timedelta(hours=2)).replace(microsecond=0)
+
+    since = parse_args(
+        ["runners", "list", "--since", instant.strftime("%Y-%m-%dT%H:%M:%SZ")]
+    ).since
+
+    assert since == instant

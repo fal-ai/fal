@@ -65,10 +65,15 @@ class SinceAction(argparse.Action):
     def _parse_since(self, value: str) -> Optional[datetime]:
         import dateparser
 
+        # Aware UTC: relative values ("1h") are computed from the local clock,
+        # and consumers (protobuf timestamps, `_to_aware_utc`) read naive
+        # datetimes as UTC, which shifted the window by the UTC offset.
         return dateparser.parse(
             value,
             settings={
                 "PREFER_DATES_FROM": "past",
+                "RETURN_AS_TIMEZONE_AWARE": True,
+                "TO_TIMEZONE": "UTC",
             },
         )
 
