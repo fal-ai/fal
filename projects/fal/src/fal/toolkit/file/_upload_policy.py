@@ -134,9 +134,9 @@ class UploadPolicyInputError(AppException):
     ``{"detail": message}``. 422 rather than 424 because nothing was attempted
     against the caller's bucket.
 
-    Billing follows where it surfaces: the middleware answers a bad header
-    before inference and bills zero, while anything ``_prepare_upload`` can only
-    discover once the output exists is billed.
+    Bills zero wherever it surfaces: the middleware answers a bad header before
+    inference, and anything ``_prepare_upload`` can only discover once the output
+    exists goes through ``AppException``'s handler.
     """
 
     def __init__(self, message: str) -> None:
@@ -547,9 +547,9 @@ def get_upload_policy(request: Any = None) -> UploadPolicy | None:
 
 
 def _validate_size(nbytes: int) -> None:
-    # Reached after the generation, so billed at the endpoint's default rather
-    # than zeroed: the output's size, name and signed Content-Type are not
-    # knowable up front. A malformed header is, and the middleware bills it zero.
+    # Reached after the generation: the output's size, name and signed
+    # Content-Type are not knowable up front. A malformed header is, and the
+    # middleware rejects it before inference. Both bill zero.
     if nbytes > UPLOAD_POLICY_MAX_BYTES:
         raise UploadPolicyInputError(
             f"Upload via {UPLOAD_POLICY_KEY} is {nbytes} bytes, which exceeds the "

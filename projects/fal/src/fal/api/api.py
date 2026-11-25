@@ -2368,12 +2368,16 @@ class BaseServable:
 
         @_app.exception_handler(AppException)
         async def app_exception_handler(request: Request, exc: AppException):
-            return JSONResponse({"detail": exc.message}, exc.status_code)
+            return JSONResponse(
+                {"detail": exc.message},
+                exc.status_code,
+                headers={"x-fal-billable-units": "0"},
+            )
 
         @_app.exception_handler(FieldException)
         async def field_exception_handler(request: Request, exc: FieldException):
             headers = {}
-            if exc.billable_units:
+            if exc.billable_units is not None:
                 # poor man's validation. we dont want people to pass in
                 # non-numeric values.
                 units_float = float(exc.billable_units)

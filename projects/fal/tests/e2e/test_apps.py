@@ -1556,13 +1556,14 @@ def test_app_exceptions(test_exception_app: AppClient):
         test_exception_app.app_exception({})
 
     assert app_exc.value.status_code == 401
+    assert app_exc.value.headers.get("x-fal-billable-units") == "0"
 
     with pytest.raises(AppClientError) as field_exc:
         test_exception_app.field_exception({"lhs": 1, "rhs": "2"})
 
     assert field_exc.value.status_code == 422
 
-    assert field_exc.value.headers.get("x-fal-billable-units") is None
+    assert field_exc.value.headers.get("x-fal-billable-units") == "0"
 
     with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception({})
@@ -1670,7 +1671,7 @@ def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
 
 
 def test_field_exception_default_billable_units(test_exception_app: AppClient):
-    """Test that when billable_units is not set (None), no header is included."""
+    """Test that when billable_units is not set, the header bills 0 units."""
     with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception"
         response = httpx_client.post(
@@ -1680,8 +1681,7 @@ def test_field_exception_default_billable_units(test_exception_app: AppClient):
         )
 
         assert response.status_code == 422
-        # When billable_units is None (default), header should not be present
-        assert "x-fal-billable-units" not in response.headers
+        assert response.headers.get("x-fal-billable-units") == "0"
 
 
 def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""):
