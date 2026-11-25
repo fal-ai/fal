@@ -611,3 +611,28 @@ def test_follow_finished_runner_reads_history(
     assert logs[-1]["message"] == "149"
     assert logs[0]["message"] == ("0" if expect_since else "50")
     assert (mock_iter.call_args[0][2] is not None) == expect_since
+
+
+@pytest.mark.parametrize(
+    ("message", "encoding"),
+    [
+        ("[INST] hi [/INST]", "utf-8"),
+        ("progress [d] done", "utf-8"),
+        ("ok :smile: done", "ascii"),
+    ],
+)
+def test_log_printer_prints_message_text_verbatim(message, encoding):
+    from rich.console import Console
+
+    from fal.cli.runners import LogPrinter
+
+    buffer = io.BytesIO()
+    stream = io.TextIOWrapper(buffer, encoding=encoding)
+    printer = LogPrinter(Console(file=stream, force_terminal=False, width=200))
+
+    printer.print(
+        {"timestamp": "2026-11-05T21:55:07.178Z", "level": "info", "message": message}
+    )
+
+    stream.flush()
+    assert message in buffer.getvalue().decode(encoding)
