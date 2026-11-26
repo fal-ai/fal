@@ -707,9 +707,13 @@ class LogPrinter:
         return self._renderer(logger={}, name=event["level"], event_dict=event)
 
     def print(self, log: dict) -> None:
+        # Log text is remote data: rich markup or emoji codes in it ("[/INST]",
+        # ":smile:") must print as-is, not be interpreted or crash the command.
         self._console.print(
             make_terminal_safe(self._render_log(log), self._console.file),
             highlight=False,
+            markup=False,
+            emoji=False,
         )
 
 
