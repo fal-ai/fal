@@ -526,7 +526,7 @@ class SyncServerlessClient:
             self._grpc_host,
             local_file_path=local_file_path,
             requirements_context_dir=requirements_context_dir,
-            credentials=self._credentials,
+            _credentials=self._credentials,
             environment_name=environment_name,
         )
 

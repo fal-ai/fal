@@ -3061,14 +3061,12 @@ def test_serverless_host_resolves_credentials_on_first_use(monkeypatch):
     host = api_module.FalServerlessHost()
     assert calls == []
 
-    assert host._credentials == "creds"
-    assert host._credentials == "creds"
+    assert host.credentials() == "creds"
+    assert host.credentials() == "creds"
     assert calls == [1]
 
 
 def test_import_fal_needs_no_api_with_key_and_team(tmp_path):
-    # A key plus a saved team makes get_credentials look up the key owner over
-    # REST; importing fal must not do that (nothing listens on port 9).
     (tmp_path / ".fal").mkdir()
     (tmp_path / ".fal" / "config.toml").write_text('[__internal__]\nteam = "t"\n')
     env = {
