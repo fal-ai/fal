@@ -58,6 +58,16 @@ class VolumeAlreadyExistsError(VolumeException):
 
 
 @dataclass
+class VolumeLimitExceededError(VolumeException):
+    reason: str = "VOLUME_LIMIT_EXCEEDED"
+
+
+@dataclass
+class VolumeInUseError(VolumeException):
+    reason: str = "VOLUME_IN_USE"
+
+
+@dataclass
 class VolumeAccountNotEligibleError(VolumeException):
     reason: str = "VOLUME_ACCOUNT_NOT_ELIGIBLE"
 
@@ -75,6 +85,8 @@ VOLUME_ERRORS_BY_REASON: Dict[str, Type[VolumeException]] = {
         VolumeNotFoundError,
         VolumeUnresolvableError,
         VolumeAlreadyExistsError,
+        VolumeLimitExceededError,
+        VolumeInUseError,
         VolumeAccountNotEligibleError,
         VolumeControlPlaneUnavailableError,
     )
