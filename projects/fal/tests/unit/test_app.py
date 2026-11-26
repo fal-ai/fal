@@ -3048,3 +3048,42 @@ def test_function_volumes_normalized_at_host_boundary():
 
     _, call_kwargs = connection.register.call_args
     assert call_kwargs["volumes"] == {"/models": "my-models", "/cache": "shared"}
+
+
+def test_serverless_host_resolves_credentials_on_first_use(monkeypatch):
+    from fal.api import api as api_module
+
+    calls = []
+    monkeypatch.setattr(
+        api_module, "get_credentials", lambda: calls.append(1) or "creds"
+    )
+
+    host = api_module.FalServerlessHost()
+    assert calls == []
+
+    assert host.credentials() == "creds"
+    assert host.credentials() == "creds"
+    assert calls == [1]
+
+
+def test_import_fal_needs_no_api_with_key_and_team(tmp_path):
+    (tmp_path / ".fal").mkdir()
+    (tmp_path / ".fal" / "config.toml").write_text('[__internal__]\nteam = "t"\n')
+    env = {
+        "PATH": os.environ["PATH"],
+        "HOME": str(tmp_path),
+        "FAL_KEY": "key-id:key-secret",
+        "FAL_REST_HOST": "127.0.0.1:9",
+    }
+
+    proc = subprocess.run(
+        [sys.executable, "-c", "import fal"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == ""

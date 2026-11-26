@@ -296,7 +296,9 @@ class EnvironmentInfo:
     created_at: datetime
 
 
-def get_agent_credentials(original_credentials: Credentials) -> Credentials:
+def get_agent_credentials(
+    original_credentials: Credentials | None,
+) -> Credentials | None:
     """If running inside a fal Serverless box, use the preconfigured credentials
     instead of the user provided ones."""
 
