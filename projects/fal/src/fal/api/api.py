@@ -179,6 +179,7 @@ class SpawnInfo:
     _url_ready: threading.Event = field(default_factory=threading.Event)
     _url: str | None = None
     stream: Any = None
+    credentials: Credentials | None = field(default=None, repr=False, compare=False)
 
     @property
     def return_value(self):
@@ -1368,7 +1369,6 @@ class FalServerlessHost(Host):
         effective_app_name = (
             application_name or getattr(func, "__name__", None) or entrypoint
         )
-        effective_auth_mode = application_auth_mode or "public"
 
         for partial_result in self._connection.run(
             partial_func,
@@ -1377,7 +1377,7 @@ class FalServerlessHost(Host):
             setup_function=setup_function,
             files=files,
             application_name=effective_app_name,
-            auth_mode=effective_auth_mode,
+            auth_mode=application_auth_mode or "private",
             environment_name=self.environment_name,
             health_check_config=health_check_config,
             secrets=secrets,
@@ -1419,7 +1419,7 @@ class FalServerlessHost(Host):
         entrypoint: str | None = None,
         build_environment: bool | None = None,
     ) -> ReturnT:
-        effective_auth_mode = application_auth_mode or "public"
+        effective_auth_mode = application_auth_mode or "private"
 
         if result_handler is None:
             result_handler = RunResultHandler(
@@ -1516,7 +1516,7 @@ class FalServerlessHost(Host):
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
     ) -> SpawnInfo:
-        ret = SpawnInfo()
+        ret = SpawnInfo(credentials=self.credentials)
         default_handler = SpawnResultHandler(ret)
 
         # SpawnInfo is the spawn() return value, so the default handler always

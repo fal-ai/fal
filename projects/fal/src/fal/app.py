@@ -15,8 +15,10 @@ from typing import Any, Callable, ClassVar, Optional
 
 import fastapi
 import grpc.aio as async_grpc
+import httpx
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from fal import flags
 from fal._billing import BillingComponents, BillingDeclaration, check_declaration
 from fal._serialization import include_modules_from
 from fal._typing import EndpointT
@@ -274,6 +276,16 @@ class AppSpawnInfo:
     def __init__(self, info: SpawnInfo):
         self.info = info
 
+    def _authenticate(self, request: httpx.Request) -> httpx.Request:
+        # Legacy runners can announce the URL in a log line.
+        origin = request.url.copy_with(path="/", query=None, fragment=None)
+        if origin == httpx.URL(f"https://{flags.FAL_RUN_HOST}/"):
+            credentials = self.info.credentials
+            request.headers.update(
+                credentials.to_headers() if credentials else _default_auth_headers()
+            )
+        return request
+
     @property
     def url(self):
         return self.info.url
@@ -302,8 +314,6 @@ class AppSpawnInfo:
         health_check_interval: float = 0.5,
         headers: dict[str, str] | None = None,
     ) -> None:
-        import httpx  # noqa: PLC0415
-
         url = self.url
         if url is None:
             raise AppClientError(
@@ -316,9 +326,9 @@ class AppSpawnInfo:
         health_url = url + "/health"
         last_error = None
         attempt = 0
-        request_headers = _default_auth_headers() if headers is None else headers
-
-        with httpx.Client() as client:
+        with httpx.Client(
+            auth=self._authenticate if headers is None else None
+        ) as client:
             while time.perf_counter() - start_time < startup_timeout:
                 attempt += 1
 
@@ -326,7 +336,7 @@ class AppSpawnInfo:
                     resp = client.get(
                         health_url,
                         timeout=health_request_timeout,
-                        headers=request_headers,
+                        headers=headers,
                     )
                 except httpx.TimeoutException:
                     last_error = (
@@ -374,20 +384,20 @@ class EndpointClient:
         signature,
         timeout: int | None = None,
         headers: dict[str, str] | None = None,
+        auth: Callable[[httpx.Request], httpx.Request] | None = None,
     ):
         self.url = url
         self.endpoint = endpoint
         self.signature = signature
         self.timeout = timeout
         self.headers = headers or {}
+        self._auth = auth
 
         annotations = endpoint.__annotations__ or {}
         self.return_type = annotations.get("return") or None
 
     def __call__(self, data):
-        import httpx  # noqa: PLC0415
-
-        with httpx.Client() as client:
+        with httpx.Client(auth=self._auth) as client:
             url = self.url + self.signature.path
             resp = client.post(
                 self.url + self.signature.path,
@@ -417,10 +427,13 @@ class AppClient:
         cls,
         url,
         timeout: int | None = None,
+        *,
+        _auth: Callable[[httpx.Request], httpx.Request] | None = None,
     ):
         self.url = url
         self.cls = cls
-        self._headers = _default_auth_headers()
+        self._auth = _auth
+        self._headers = _default_auth_headers() if _auth is None else {}
 
         user_name, app_name = url.rstrip("/").rsplit("/", 2)[-2:]
         self.application = f"{user_name}/{app_name}"
@@ -435,6 +448,7 @@ class AppClient:
                 signature,
                 timeout=timeout,
                 headers=self._headers,
+                auth=self._auth,
             )
             setattr(self, name, endpoint_client)
 
@@ -469,7 +483,7 @@ class AppClient:
                 health_check_interval=health_check_interval,
             )
 
-            client = cls(app_cls, info.url)
+            client = cls(app_cls, info.url, _auth=info._authenticate)
             yield client
         finally:
             info.stream.cancel()
@@ -477,9 +491,7 @@ class AppClient:
             _log_printer.join()
 
     def health(self):
-        import httpx  # noqa: PLC0415
-
-        with httpx.Client() as client:
+        with httpx.Client(auth=self._auth) as client:
             resp = client.get(self.url + "/health", headers=self._headers)
             resp.raise_for_status()
             return resp.json()
@@ -616,7 +628,7 @@ class App(BaseServable):
             For internal use. Prefer using class attributes instead.
         app_name: Custom name for the application. Defaults to class name.
         app_auth: Authentication mode. Options: 'private' (API key required),
-            'public' (no auth), 'shared' (shareable link).
+            'shared' (authenticated callers), or 'public' (deprecated).
         app_files: List of files/directories to include in deployment.
             Example: `["./models", "./config.yaml"]`
         app_files_ignore: Regex patterns to exclude from deployment.

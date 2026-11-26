@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import warnings
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -600,6 +601,11 @@ def _to_auth_mode_proto(
     auth_mode: Optional[AuthModeLiteral],
 ) -> isolate_proto.ApplicationAuthMode.ValueType | None:
     if auth_mode == "public":
+        warnings.warn(
+            "Public app authentication is deprecated. Use private or shared auth.",
+            FutureWarning,
+            stacklevel=3,
+        )
         return isolate_proto.ApplicationAuthMode.PUBLIC
     if auth_mode == "shared":
         return isolate_proto.ApplicationAuthMode.SHARED
@@ -1335,7 +1341,7 @@ class FalServerlessConnection:
                 isolate_proto.File(hash=file.hash, relative_path=file.relative_path)
                 for file in files
             ]
-        auth = _to_auth_mode_proto(auth_mode)
+        auth = _to_auth_mode_proto(auth_mode or "private")
 
         full_application_name = (
             construct_alias(application_name, environment_name)
@@ -1445,14 +1451,7 @@ class FalServerlessConnection:
         environment_name: str | None = None,
         deployment_strategy: DeploymentStrategyLiteral | None = None,
     ) -> AliasInfo:
-        if auth_mode == "public":
-            auth = isolate_proto.ApplicationAuthMode.PUBLIC
-        elif auth_mode == "shared":
-            auth = isolate_proto.ApplicationAuthMode.SHARED
-        elif auth_mode == "private":
-            auth = isolate_proto.ApplicationAuthMode.PRIVATE
-        else:
-            auth = None
+        auth = _to_auth_mode_proto(auth_mode)
 
         full_alias = construct_alias(alias, environment_name)
 

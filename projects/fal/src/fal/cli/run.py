@@ -30,14 +30,6 @@ def _run(args):
     func_ref = args.func_ref
 
     app_data = AppData(auth=args.auth, name=args.app_name)
-    args.console.print(
-        "[bold yellow]Warning:[/bold yellow] "
-        "`fal run` ignores fal.App auth and pyproject.toml auth and "
-        "defaults to public. "
-        "In the next major release, the default will be private and "
-        "fal.App auth and pyproject.toml auth will be respected. "
-        "Use --auth to set the authentication mode."
-    )
     if is_app_name(func_ref):
         app_name = func_ref[0]
         toml_data = get_app_data_from_toml(app_name)
@@ -120,7 +112,7 @@ def _run(args):
         exposed_metrics_port=exposed_metrics_port,
         result_handler=CliRunResultHandler(
             console=args.console,
-            auth_mode=loaded.app_auth or "public",
+            auth_mode=loaded.app_auth or "private",
             endpoints=isolated_function.endpoints,
         ),
         reraise=False,
@@ -174,11 +166,8 @@ def add_parser(main_subparsers, parents):
     parser.add_argument(
         "--auth",
         type=valid_auth_option,
-        default="public",
-        help=(
-            "Application authentication mode (private, public, shared), "
-            "defaults to public. "
-        ),
+        default="private",
+        help="Auth mode: private (default), shared, or public (deprecated).",
     )
     parser.add_argument(
         "--force-env-build",

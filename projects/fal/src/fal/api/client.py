@@ -464,7 +464,7 @@ class SyncServerlessClient:
         Args:
             app_ref: Path to file, file::Class, or existing app name.
             app_name: Override the application name.
-            auth: Authentication mode ("private" | "public").
+            auth: Authentication mode ("private" or "shared"; "public" is deprecated).
             strategy: Deployment strategy ("recreate" | "rolling").
             reset_scale: If False, use previous scaling settings.
             message: Freeform message to attach to this revision
@@ -487,7 +487,7 @@ class SyncServerlessClient:
             client.deploy(
                 app_ref="path/to/myfile.py::MyApp",
                 app_name="myapp",
-                auth="public",
+                auth="private",
                 strategy="rolling",
             )
         """
