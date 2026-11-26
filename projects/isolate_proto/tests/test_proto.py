@@ -331,6 +331,21 @@ def test_register_application_private_logs_presence():
     assert request_with_private_logs_true.private_logs is True
 
 
+@pytest.mark.parametrize(
+    "message_type",
+    [isolate_proto.HostedRun, isolate_proto.RegisterApplicationRequest],
+)
+def test_inject_fal_key_presence_survives_serialization(message_type):
+    unset = message_type.FromString(message_type().SerializeToString())
+    assert unset.HasField("inject_fal_key") is False
+
+    opted_out = message_type.FromString(
+        message_type(inject_fal_key=False).SerializeToString()
+    )
+    assert opted_out.HasField("inject_fal_key") is True
+    assert opted_out.inject_fal_key is False
+
+
 def test_create_user_key_v2_policy_fields():
     request = isolate_proto.CreateUserKeyRequest(alias="ci")
     assert request.HasField("scope") is False

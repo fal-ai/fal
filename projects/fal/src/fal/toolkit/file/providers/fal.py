@@ -24,6 +24,7 @@ from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file._upload_policy import _request_id
 from fal.toolkit.file.types import FileData, FileRepository, Reservation
+from fal.toolkit.utils.download_utils import _redact_url
 from fal.toolkit.utils.retry import retry
 
 _FAL_CDN_V3 = "https://v3.fal.media"
@@ -99,7 +100,15 @@ def _maybe_retry_request(
         should_retry=_should_retry,
     )(partial(urlopen, request, timeout=timeout))
 
-    response = _urlopen_with_retry()
+    try:
+        response = _urlopen_with_retry()
+    except HTTPError:
+        raise
+    except URLError as exc:
+        # Transport messages may contain credential-bearing request URLs.
+        raise URLError(f"Request failed ({type(exc.reason).__name__})") from None
+    except TimeoutError:
+        raise TimeoutError("Request timed out") from None
     try:
         yield response
     finally:
@@ -447,7 +456,8 @@ class MultipartUploadGCS:
                 upload_url = result["upload_url"]
         except HTTPError as exc:
             raise FileUploadException(
-                f"Error initiating part {part_number} to {initiate_upload_url}. "
+                f"Error initiating part {part_number} to "
+                f"{_redact_url(initiate_upload_url)}. "
                 f"Status {exc.status}: {exc.reason}"
             )
 
@@ -467,7 +477,7 @@ class MultipartUploadGCS:
                 )
         except HTTPError as exc:
             raise FileUploadException(
-                f"Error uploading part {part_number} to {upload_url}. "
+                f"Error uploading part {part_number} to {_redact_url(upload_url)}. "
                 f"Status {exc.status}: {exc.reason}"
             )
 
@@ -492,7 +502,8 @@ class MultipartUploadGCS:
                 pass
         except HTTPError as e:
             raise FileUploadException(
-                f"Error completing upload {url}. Status {e.status}: {e.reason}"
+                f"Error completing upload {_redact_url(url)}. "
+                f"Status {e.status}: {e.reason}"
             )
 
         return self.access_url
@@ -740,7 +751,7 @@ class MultipartUploadV3:
                 )
         except HTTPError as exc:
             raise FileUploadException(
-                f"Error uploading part {part_number} to {url}. "
+                f"Error uploading part {part_number} to {_redact_url(url)}. "
                 f"Status {exc.status}: {exc.reason}"
             )
 
@@ -763,7 +774,8 @@ class MultipartUploadV3:
                 pass
         except HTTPError as e:
             raise FileUploadException(
-                f"Error completing upload {url}. Status {e.status}: {e.reason}"
+                f"Error completing upload {_redact_url(url)}. "
+                f"Status {e.status}: {e.reason}"
             )
 
         return self.access_url
@@ -914,7 +926,7 @@ class InternalMultipartUploadV3:
                 )
         except HTTPError as exc:
             raise FileUploadException(
-                f"Error uploading part {part_number} to {url}. "
+                f"Error uploading part {part_number} to {_redact_url(url)}. "
                 f"Status {exc.status}: {exc.reason}"
             )
 
@@ -935,7 +947,8 @@ class InternalMultipartUploadV3:
                 pass
         except HTTPError as e:
             raise FileUploadException(
-                f"Error completing upload {url}. Status {e.status}: {e.reason}"
+                f"Error completing upload {_redact_url(url)}. "
+                f"Status {e.status}: {e.reason}"
             )
 
         return self.access_url

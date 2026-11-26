@@ -12,6 +12,7 @@ import pickle
 import subprocess
 import sys
 from contextvars import ContextVar
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -40,6 +41,28 @@ def test_wma_subclass_keeps_its_concrete_app_name():
 
     assert NamedWmaApp.app_name == "named-wma"
     assert DefaultNamedWmaApp.app_name == "default-named-wma-app"
+
+
+def test_wma_app_rejects_fal_key_opt_out():
+    with pytest.raises(ValueError, match="not supported for this app type"):
+
+        class OptedOutApp(fal.wma.App):
+            inject_fal_key = False
+
+
+def test_wma_entrypoint_rejects_fal_key_opt_out_from_pyproject():
+    from fal.api import IsolatedFunction, Options
+
+    host = MagicMock()
+    host.run.return_value = EchoWmaApp.build_metadata()
+    function = IsolatedFunction(
+        host=host,
+        entrypoint="example:EchoWmaApp",
+        options=Options(host={"inject_fal_key": False}),
+    )
+
+    with pytest.raises(ValueError, match="not supported for this app type"):
+        function.fetch_metadata()
 
 
 @pytest.mark.parametrize("name", ["robot-controller", "app"])

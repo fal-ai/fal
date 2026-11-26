@@ -30,6 +30,7 @@ from fal.api import (
 from fal.api import (
     function as fal_function,
 )
+from fal.api.api import _CLASS_FAL_KEY_OPT_OUT
 from fal.auth import key_credentials
 from fal.compat import run_in_thread
 from fal.container import ContainerImage
@@ -646,6 +647,12 @@ class App(BaseServable):
             (follows the user's preferences). Pass an explicit list to
             opt in to only the secrets listed.
             Example: `["OPENAI_API_KEY", "HF_TOKEN"]`
+        inject_fal_key: Set to False to skip the temporary fal API key and its
+            legacy environment variables. Apps that call fal APIs or upload files
+            to fal may need their own credentials. For `python_entry_point`
+            apps the class is only imported remotely, so set
+            `inject_fal_key = false` in `pyproject.toml` instead; setting it
+            only on the class is an error.
         data_mounts: Persistent data mount paths to expose to the application.
             Use `["/data"]` for full access, or specific subdirectories like
             `["/data/.cache"]`. When omitted (None), the server applies a default
@@ -694,6 +701,7 @@ class App(BaseServable):
     retry_config: ClassVar[Optional[RetryConfig | RetryConfigDict]] = None
     termination_grace_period_seconds: ClassVar[Optional[int]] = None
     secrets: ClassVar[Optional[list[str]]] = None
+    inject_fal_key: ClassVar[bool | None] = None
     data_mounts: ClassVar[Optional[list[str]]] = None
     volumes: ClassVar[Optional[dict[str, Volume | str]]] = None
 
@@ -790,6 +798,9 @@ class App(BaseServable):
         if cls.secrets is not None:
             cls.host_kwargs["secrets"] = cls.secrets
 
+        if cls.inject_fal_key is not None:
+            cls.host_kwargs["inject_fal_key"] = cls.inject_fal_key
+
         if cls.data_mounts is not None:
             cls.host_kwargs["data_mounts"] = cls.data_mounts
 
@@ -836,6 +847,8 @@ class App(BaseServable):
     @classmethod
     def build_metadata(cls) -> dict[str, Any]:
         metadata: dict[str, Any] = {"openapi": cls(_allow_init=True).openapi()}
+        if cls.host_kwargs.get("inject_fal_key") is False:
+            metadata[_CLASS_FAL_KEY_OPT_OUT] = True
         billing_components = cls.get_billing_components()
         if billing_components:
             metadata["billing_components"] = billing_components
