@@ -108,6 +108,7 @@ from fal.wma.metered import (
     synthesize_ice_servers,
     validate_forwarded_ice_servers,
 )
+from fal.wma.recording import RecordingConfig
 from fal.wma.relay import ControlRejected, WebSocketSignalingRelay
 from fal.wma.sdk import (
     DATA_CHANNEL_LABEL,
@@ -128,6 +129,7 @@ from fal.wma.telemetry import (
 )
 
 __all__ = [
+    "RecordingConfig",
     # wire-shaped session errors (raise these from create_backend/handlers)
     "AppError",
     "Error",
