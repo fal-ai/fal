@@ -375,14 +375,10 @@ class TestMiddleware:
         # Pre-generation: must bill zero, or the platform charges the default.
         assert resp.headers["x-fal-billable-units"] == "0"
 
-    def test_upload_time_failure_is_a_422_that_still_bills(self, monkeypatch):
+    def test_upload_time_failure_is_a_422_that_bills_zero(self, monkeypatch):
         """_prepare_upload's checks fire inside from_bytes, after the middleware
         has already accepted the header, so they surface through AppException's
-        handler rather than the middleware.
-
-        Unlike a header that was malformed from the start, this is only knowable
-        once the output exists, so the generation really happened and billing is
-        left at the endpoint's default.
+        handler rather than the middleware. A failed request bills zero.
         """
         posts = []
         monkeypatch.setattr(
@@ -398,8 +394,7 @@ class TestMiddleware:
         assert resp.status_code == 422
         assert "exceeds" in resp.json()["detail"]
         assert not posts
-        # Not zeroed: the GPU work was done before this was knowable.
-        assert "x-fal-billable-units" not in resp.headers
+        assert resp.headers["x-fal-billable-units"] == "0"
 
     def test_valid_policy_is_parsed_once_and_serves_every_output(self, monkeypatch):
         posts = []
