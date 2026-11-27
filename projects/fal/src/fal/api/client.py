@@ -466,6 +466,8 @@ class SyncServerlessClient:
             app_name: Override the application name.
             auth: Authentication mode ("private" | "public").
             strategy: Deployment strategy ("recreate" | "rolling").
+            in_place: Rolling only. Lets the new revision take over the old
+                revision's GPUs, so the rollout doesn't wait for free capacity.
             reset_scale: If False, use previous scaling settings.
             message: Freeform message to attach to this revision
             annotations: Custom string key/value pairs to attach to this revision
